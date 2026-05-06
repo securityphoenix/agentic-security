@@ -589,7 +589,17 @@ function performRegexAnalysis(fp,raw){const cleaned=stripNoise(raw);const lines=
   for(const sp of SANITIZER_PATTERNS){const re=new RegExp(sp.regex.source,sp.regex.flags);let m;while((m=re.exec(cleaned))){const line=lineAt(cleaned,m.index);const lt=lines[line-1]||"";const am=lt.match(/(?:const|let|var|)\s*(\w+)\s*=/)||lt.match(/(\w+)\s*=/);sanitizers.push({type:sp.type,line,file:fp,snippet:lt.trim(),outputVar:am?am[1]:null});}}
   const tv=new Map();for(const src of sources)if(src.variable)tv.set(src.variable,{source:src,path:[{type:"source",label:"Input: "+src.label,line:src.line,snippet:src.snippet}],sanitized:false,sanitizerType:null});
   for(let i=0;i<lines.length;i++){const lt=lines[i];const am=lt.match(/(?:const|let|var|)\s*(\w+)\s*=\s*(.+)/);if(!am)continue;const[,dv,rhs]=am;if(tv.has(dv))continue;for(const[tn,ti]of tv){if(!new RegExp(`\\b${tn}\\b`).test(rhs))continue;let san=false,st=null;for(const s of sanitizers)if(s.line===i+1){san=true;st=s.type;break;}if(!san)for(const sp of SANITIZER_PATTERNS)if(new RegExp(sp.regex.source,sp.regex.flags).test(rhs)){san=true;st=sp.type;break;}tv.set(dv,{source:ti.source,path:[...ti.path,{type:san?"sanitizer":"propagation",label:san?`${st} on ${dv}`:`Assigned to "${dv}"`,line:i+1,snippet:lt.trim(),sanitized:san,sanitizerType:st}],sanitized:san,sanitizerType:st});break;}}
-  for(const sink of sinks){const safeShapeDowngrade=sink.safeShape?{isSan:true,sanType:sink.safeShape}:null;for(const src of sources){const sv=src.variable;let reached=false,pp=[],isSan=false,st=null;if(sv&&sink.usedVars.includes(sv)){const ti=tv.get(sv);if(ti){reached=true;pp=ti.path;isSan=!!ti.sanitized;st=ti.sanitizerType;}}if(!reached)for(const uv of sink.usedVars)if(tv.has(uv)){const ti=tv.get(uv);if(ti.source===src||ti.source.label.includes(src.label)){reached=true;pp=ti.path;isSan=!!ti.sanitized;st=ti.sanitizerType;break;}}if(!reached&&sv&&Math.abs(sink.line-src.line)<200&&((sink.args&&new RegExp(`\\b${sv}\\b`).test(sink.args))||lines.slice(Math.max(0,sink.line-10),sink.line+5).some(l=>new RegExp(`\\b${sv}\\b`).test(l)))){reached=true;pp=[{type:"source",label:"Input: "+src.label,line:src.line,snippet:src.snippet}];for(const san of sanitizers)if(san.line>src.line&&san.line<sink.line){isSan=true;st=san.type;pp.push({type:"sanitizer",label:san.type,line:san.line,snippet:san.snippet,sanitized:true,sanitizerType:san.type});}}if(safeShapeDowngrade&&!isSan){isSan=true;st=safeShapeDowngrade.sanType;pp=[...pp,{type:"sanitizer",label:`Safe sink shape: ${safeShapeDowngrade.sanType}`,line:sink.line,snippet:sink.snippet,sanitized:true,sanitizerType:safeShapeDowngrade.sanType}];}if(reached){const id=`${fp}:${src.line}:${sink.line}:${sink.vuln.replace(/\s/g,"_")}`;if(!findings.find(f=>f.id===id))findings.push({id,source:src,sink,path:[...pp,{type:"sink",label:`${sink.type}: ${sink.args}`,line:sink.line,snippet:sink.snippet}],isSanitized:isSan,sanitizerType:st,severity:isSan?"info":sink.severity,vuln:sink.vuln,cwe:sink.cwe,stride:sink.stride,file:fp,parser:"REGEX"});}}for(const uv of sink.usedVars)if(tv.has(uv)){const ti=tv.get(uv);const id=`${fp}:${ti.source.line}:${sink.line}:${sink.vuln.replace(/\s/g,"_")}`;if(!findings.find(f=>f.id===id)){const isSanFinal=!!ti.sanitized||!!sink.safeShape;const sanTypeFinal=ti.sanitizerType||(sink.safeShape?sink.safeShape:null);const pathFinal=sink.safeShape&&!ti.sanitized?[...ti.path,{type:"sanitizer",label:`Safe sink shape: ${sink.safeShape}`,line:sink.line,snippet:sink.snippet,sanitized:true,sanitizerType:sink.safeShape}]:ti.path;findings.push({id,source:ti.source,sink,path:[...pathFinal,{type:"sink",label:`${sink.type}: ${sink.args}`,line:sink.line,snippet:sink.snippet}],isSanitized:isSanFinal,sanitizerType:sanTypeFinal,severity:isSanFinal?"info":sink.severity,vuln:sink.vuln,cwe:sink.cwe,stride:sink.stride,file:fp,parser:"REGEX"});}}}
+  for(const sink of sinks){const safeShapeDowngrade=sink.safeShape?{isSan:true,sanType:sink.safeShape}:null;for(const src of sources){const sv=src.variable;let reached=false,pp=[],isSan=false,st=null;if(sv&&sink.usedVars.includes(sv)){const ti=tv.get(sv);if(ti){reached=true;pp=ti.path;isSan=!!ti.sanitized;st=ti.sanitizerType;}}if(!reached)for(const uv of sink.usedVars)if(tv.has(uv)){const ti=tv.get(uv);if(ti.source===src||ti.source.label.includes(src.label)){reached=true;pp=ti.path;isSan=!!ti.sanitized;st=ti.sanitizerType;break;}}if(!reached&&sv&&Math.abs(sink.line-src.line)<200&&((sink.args&&new RegExp(`\\b${sv}\\b`).test(sink.args))||lines.slice(Math.max(0,sink.line-10),sink.line+5).some(l=>new RegExp(`\\b${sv}\\b`).test(l)))){reached=true;pp=[{type:"source",label:"Input: "+src.label,line:src.line,snippet:src.snippet}];
+// FP-3: only credit a sanitizer here if it has a captured outputVar AND that var
+// is what reaches the sink. A bare `escape(s);` (return discarded) does NOT count.
+for(const san of sanitizers){
+  if(san.line<=src.line||san.line>=sink.line)continue;
+  if(!san.outputVar)continue;                                // discarded return → not effective
+  const sinkUsesOutput = sink.usedVars.includes(san.outputVar);
+  if(!sinkUsesOutput)continue;
+  isSan=true;st=san.type;
+  pp.push({type:"sanitizer",label:san.type,line:san.line,snippet:san.snippet,sanitized:true,sanitizerType:san.type});
+}}if(safeShapeDowngrade&&!isSan){isSan=true;st=safeShapeDowngrade.sanType;pp=[...pp,{type:"sanitizer",label:`Safe sink shape: ${safeShapeDowngrade.sanType}`,line:sink.line,snippet:sink.snippet,sanitized:true,sanitizerType:safeShapeDowngrade.sanType}];}if(reached){const id=`${fp}:${src.line}:${sink.line}:${sink.vuln.replace(/\s/g,"_")}`;if(!findings.find(f=>f.id===id))findings.push({id,source:src,sink,path:[...pp,{type:"sink",label:`${sink.type}: ${sink.args}`,line:sink.line,snippet:sink.snippet}],isSanitized:isSan,sanitizerType:st,severity:isSan?"info":sink.severity,vuln:sink.vuln,cwe:sink.cwe,stride:sink.stride,file:fp,parser:"REGEX"});}}for(const uv of sink.usedVars)if(tv.has(uv)){const ti=tv.get(uv);const id=`${fp}:${ti.source.line}:${sink.line}:${sink.vuln.replace(/\s/g,"_")}`;if(!findings.find(f=>f.id===id)){const isSanFinal=!!ti.sanitized||!!sink.safeShape;const sanTypeFinal=ti.sanitizerType||(sink.safeShape?sink.safeShape:null);const pathFinal=sink.safeShape&&!ti.sanitized?[...ti.path,{type:"sanitizer",label:`Safe sink shape: ${sink.safeShape}`,line:sink.line,snippet:sink.snippet,sanitized:true,sanitizerType:sink.safeShape}]:ti.path;findings.push({id,source:ti.source,sink,path:[...pathFinal,{type:"sink",label:`${sink.type}: ${sink.args}`,line:sink.line,snippet:sink.snippet}],isSanitized:isSanFinal,sanitizerType:sanTypeFinal,severity:isSanFinal?"info":sink.severity,vuln:sink.vuln,cwe:sink.cwe,stride:sink.stride,file:fp,parser:"REGEX"});}}}
   return{findings,sources,sinks,sanitizers};}
 
 function performAnalysis(fp, raw) {
@@ -1696,8 +1706,12 @@ function inferSanitizers(fc){
   return new Set(Object.keys(learned));
 }
 
-// Apply learned sanitizers to findings: if the sink line mentions a learned
-// sanitizer wrapping the source variable, downgrade severity.
+// Apply learned sanitizers to findings: if the sink uses a value that came
+// out of a sanitizer call, downgrade severity. Requires assignment form —
+// `result = sanitizer(... var ...)` AND `result` appears at the sink line.
+// FP-3: bare `sanitizer(... var ...);` calls (return value discarded) no
+// longer cause a downgrade, since the original tainted variable still flows
+// into the sink unchanged.
 function applyLearnedSanitizers(findings,learned,fc){
   if(!learned.size)return findings;
   for(const f of findings){
@@ -1706,12 +1720,34 @@ function applyLearnedSanitizers(findings,learned,fc){
     const fp=(f.sink?.file||f.file||"").split(" -> ").pop();
     const code=fc[fp];if(!code)continue;
     const lines=code.split("\n");
-    const around=lines.slice(Math.max(0,f.sink.line-3),f.sink.line+1).join(" ");
+    const around=lines.slice(Math.max(0,f.sink.line-3),f.sink.line+1).join("\n");
+    const sinkLine=lines[f.sink.line-1]||"";
+    let downgraded=false;
     for(const s of learned){
-      if(new RegExp(`\\b${s}\\s*\\(\\s*[^)]*\\b${v}\\b`).test(around)){
-        f.isSanitized=true;f.sanitizerType=`Inferred sanitizer: ${s}()`;
+      // Match: `<assignedVar> = <sanitizer>(... v ...)` (return is captured)
+      const re=new RegExp(`\\b(\\w+)\\s*=\\s*${s}\\s*\\(\\s*[^)]*\\b${v}\\b`);
+      const am=around.match(re);
+      if(!am)continue;
+      const assignedVar=am[1];
+      // Confirm the sanitized output flows into the sink
+      if(new RegExp(`\\b${assignedVar}\\b`).test(sinkLine)){
+        f.isSanitized=true;
+        f.sanitizerType=`Inferred sanitizer: ${s}() (return value used)`;
         f.severity="info";
+        downgraded=true;
         break;
+      }
+    }
+    if(!downgraded){
+      // Log any bare-call sanitizer attempt for visibility — these used to
+      // (incorrectly) cause a downgrade.
+      for(const s of learned){
+        if(new RegExp(`(?<![=\\w])${s}\\s*\\(\\s*[^)]*\\b${v}\\b`).test(around)
+           && !new RegExp(`\\b\\w+\\s*=\\s*${s}\\s*\\(`).test(around)){
+          _suppressionLog.push({vuln:'Discarded Sanitizer Call',file:fp,line:f.sink.line,
+            snippet:sinkLine.trim(),reason:'sanitizer-return-discarded:'+s});
+          break;
+        }
       }
     }
   }

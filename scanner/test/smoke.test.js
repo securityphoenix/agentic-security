@@ -211,6 +211,27 @@ test('FP-6: logic-pattern operational gates (Feedback / Coupon / Sensitive-Accou
   }
 });
 
+test('FP-3: sanitizer effectiveness by data-flow (discarded return ≠ sanitization)', async () => {
+  const expected = {
+    'useless-call.js': { sev: 'medium' },   // bare escapeHtml(s); → not downgraded
+    'proper-call.js':  { sev: 'info' },     // const safe = escapeHtml(s); → downgraded
+    'fake-escape.js':  { sev: 'medium' },   // custom escapeError that rethrows → not promoted to sanitizer
+  };
+  for (const [fixture, want] of Object.entries(expected)) {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agsec-san-'));
+    try {
+      await fs.cp(FIX('sanitizer-misuse/' + fixture), path.join(tmpDir, fixture));
+      const { scan } = await runScan(tmpDir);
+      const xss = normalizeFindings(scan).filter(f => /XSS|Reflected/.test(f.vuln));
+      assert.ok(xss.length >= 1, `${fixture}: expected ≥1 XSS finding`);
+      assert.ok(xss.some(f => f.severity === want.sev),
+        `${fixture}: expected at least one XSS finding at severity '${want.sev}', got: ${xss.map(f=>f.severity).join(', ')}`);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  }
+});
+
 test('finding IDs are stable hashes', async () => {
   const a = await runScan(FIX('vulnerable-js'));
   const b = await runScan(FIX('vulnerable-js'));
