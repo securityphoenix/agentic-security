@@ -762,12 +762,14 @@ const STRUCTURAL_VULN_PATTERNS=[
    type:"Auth Endpoint",vuln:"Auth Endpoint Without Rate Limiting",severity:"medium",cwe:"CWE-307",stride:"Spoofing",
    fix:"Apply express-rate-limit to all authentication endpoints"},
   // ── Security Misconfiguration ─────────────────────────────────────────────
-  {regex:/res\s*\.\s*cookie\s*\([^;)]{0,300}\)/g,
-   type:"Cookie Config",vuln:"Cookie Set (Verify httpOnly/Secure/SameSite)",severity:"medium",cwe:"CWE-614",stride:"Information Disclosure",
-   fix:"Set {httpOnly:true, secure:true, sameSite:'strict'} on all cookies"},
-  {regex:/cors\s*\(\s*\{[^}]*origin\s*:\s*['"]\*['"]/g,
+  {regex:/res\s*\.\s*cookie\s*\(((?:[^()]|\([^()]*\)){0,400})\)/g,
+   type:"Cookie Config",vuln:"Cookie Set Without Proper Security Flags",severity:"medium",cwe:"CWE-614",stride:"Information Disclosure",
+   fix:"Set {httpOnly:true, secure:true, sameSite:'strict'} on all cookies",
+   predicate:_cookiePredicate},
+  {regex:/\bcors\s*\(((?:[^()]|\([^()]*\)){0,400})\)/g,
    type:"CORS Config",vuln:"Permissive CORS (Allow-Origin: *)",severity:"medium",cwe:"CWE-942",stride:"Spoofing",
-   fix:"Restrict CORS origins to specific trusted domains"},
+   fix:"Restrict CORS origins to specific trusted domains",
+   predicate:_corsPredicate},
   {regex:/(?:multer|busboy|formidable)\s*[.(]/g,
    type:"File Upload",vuln:"File Upload Handler (Verify MIME/Extension/Size)",severity:"medium",cwe:"CWE-434",stride:"Elevation of Privilege",
    fix:"Validate file type, extension, size; store outside webroot; randomize filenames"},
@@ -823,6 +825,68 @@ const STRUCTURAL_VULN_PATTERNS=[
    fix:"Return identical responses whether the token is valid or not. Apply rate limiting on the reset endpoint."},
 ];
 
+// FP-8: object-literal options parser. Returns a Map of key→raw-value-text
+// for the simple `{a: x, b: y}` shape. Returns null if the literal can't be
+// parsed (spread / dynamic / nested) — caller decides what to do with null.
+function _parseOptsObject(text) {
+  if (typeof text !== 'string') return null;
+  const m = text.match(/\{([\s\S]*?)\}/);
+  if (!m) return null;
+  const body = m[1];
+  if (/\.\.\.\w/.test(body)) return null;        // {...spread}
+  const out = new Map();
+  let depth = 0, key = '', val = '', mode = 'key', quote = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quote) { if (ch === quote && body[i-1] !== '\\') quote = null; (mode==='key'?key:val).length<256&&(mode==='key'?(key+=ch):(val+=ch)); continue; }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; (mode==='key'?key:val) + ch; if (mode==='key') key+=ch; else val+=ch; continue; }
+    if (ch === '{' || ch === '[' || ch === '(') depth++;
+    if (ch === '}' || ch === ']' || ch === ')') depth--;
+    if (depth < 0) break;
+    if (depth === 0 && mode === 'key' && ch === ':') { mode = 'val'; continue; }
+    if (depth === 0 && ch === ',') {
+      const k = key.trim().replace(/^['"`]|['"`]$/g, '');
+      if (k) out.set(k, val.trim());
+      key = ''; val = ''; mode = 'key'; continue;
+    }
+    if (mode === 'key') key += ch; else val += ch;
+  }
+  const k = key.trim().replace(/^['"`]|['"`]$/g, '');
+  if (k) out.set(k, val.trim());
+  return out;
+}
+// Predicate: examine cookie call args. Returns {fire,reason,missing}.
+function _cookiePredicate(matchText){
+  const opts = _parseOptsObject(matchText);
+  if (!opts) return {fire:true, reason:'no-options-object'};
+  const httpOnly = /^true$/i.test(opts.get('httpOnly')||'');
+  const secure   = /^true$/i.test(opts.get('secure')||'');
+  const sameSite = /['"`](?:strict|lax|none)['"`]/i.test(opts.get('sameSite')||'');
+  const missing  = [!httpOnly&&'httpOnly', !secure&&'secure', !sameSite&&'sameSite'].filter(Boolean);
+  return {fire: missing.length>0, reason:'flags-missing', missing};
+}
+// Predicate: examine cors() args. Returns {fire,reason}.
+function _corsPredicate(matchText){
+  // Match: cors(<args>)
+  const am = matchText.match(/cors\s*\(([\s\S]*)\)$/);
+  const inside = am ? am[1].trim() : '';
+  if (!inside) return {fire:true, reason:'cors-no-options'};       // cors() defaults allow *
+  if (/^['"`]\*['"`]$/.test(inside)) return {fire:true, reason:'cors-star-string'};
+  const opts = _parseOptsObject(inside);
+  if (!opts) {
+    // Couldn't parse — fall back to substring inspection for the obvious bad cases
+    if (/origin\s*:\s*['"`]\*['"`]/.test(inside)) return {fire:true, reason:'cors-star-origin'};
+    if (/origin\s*:\s*true\b/.test(inside)) return {fire:true, reason:'cors-origin-true'};
+    return {fire:false};
+  }
+  const origin = opts.get('origin') || '';
+  if (!origin) return {fire:true, reason:'cors-no-origin'};
+  if (/^['"`]\*['"`]$/.test(origin) || /\bcb\s*\(\s*null\s*,\s*true\s*\)/.test(origin) || /^true$/.test(origin)) {
+    return {fire:true, reason:'cors-permissive-origin'};
+  }
+  return {fire:false};
+}
+
 // Structural vulnerability scanner, no source-sink taint chain required
 function scanStructuralVulns(fp, raw) {
   const cleaned = stripNoise(raw);
@@ -834,6 +898,15 @@ function scanStructuralVulns(fp, raw) {
     while ((m = re.exec(cleaned))) {
       const line = lineAt(cleaned, m.index);
       const snippet = lines[line - 1]?.trim() || '';
+      // FP-8: per-pattern predicate gate. If `predicate` returns {fire:false},
+      // the finding is suppressed (and logged for --include-suppressed).
+      if (typeof pat.predicate === 'function') {
+        const verdict = pat.predicate(m[0], { file: fp, line, snippet });
+        if (verdict && !verdict.fire) {
+          _suppressionLog.push({vuln:pat.vuln, file:fp, line, snippet, reason:'predicate-pass:'+(verdict.reason||'ok')});
+          continue;
+        }
+      }
       const id = `struct:${fp}:${line}:${pat.vuln.replace(/\s/g, '_')}`;
       if (!findings.find(f => f.id === id)) {
         findings.push({

@@ -138,6 +138,30 @@ test('FP-7: NoSQL operator still fires on real Mongo $where / $or with user inpu
   }
 });
 
+test('FP-8: cookie/CORS predicates fire only when actual config is unsafe', async () => {
+  // expected[fixture] = number of cookie/CORS findings
+  const expected = {
+    'cookie-secure.js':     0,
+    'cookie-no-secure.js':  1,
+    'cookie-no-options.js': 1,
+    'cors-allowlist.js':    0,
+    'cors-star.js':         1,
+    'cors-no-opts.js':      1,
+  };
+  for (const [fixture, want] of Object.entries(expected)) {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agsec-cc-'));
+    try {
+      await fs.cp(FIX('cookie-cors/' + fixture), path.join(tmpDir, fixture));
+      const { scan } = await runScan(tmpDir);
+      const cc = normalizeFindings(scan).filter(f => /Cookie|CORS/i.test(f.vuln));
+      assert.equal(cc.length, want,
+        `${fixture}: expected ${want} cookie/CORS finding(s), got ${cc.length}: ${cc.map(f=>f.vuln).join(', ')}`);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  }
+});
+
 test('finding IDs are stable hashes', async () => {
   const a = await runScan(FIX('vulnerable-js'));
   const b = await runScan(FIX('vulnerable-js'));
