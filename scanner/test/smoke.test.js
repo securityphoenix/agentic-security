@@ -97,6 +97,19 @@ test('FP-2: credential FP filter — only src/auth.js produces a finding; locale
   assert.ok(suppressed.every(s => s.reason === 'path-filter'), `unexpected suppression reasons: ${suppressed.map(s=>s.reason).join(', ')}`);
 });
 
+test('FP-5: entropy-fp fixture suppresses UUIDs / integrity hashes / data URIs / JWTs; only real-secret fires', async () => {
+  const { scan } = await runScan(FIX('entropy-fp'));
+  const ent = normalizeFindings(scan).filter(f => /Entropy/i.test(f.vuln));
+  assert.equal(ent.length, 1, `expected exactly 1 entropy finding, got ${ent.length}: ${ent.map(f=>f.file).join(', ')}`);
+  assert.ok(/real-secret\.js/.test(ent[0].file), `unexpected entropy finding: ${ent[0].file}`);
+  // At least one explicit suppression for the JWT pattern (other categories were
+  // already handled by the pre-existing SAFE_ENTROPY_PREFIXES filter)
+  const ents = (scan.suppressions||[]).filter(s => /Entropy/i.test(s.vuln));
+  assert.ok(ents.length >= 1, `expected ≥1 entropy suppression, got ${ents.length}`);
+  assert.ok(ents.some(s => s.reason.startsWith('entropy-')),
+    `expected entropy-prefixed suppression reason, got: ${ents.map(s=>s.reason).join(', ')}`);
+});
+
 test('finding IDs are stable hashes', async () => {
   const a = await runScan(FIX('vulnerable-js'));
   const b = await runScan(FIX('vulnerable-js'));

@@ -1362,11 +1362,33 @@ function shannonEntropy(s){
   return e;
 }
 const SAFE_ENTROPY_PREFIXES=/(?:https?:\/\/|data:|image\/|text\/|application\/|sha\d+[:=-]|md5[:=-]|[0-9a-f]{8}-[0-9a-f]{4}-|\/\/|lorem|ipsum|aaa+|xxx+|placeholder|example|your_|changeme)/i;
+
+// FP-5: structural recognizers for high-entropy non-secrets. Each entry returns
+// the suppression reason it represents. Anything matching here is NOT a secret.
+const NON_SECRET_RECOGNIZERS=[
+  {re:/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, reason:'uuid'},
+  // Pure hex digest of a common length (MD5/SHA1/SHA256/SHA512)
+  {re:/^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$|^[0-9a-f]{128}$/i, reason:'hex-digest'},
+  // Hex-prefixed public-key-shaped values (0x...)
+  {re:/^0x[0-9a-f]{40,128}$/i, reason:'hex-public-key'},
+  // npm/yarn lockfile integrity hashes (already partially handled by SAFE_ENTROPY_PREFIXES, kept for clarity)
+  {re:/^sha(?:1|256|384|512)-[A-Za-z0-9+/=]+$/, reason:'integrity-hash'},
+  // 3-part JWT (header.payload.signature) — usually example/cached, not committed live secrets
+  {re:/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, reason:'jwt-three-part'},
+];
+const DOC_CONTEXT_RE=/(?:^|\W)(?:example|sample|e\.g\.|i\.e\.|for\s+instance|dummy|like:|such\s+as)(?:\W|$)/i;
+function _isLikelyNonSecret(v, ctxLine, surroundingLines){
+  for (const r of NON_SECRET_RECOGNIZERS) if (r.re.test(v)) return r.reason;
+  // Doc-context gate: surrounding 3 lines clearly indicate documentation/example
+  if (DOC_CONTEXT_RE.test(surroundingLines)) return 'doc-context';
+  return null;
+}
+
 function scanEntropySecrets(fp,raw){
   if(raw.length>400000)return[]; // skip huge blobs
   const out=[];
   const lines=raw.split("\n");
-  const re=/['"`]([A-Za-z0-9+/=_\-]{24,120})['"`]/g;
+  const re=/['"`]([A-Za-z0-9+/=_\-.]{24,200})['"`]/g; // include `.` so JWTs are captured here for suppression
   let m;
   while((m=re.exec(raw))!==null){
     const v=m[1];
@@ -1378,6 +1400,13 @@ function scanEntropySecrets(fp,raw){
     const line=raw.substring(0,m.index).split("\n").length;
     const ctx=lines[line-1]||"";
     if(!/(?:key|secret|token|password|pwd|api|auth|cred|private|bearer|salt|signature|cert)/i.test(ctx))continue;
+    // FP-5: structural / doc-context suppression
+    const surrounding=lines.slice(Math.max(0,line-3),Math.min(lines.length,line+1)).join("\n");
+    const nonSecretReason=_isLikelyNonSecret(v, ctx, surrounding);
+    if (nonSecretReason) {
+      _suppressionLog.push({vuln:"High-Entropy Credential Candidate",file:fp,line,snippet:ctx.trim(),reason:'entropy-'+nonSecretReason});
+      continue;
+    }
     const masked=v.substring(0,4)+"…"+v.substring(v.length-4);
     out.push({
       vuln:"High-Entropy Credential Candidate",
