@@ -189,6 +189,28 @@ test('FP-4: MD5/SHA1 context-aware classification (cache→suppressed, password�
   }
 });
 
+test('FP-6: logic-pattern operational gates (Feedback / Coupon / Sensitive-Account-Mutation)', async () => {
+  const expected = {
+    'blog-comments':       { vulnPattern: /Feedback Without Purchase/,        count: 0 },
+    'ecommerce-reviews':   { vulnPattern: /Feedback Without Purchase/,        count: 1 },
+    'coupon-display-only': { vulnPattern: /Coupon\/Discount Reuse/,           count: 0 },
+    'coupon-redeem':       { vulnPattern: /Coupon\/Discount Reuse/,           min:   1 },
+    'account-with-reauth': { vulnPattern: /Sensitive Account Mutation/,       count: 0 },
+    'account-no-reauth':   { vulnPattern: /Sensitive Account Mutation/,       count: 1 },
+  };
+  for (const [fixture, want] of Object.entries(expected)) {
+    const { scan } = await runScan(FIX(fixture));
+    const lv = normalizeFindings(scan).filter(f => want.vulnPattern.test(f.vuln));
+    if (typeof want.count === 'number') {
+      assert.equal(lv.length, want.count,
+        `${fixture}: expected ${want.count} matches of ${want.vulnPattern}, got ${lv.length}`);
+    } else if (typeof want.min === 'number') {
+      assert.ok(lv.length >= want.min,
+        `${fixture}: expected ≥${want.min} matches of ${want.vulnPattern}, got ${lv.length}`);
+    }
+  }
+});
+
 test('finding IDs are stable hashes', async () => {
   const a = await runScan(FIX('vulnerable-js'));
   const b = await runScan(FIX('vulnerable-js'));

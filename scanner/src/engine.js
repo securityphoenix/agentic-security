@@ -1003,9 +1003,75 @@ const _suppressionLog = [];
 function _resetSuppressions(){ _suppressionLog.length = 0; }
 function _getSuppressions(){ return [..._suppressionLog]; }
 
+// FP-6: project-level index built once per scan, used by logic-pattern gates
+// to confirm operational context before emitting findings.
+const _ECOMMERCE_MODEL_RE = /\b(?:Order|Purchase|Cart|Checkout|Transaction|OrderItem|BasketItem|Subscription|Invoice|Payment)\b/;
+let _projectIndex = { hasEcommerceModel: false };
+function _buildProjectIndex(fileContents){
+  let hasEcommerce = false;
+  for (const fp of Object.keys(fileContents)) {
+    const c = fileContents[fp];
+    if (typeof c !== 'string') continue;
+    // Strip comments before checking — keywords in JSDoc / TODO / docstrings shouldn't
+    // count as evidence of an e-commerce model. Only real code does.
+    if (_ECOMMERCE_MODEL_RE.test(stripNoise(c))) { hasEcommerce = true; break; }
+  }
+  _projectIndex = { hasEcommerceModel: hasEcommerce };
+}
+
+const _COUPON_MUTATION_RE = /\b(?:apply|redeem|validate|use|deduct|decrement|increment|update|save|consume|create|destroy|remove|insert)\b/i;
+const _REAUTH_PRESENT_RE  = /\b(?:bcrypt\.compare|crypto\.timingSafeEqual|currentPassword|recentLogin|verifyTotp|verifyMfa|mfaToken|requireRecentLogin|requireFreshSession|step[-_]?up|requireFreshAuth|verifyPassword)\b/;
+
+function _logicPredicateFor(vuln){
+  if (vuln === 'Feedback Without Purchase Verification') {
+    return (matchText, ctx) =>
+      _projectIndex.hasEcommerceModel
+        ? { fire: true }
+        : { fire: false, reason: 'no-ecommerce-context' };
+  }
+  if (vuln === 'Coupon/Discount Reuse Risk') {
+    return (matchText, ctx) => {
+      const lines = ctx.lines || [];
+      const surround = lines.slice(Math.max(0, ctx.line-5), Math.min(lines.length, ctx.line+5)).join('\n');
+      return _COUPON_MUTATION_RE.test(surround)
+        ? { fire: true }
+        : { fire: false, reason: 'coupon-display-only' };
+    };
+  }
+  if (vuln === 'Sensitive Account Mutation Without Re-Authentication') {
+    return (matchText, ctx) =>
+      _REAUTH_PRESENT_RE.test(matchText)
+        ? { fire: false, reason: 'reauth-present' }
+        : { fire: true };
+  }
+  return null;
+}
+
 function scanLogicVulns(fp,raw){
   const cleaned=stripNoise(raw);const lines=raw.split("\n");const results=[];
-  for(const pat of LOGIC_PATTERNS){const re=new RegExp(pat.regex.source,pat.regex.flags);let m;while((m=re.exec(cleaned))){const line=lineAt(cleaned,m.index);const snippet=lines[line-1]?.trim()||"";if(pat.vuln==='Hardcoded Secret'||pat.vuln==='Hardcoded Credential Check'){const fpCheck=_isFalsePositiveCredential(fp,snippet,m[0]);if(fpCheck.skip){_suppressionLog.push({vuln:pat.vuln,file:fp,line,snippet,reason:fpCheck.reason});continue;}}results.push({vuln:pat.vuln,severity:pat.severity,cwe:pat.cwe,stride:pat.stride,fix:pat.fix,code:pat.code,file:fp,line,snippet});}}
+  for(const pat of LOGIC_PATTERNS){
+    const re=new RegExp(pat.regex.source,pat.regex.flags);
+    const predicate = _logicPredicateFor(pat.vuln);
+    let m;
+    while((m=re.exec(cleaned))){
+      const line=lineAt(cleaned,m.index);
+      const snippet=lines[line-1]?.trim()||"";
+      // FP-2: credential FP filter
+      if(pat.vuln==='Hardcoded Secret'||pat.vuln==='Hardcoded Credential Check'){
+        const fpCheck=_isFalsePositiveCredential(fp,snippet,m[0]);
+        if(fpCheck.skip){_suppressionLog.push({vuln:pat.vuln,file:fp,line,snippet,reason:fpCheck.reason});continue;}
+      }
+      // FP-6: operational-context gate for selected logic patterns
+      if (predicate) {
+        const verdict = predicate(m[0], {file:fp, line, snippet, lines});
+        if (verdict && !verdict.fire) {
+          _suppressionLog.push({vuln:pat.vuln, file:fp, line, snippet, reason:'logic-gate:'+verdict.reason});
+          continue;
+        }
+      }
+      results.push({vuln:pat.vuln,severity:pat.severity,cwe:pat.cwe,stride:pat.stride,fix:pat.fix,code:pat.code,file:fp,line,snippet});
+    }
+  }
   const routeRe=/(?:app|router)\s*\.\s*(?:get|post|all)\s*\(\s*['"`](\/(?:debug|admin|test|internal|__)[^'"`]*)/gi;let rm;
   while((rm=routeRe.exec(cleaned))){const line=lineAt(cleaned,rm.index);const nearby=lines.slice(Math.max(0,line-3),line+3).join(" ");const hasAuth=/(?:auth|jwt|protect|middleware)/i.test(nearby);if(!hasAuth)results.push({vuln:"Debug/Admin Route Exposed",severity:"high",cwe:"CWE-489",stride:"Information Disclosure",fix:"Remove debug routes in production or protect with authentication.",code:`// Remove or protect:\n// router.get('${rm[1]}', authMiddleware, handler);`,file:fp,line,snippet:lines[line-1]?.trim()||""});}
   return results;
@@ -2559,7 +2625,7 @@ async function queryRegistries(components){
 
 // Node port: takes { fileContents, depFileContents } maps directly instead of a JSZip object.
 // fileContents = code files keyed by relative path; depFileContents = manifest/lockfiles keyed by relative path.
-async function runFullScan({fileContents={}, depFileContents={}}, setProgress=()=>{}){_resetSuppressions();const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+async function runFullScan({fileContents={}, depFileContents={}}, setProgress=()=>{}){_resetSuppressions();_buildProjectIndex(fileContents);const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
   setProgress({current:i,total:files.length,file:"Cross-file...",phase:"Linking"});const ii=buildImportGraph(fc);const cf=crossFileTaint(pfr,fc,ii);aF.push(...cf);
   setProgress({current:i,total:files.length,file:"Stored taint...",phase:"Linking"});const storedRegistry=buildStoredTaintRegistry(fc);const stf=crossStoredTaint(fc,storedRegistry);aF.push(...stf);
   setProgress({current:i,total:files.length,file:"Session taint...",phase:"Linking"});const sess=crossSessionTaint(fc);aF.push(...sess);
