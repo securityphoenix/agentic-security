@@ -63,8 +63,9 @@ async function cmdScan(args) {
     if (only === 'secrets') { scan.findings = []; scan.supplyChain = []; }
   }
 
+  const includeSuppressed = !!args.flags['include-suppressed'];
   let body;
-  if (format === 'json') body = JSON.stringify(toJSON(scan, meta), null, 2);
+  if (format === 'json') body = JSON.stringify(toJSON(scan, meta, { includeSuppressed }), null, 2);
   else if (format === 'md' || format === 'markdown') body = toMarkdown(scan, meta);
   else if (format === 'sarif') body = JSON.stringify(toSARIF(scan, meta), null, 2);
   else body = toCLI(scan, { verbose });

@@ -41,6 +41,18 @@ export function normalizeFindings(scan){
       fix: s.fix ? { description: s.fix, code: s.code || '' } : null,
     });
   }
+  for (const lv of (scan.logicVulns||[])) {
+    out.push({
+      id: lv.id || fingerprint(lv),
+      kind: 'logic',
+      severity: lv.severity || 'medium',
+      vuln: lv.vuln,
+      cwe: lv.cwe || null,
+      stride: lv.stride || null,
+      file: lv.file, line: lv.line, snippet: lv.snippet || '',
+      fix: lv.fix ? { description: lv.fix, code: lv.code || '' } : null,
+    });
+  }
   for (const sc of (scan.supplyChain||[])) {
     out.push({
       id: fingerprint(sc),
@@ -63,8 +75,8 @@ export function normalizeFindings(scan){
   return out.sort((a,b)=> (SEV_RANK[a.severity]??9) - (SEV_RANK[b.severity]??9));
 }
 
-export function toJSON(scan, meta={}){
-  return {
+export function toJSON(scan, meta={}, opts={}){
+  const out = {
     scanId: meta.scanId || crypto.randomUUID(),
     startedAt: meta.startedAt || new Date().toISOString(),
     durationMs: meta.durationMs || 0,
@@ -76,7 +88,10 @@ export function toJSON(scan, meta={}){
       reachable: c.reachable, hasVulns: c.hasVulns, isDeprecated: c.isDeprecated,
       latestVersion: c.latestVersion, license: c.license,
     })),
+    suppressedCount: (scan.suppressions||[]).length,
   };
+  if (opts.includeSuppressed) out.suppressed = scan.suppressions||[];
+  return out;
 }
 
 export function toMarkdown(scan, meta={}){

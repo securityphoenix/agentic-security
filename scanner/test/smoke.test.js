@@ -85,6 +85,18 @@ test('FP-1: python-vulnerable fixture still surfaces SQL/Command/Code injection'
   assert.ok(vulns.some(v => /Code Injection|eval/i.test(v)), 'Code Injection missing');
 });
 
+test('FP-2: credential FP filter — only src/auth.js produces a finding; locales+examples suppressed', async () => {
+  const { scan } = await runScan(FIX('credential-fp'));
+  const hsec = normalizeFindings(scan).filter(f => /Hardcoded Secret/i.test(f.vuln));
+  assert.equal(hsec.length, 1, `expected 1 Hardcoded Secret finding, got ${hsec.length}: ${hsec.map(f=>f.file+':'+f.line).join(', ')}`);
+  assert.ok(/src\/auth\.js/.test(hsec[0].file), `unexpected finding location: ${hsec[0].file}`);
+  // Suppressed-finding count is exposed on the scan result
+  const suppressed = scan.suppressions || [];
+  assert.ok(suppressed.length >= 4, `expected ≥4 suppressed credential FPs, got ${suppressed.length}`);
+  // All suppressions in this fixture are path-filter
+  assert.ok(suppressed.every(s => s.reason === 'path-filter'), `unexpected suppression reasons: ${suppressed.map(s=>s.reason).join(', ')}`);
+});
+
 test('finding IDs are stable hashes', async () => {
   const a = await runScan(FIX('vulnerable-js'));
   const b = await runScan(FIX('vulnerable-js'));

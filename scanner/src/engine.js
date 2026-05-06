@@ -850,9 +850,45 @@ function scanStructuralVulns(fp, raw) {
 }
 
 
+// FP-2: layered filter pipeline for credential-shaped findings.
+// Returns { skip: bool, reason?: string } — when `skip` is true, the caller
+// records the suppression and does not emit a finding.
+const _CRED_PATH_RE = /(?:^|\/)(?:locales|i18n|translations|storybook|stories|docs|examples|templates|fixtures|mocks|stubs)(?:\/|$)/i;
+const _CRED_FILE_RE = /\.(?:test|spec|fixture|mock|stories)\.[^./]+$/i;
+const _CRED_VARNAME_RE = /(?:placeholder|label|hint|description|example|default|mock|sample|demo|fake|dummy|prompt|tooltip|message|aria|title|column|column_name|field|key_name)/i;
+const _CRED_PLACEHOLDER_VAL_RE = /^(?:your[-_]|change[-_]?me|replace[-_]?me|placeholder|example|<[^>]+>|TODO|FIXME|xxx+|test[-_]?key|default[-_]?key|null|undefined|empty|n\/a|none)/i;
+const _CRED_I18N_VAL_RE = /^[^\x00-\x7F]/;
+const _CRED_JSX_ATTR_RE = /<\s*(?:input|TextField|TextInput|FormControl|Field|Form\.Control|TextArea|select|option|label|button)\b[^>]*$/i;
+function _isFalsePositiveCredential(fp, snippet, fullMatch){
+  const pathLC = fp.replace(/\\\\/g,'/').toLowerCase();
+  if (_CRED_PATH_RE.test(pathLC) || _CRED_FILE_RE.test(pathLC)) return {skip:true, reason:'path-filter'};
+  // Extract LHS identifier from the snippet (handles `const x =`, `x =`, `{ x:`, etc.)
+  const am = snippet.match(/(?:^|\W)(\w{2,})\s*[:=]\s*['"]/);
+  const varName = am ? am[1] : '';
+  if (varName && _CRED_VARNAME_RE.test(varName)) return {skip:true, reason:'var-name-placeholder'};
+  // Extract the literal value
+  const valM = fullMatch.match(/['"]([^'"]{3,})['"]/);
+  const val = valM ? valM[1] : '';
+  if (val.length < 8) return {skip:true, reason:'value-too-short'};
+  if (_CRED_PLACEHOLDER_VAL_RE.test(val)) return {skip:true, reason:'placeholder-value'};
+  // Non-ASCII content with i18n-shaped variable name → translation string
+  if (_CRED_I18N_VAL_RE.test(val) && /(?:label|message|text|title|description|placeholder)/i.test(varName)) {
+    return {skip:true, reason:'i18n-text'};
+  }
+  // JSX/HTML attribute context: snippet ends in `<input ... ` before the matched key=val
+  if (_CRED_JSX_ATTR_RE.test(snippet.substring(0, snippet.indexOf(fullMatch)))) {
+    return {skip:true, reason:'jsx-attr'};
+  }
+  return {skip:false};
+}
+// Module-level suppression log; cleared at the start of each runFullScan invocation.
+const _suppressionLog = [];
+function _resetSuppressions(){ _suppressionLog.length = 0; }
+function _getSuppressions(){ return [..._suppressionLog]; }
+
 function scanLogicVulns(fp,raw){
   const cleaned=stripNoise(raw);const lines=raw.split("\n");const results=[];
-  for(const pat of LOGIC_PATTERNS){const re=new RegExp(pat.regex.source,pat.regex.flags);let m;while((m=re.exec(cleaned))){const line=lineAt(cleaned,m.index);results.push({vuln:pat.vuln,severity:pat.severity,cwe:pat.cwe,stride:pat.stride,fix:pat.fix,code:pat.code,file:fp,line,snippet:lines[line-1]?.trim()||""});}}
+  for(const pat of LOGIC_PATTERNS){const re=new RegExp(pat.regex.source,pat.regex.flags);let m;while((m=re.exec(cleaned))){const line=lineAt(cleaned,m.index);const snippet=lines[line-1]?.trim()||"";if(pat.vuln==='Hardcoded Secret'||pat.vuln==='Hardcoded Credential Check'){const fpCheck=_isFalsePositiveCredential(fp,snippet,m[0]);if(fpCheck.skip){_suppressionLog.push({vuln:pat.vuln,file:fp,line,snippet,reason:fpCheck.reason});continue;}}results.push({vuln:pat.vuln,severity:pat.severity,cwe:pat.cwe,stride:pat.stride,fix:pat.fix,code:pat.code,file:fp,line,snippet});}}
   const routeRe=/(?:app|router)\s*\.\s*(?:get|post|all)\s*\(\s*['"`](\/(?:debug|admin|test|internal|__)[^'"`]*)/gi;let rm;
   while((rm=routeRe.exec(cleaned))){const line=lineAt(cleaned,rm.index);const nearby=lines.slice(Math.max(0,line-3),line+3).join(" ");const hasAuth=/(?:auth|jwt|protect|middleware)/i.test(nearby);if(!hasAuth)results.push({vuln:"Debug/Admin Route Exposed",severity:"high",cwe:"CWE-489",stride:"Information Disclosure",fix:"Remove debug routes in production or protect with authentication.",code:`// Remove or protect:\n// router.get('${rm[1]}', authMiddleware, handler);`,file:fp,line,snippet:lines[line-1]?.trim()||""});}
   return results;
@@ -2377,7 +2413,7 @@ async function queryRegistries(components){
 
 // Node port: takes { fileContents, depFileContents } maps directly instead of a JSZip object.
 // fileContents = code files keyed by relative path; depFileContents = manifest/lockfiles keyed by relative path.
-async function runFullScan({fileContents={}, depFileContents={}}, setProgress=()=>{}){const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+async function runFullScan({fileContents={}, depFileContents={}}, setProgress=()=>{}){_resetSuppressions();const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
   setProgress({current:i,total:files.length,file:"Cross-file...",phase:"Linking"});const ii=buildImportGraph(fc);const cf=crossFileTaint(pfr,fc,ii);aF.push(...cf);
   setProgress({current:i,total:files.length,file:"Stored taint...",phase:"Linking"});const storedRegistry=buildStoredTaintRegistry(fc);const stf=crossStoredTaint(fc,storedRegistry);aF.push(...stf);
   setProgress({current:i,total:files.length,file:"Session taint...",phase:"Linking"});const sess=crossSessionTaint(fc);aF.push(...sess);
@@ -2408,7 +2444,7 @@ async function runFullScan({fileContents={}, depFileContents={}}, setProgress=()
   try{finalFindings.forEach(scoreExploitability);}catch(_){}
   finalFindings.sort((a,b)=>(b.exploitabilityScore||0)-(a.exploitabilityScore||0)||({critical:0,high:1,medium:2,low:3}[a.severity]??4)-({critical:0,high:1,medium:2,low:3}[b.severity]??4));
   classifyOrphans(aSrc,aSink,finalFindings,fc);
-  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc};}
+  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions()};}
 
 // Post-aggregation classification: every source becomes "unsafe"|"safe"; every sink becomes "confirmed"|"safe".
 // Orphans (no finding linkage) are bucketed by file-local heuristic so the UI shows binary states only.
@@ -2822,6 +2858,7 @@ export {
   queryOSV, queryRegistries, computeExploitPathComponents,
   markUsedVulnFunctions, dedupeFindingsWithEvidence, scoreExploitability,
   classifyOrphans, classifyField, classifyEndpoint, shouldScan,
+  _isFalsePositiveCredential, _detectSafeSinkShape,
   payloadsForFinding, buildProofObligation,
   DATA_CLASSES, SOURCE_PATTERNS, SINK_PATTERNS, SANITIZER_PATTERNS,
   ROUTE_PATTERNS, AUTH_PATTERNS, IGNORE_DIRS, CODE_EXTS,
