@@ -128,7 +128,7 @@ A self-contained interactive page: severity chart, filterable finding list, fix 
 **Step 4 — fix the worst stuff**
 
 ```
-/agentic-security:security-fix-all --severity critical
+/agentic-security:security-fix-all --critical
 ```
 
 Before touching any code, Claude will read the findings and summarise what it's about to change. On a well-known codebase like Juice Shop it will flag that the vulnerabilities are intentional challenges and ask how to proceed. Tell it:
