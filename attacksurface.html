@@ -2387,7 +2387,7 @@ function computeExploitPathComponents(findings,components,byFile){
   return{flagged,pathsByKey};
 }
 
-async function queryOSV(components,allFileContents){
+async function queryOSV(components,allFileContents,onProgress){
   const OSV_ECO={npm:'npm',pypi:'PyPI',packagist:'Packagist',rubygems:'RubyGems',golang:'Go',cargo:'crates.io',maven:'Maven',pub:'Pub'};
   const results=[];
   const queryable=components.filter(c=>OSV_ECO[c.ecosystem]&&c.version&&/\d+\.\d+/.test(c.version));
@@ -2429,11 +2429,16 @@ async function queryOSV(components,allFileContents){
     }
   }
 
-  for(const[vid,affectedComps]of Object.entries(vulnAffects)){
-    let vuln=_osvCacheGet('vuln:'+vid);
-    if(!vuln){
+  // Fetch vuln details in parallel batches of 12 with per-request timeout.
+  const vidEntries=Object.entries(vulnAffects);
+  const VULN_CONCURRENCY=12;
+  for(let vi=0;vi<vidEntries.length;vi+=VULN_CONCURRENCY){
+    if(onProgress)onProgress(`CVE details ${Math.min(vi+VULN_CONCURRENCY,vidEntries.length)}/${vidEntries.length}...`);
+    await Promise.allSettled(vidEntries.slice(vi,vi+VULN_CONCURRENCY).map(async([vid])=>{
+      if(_osvCacheGet('vuln:'+vid))return;
       try{
-        const resp=await fetch(`https://api.osv.dev/v1/vulns/${vid}`);
+        const resp=await fetch(`https://api.osv.dev/v1/vulns/${vid}`,{signal:AbortSignal.timeout(8000)});
+        if(!resp.ok)return;
         const d=await resp.json();
         const fixedVersions=new Set();
         for(const aff of(d.affected||[]))for(const rng of(aff.ranges||[]))for(const ev of(rng.events||[]))if(ev.fixed)fixedVersions.add(ev.fixed);
@@ -2443,13 +2448,16 @@ async function queryOSV(components,allFileContents){
         let cvssVector=null;
         for(const s of(d.severity||[]))if(s.type==='CVSS_V3'||s.type==='CVSS_V4'){cvssVector=s.score;break;}
         const hasKnownExploit=(d.references||[]).some(r=>['exploit-db','packetstorm','/poc','/0day'].some(x=>(r.url||'').toLowerCase().includes(x)));
-        vuln={id:vid,description:(d.summary||d.details||'No description.').slice(0,300),
+        _osvCacheSet('vuln:'+vid,{id:vid,description:(d.summary||d.details||'No description.').slice(0,300),
           fixedVersions:[...fixedVersions].sort(),
           aliases:(d.aliases||[]).filter(a=>a.startsWith('CVE-')),
-          severity,cvssVector,hasKnownExploit};
-        _osvCacheSet('vuln:'+vid,vuln);
-      }catch(_){continue;}
-    }
+          severity,cvssVector,hasKnownExploit});
+      }catch(_){}
+    }));
+  }
+  for(const[vid,affectedComps]of vidEntries){
+    const vuln=_osvCacheGet('vuln:'+vid);
+    if(!vuln)continue;
     for(const comp of affectedComps){
       const cveStr=vuln.aliases.length?` (${vuln.aliases[0]})`:'';
       const fixStr=vuln.fixedVersions.length?vuln.fixedVersions[0]:null;
@@ -2495,21 +2503,22 @@ async function queryRegistries(components){
   const infoMap=new Map();
   const npmNames=[...new Set(components.filter(c=>c.ecosystem==='npm').map(c=>c.name))];
   const pypiNames=[...new Set(components.filter(c=>c.ecosystem==='pypi').map(c=>c.name))];
-  const CHUNK=8;
+  const CHUNK=12;
   for(let i=0;i<npmNames.length;i+=CHUNK){
-    await Promise.all(npmNames.slice(i,i+CHUNK).map(async name=>{
+    await Promise.allSettled(npmNames.slice(i,i+CHUNK).map(async name=>{
       try{
-        const resp=await fetch('https://registry.npmjs.org/'+name);
+        // Use /latest to avoid fetching the full package doc with all version metadata
+        const resp=await fetch('https://registry.npmjs.org/'+encodeURIComponent(name)+'/latest',{signal:AbortSignal.timeout(6000)});
         if(!resp.ok)return;
         const d=await resp.json();
-        const latest=d['dist-tags']?.latest||'';const lic=d.license||(latest&&d.versions?.[latest]?.license)||'';infoMap.set('npm:'+name,{latestVersion:latest,license:lic,versions:d.versions||{}});
+        infoMap.set('npm:'+name,{latestVersion:d.version||'',license:d.license||'',versions:{}});
       }catch(_){}
     }));
   }
   for(let i=0;i<pypiNames.length;i+=CHUNK){
-    await Promise.all(pypiNames.slice(i,i+CHUNK).map(async name=>{
+    await Promise.allSettled(pypiNames.slice(i,i+CHUNK).map(async name=>{
       try{
-        const resp=await fetch('https://pypi.org/pypi/'+encodeURIComponent(name)+'/json');
+        const resp=await fetch('https://pypi.org/pypi/'+encodeURIComponent(name)+'/json',{signal:AbortSignal.timeout(6000)});
         if(!resp.ok)return;
         const d=await resp.json();
         infoMap.set('pypi:'+name,{latestVersion:d.info?.version||'',license:d.info?.license||'',versions:{}});
@@ -2800,16 +2809,17 @@ async function runFullScan(zip,setProgress){const files=Object.keys(zip.files).f
   setProgress({current:i,total:files.length,file:"Sanitizer effectiveness...",phase:"Linking"});applySanitizerEffectiveness(aF);
   setProgress({current:i,total:files.length,file:"Exploit chains...",phase:"Linking"});const chains=crossFindingChain(aF);aF.push(...chains);
   setProgress({current:i,total:files.length,file:"Config file cross-ref...",phase:"Linking"});aLogic.push(...scanConfigFiles(fc));
-  setProgress({current:i,total:files.length,file:"OSV vulnerability database...",phase:"SCA"});
+  setProgress({current:i,total:files.length,file:"Parsing dependency manifests...",phase:"SCA"});
   const allFileContents={...fc};const depFileNames=["package.json","package-lock.json","yarn.lock","pnpm-lock.yaml","requirements.txt","pyproject.toml","poetry.lock","Pipfile.lock","composer.json","composer.lock","Gemfile","Gemfile.lock","go.mod","Cargo.toml","Cargo.lock","pom.xml","build.gradle","build.gradle.kts","pubspec.yaml","pubspec.lock"];
   for(const fp of Object.keys(zip.files)){if(!zip.files[fp].dir&&depFileNames.includes(fp.split("/").pop())){try{const c=await zip.files[fp].async("text");if(c)allFileContents[fp]=c;}catch(_){}}}
   const components=parseManifests(allFileContents);
   const reach=buildReachabilitySet(fc);
   const reachabilitySet=reach.imported;
   components.forEach(c=>{c.reachable=reachabilitySet.has(c.name.toLowerCase())||(c.ecosystem==='pypi'&&reachabilitySet.has(c.name.replace(/-/g,'_').toLowerCase()));});
-  let supplyChain=[];try{supplyChain=await queryOSV(components,allFileContents);}catch(_){supplyChain=[];}
+  setProgress({current:i,total:files.length,file:"Querying OSV vulnerability database...",phase:"SCA"});
+  let supplyChain=[];try{supplyChain=await queryOSV(components,allFileContents,p=>setProgress({current:i,total:files.length,file:p,phase:"SCA"}));}catch(_){supplyChain=[];}
   try{markUsedVulnFunctions(supplyChain,fc);}catch(_){}
-  setProgress({current:i,total:files.length,file:"Registry metadata...",phase:"SCA"});
+  setProgress({current:i,total:files.length,file:"Querying package registries...",phase:"SCA"});
   let registryInfo=new Map();try{registryInfo=await queryRegistries(components);}catch(_){}
   const dd=(a,k)=>[...new Map(a.map(x=>[k(x),x])).values()];
   // Sort findings: critical first, then structural patterns last within same severity
