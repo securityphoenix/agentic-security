@@ -98,7 +98,7 @@ claude ~/code/juice-shop
 **Step 3 — scan it**
 
 ```
-/agentic-security:security-scan-all <code_directory_path>
+/agentic-security:security-scan-all
 ```
 
 ```
