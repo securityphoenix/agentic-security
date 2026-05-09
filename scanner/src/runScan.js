@@ -24,7 +24,7 @@ const DEFAULT_IGNORE = [
 
 export async function readTree(root, { ignore = [] } = {}) {
   const entries = await fg('**/*', {
-    cwd: root, dot: false, onlyFiles: true,
+    cwd: root, dot: true, onlyFiles: true,
     ignore: [...DEFAULT_IGNORE, ...ignore], followSymbolicLinks: false,
     suppressErrors: true,
   });

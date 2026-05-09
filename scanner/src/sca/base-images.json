@@ -1,0 +1,45 @@
+{
+  "_doc": "Known-vulnerable / EOL base images. Used by container.js to flag Dockerfile FROM lines using EOL distros.",
+  "_format": "image-name -> { tag-pattern: { sev, eol, message } }",
+
+  "alpine": {
+    "3.10":   { "sev": "high",   "eol": "2021-05-01", "message": "Alpine 3.10 reached end of life on 2021-05-01. No security patches since." },
+    "3.11":   { "sev": "high",   "eol": "2021-11-01", "message": "Alpine 3.11 reached EOL on 2021-11-01." },
+    "3.12":   { "sev": "high",   "eol": "2022-05-01", "message": "Alpine 3.12 reached EOL on 2022-05-01." },
+    "3.13":   { "sev": "high",   "eol": "2022-11-01", "message": "Alpine 3.13 reached EOL on 2022-11-01." },
+    "3.14":   { "sev": "high",   "eol": "2023-05-01", "message": "Alpine 3.14 reached EOL on 2023-05-01." },
+    "3.15":   { "sev": "medium", "eol": "2023-11-01", "message": "Alpine 3.15 reached EOL on 2023-11-01." },
+    "3.16":   { "sev": "medium", "eol": "2024-05-23", "message": "Alpine 3.16 reached EOL on 2024-05-23." },
+    "latest": { "sev": "low",    "eol": null,         "message": "alpine:latest is a floating tag — pin to a specific minor version (e.g. alpine:3.21) for reproducible builds." }
+  },
+  "debian": {
+    "9":        { "sev": "critical", "eol": "2022-06-30", "message": "Debian 9 (Stretch) reached EOL on 2022-06-30. No security updates." },
+    "stretch":  { "sev": "critical", "eol": "2022-06-30", "message": "Debian Stretch reached EOL on 2022-06-30. No security updates." },
+    "10":       { "sev": "high",     "eol": "2024-06-30", "message": "Debian 10 (Buster) reached EOL on 2024-06-30. No security updates." },
+    "buster":   { "sev": "high",     "eol": "2024-06-30", "message": "Debian Buster reached EOL on 2024-06-30. No security updates." },
+    "11":       { "sev": "low",      "eol": "2026-06-30", "message": "Debian 11 (Bullseye) reaches EOL on 2026-06-30. Plan migration to Bookworm." },
+    "bullseye": { "sev": "low",      "eol": "2026-06-30", "message": "Debian Bullseye reaches EOL on 2026-06-30." },
+    "latest":   { "sev": "low",      "eol": null,         "message": "debian:latest is a floating tag — pin to a release codename (e.g. debian:bookworm-slim)." }
+  },
+  "ubuntu": {
+    "16.04":  { "sev": "critical", "eol": "2021-04-30", "message": "Ubuntu 16.04 LTS reached EOL on 2021-04-30. No security updates." },
+    "18.04":  { "sev": "critical", "eol": "2023-05-31", "message": "Ubuntu 18.04 LTS reached EOL on 2023-05-31." },
+    "20.04":  { "sev": "low",      "eol": "2025-04-30", "message": "Ubuntu 20.04 LTS reaches standard support EOL on 2025-04-30." },
+    "latest": { "sev": "low",      "eol": null,         "message": "ubuntu:latest is a floating tag — pin to an LTS (e.g. ubuntu:22.04 or ubuntu:24.04)." }
+  },
+  "node": {
+    "12":     { "sev": "critical", "eol": "2022-04-30", "message": "Node.js 12 reached EOL on 2022-04-30. No security patches." },
+    "14":     { "sev": "critical", "eol": "2023-04-30", "message": "Node.js 14 reached EOL on 2023-04-30." },
+    "16":     { "sev": "high",     "eol": "2023-09-11", "message": "Node.js 16 reached EOL on 2023-09-11." },
+    "18":     { "sev": "low",      "eol": "2025-04-30", "message": "Node.js 18 enters EOL on 2025-04-30." },
+    "latest": { "sev": "low",      "eol": null,         "message": "node:latest is a floating tag — pin to an LTS (e.g. node:22-alpine)." }
+  },
+  "python": {
+    "2":      { "sev": "critical", "eol": "2020-01-01", "message": "Python 2 reached EOL on 2020-01-01. Migrate to Python 3." },
+    "2.7":    { "sev": "critical", "eol": "2020-01-01", "message": "Python 2.7 reached EOL on 2020-01-01." },
+    "3.6":    { "sev": "critical", "eol": "2021-12-23", "message": "Python 3.6 reached EOL on 2021-12-23." },
+    "3.7":    { "sev": "critical", "eol": "2023-06-27", "message": "Python 3.7 reached EOL on 2023-06-27." },
+    "3.8":    { "sev": "high",     "eol": "2024-10-07", "message": "Python 3.8 reached EOL on 2024-10-07." },
+    "latest": { "sev": "low",      "eol": null,         "message": "python:latest is a floating tag — pin to a specific minor (e.g. python:3.12-slim)." }
+  }
+}

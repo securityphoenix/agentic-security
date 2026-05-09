@@ -1,0 +1,41 @@
+{
+  "_doc": "Top-popular packages used as the typosquat reference set. A dep with Levenshtein distance 1-2 from any of these is flagged as a potential typosquat.",
+  "_format": "ecosystem -> sorted array of package names",
+
+  "npm": [
+    "lodash", "react", "vue", "angular", "express", "next", "axios", "moment", "jquery",
+    "underscore", "request", "chalk", "commander", "yargs", "minimist", "dotenv",
+    "jsonwebtoken", "bcrypt", "bcryptjs", "passport", "uuid", "debug", "ws", "node-fetch",
+    "cookie", "body-parser", "cors", "helmet", "morgan", "redis", "ioredis", "mongoose",
+    "mongodb", "pg", "mysql", "mysql2", "sequelize", "knex", "prisma", "typeorm",
+    "fs-extra", "glob", "rimraf", "mkdirp", "fast-glob", "chokidar", "anymatch",
+    "lodash.merge", "lodash.set", "lodash.get", "lodash.uniq", "lodash.clonedeep",
+    "react-dom", "react-router", "react-router-dom", "redux", "react-redux",
+    "vue-router", "vuex", "pinia", "@reduxjs/toolkit",
+    "typescript", "ts-node", "tsx", "esbuild", "vite", "webpack", "rollup", "parcel",
+    "babel", "@babel/core", "@babel/preset-env", "@babel/preset-react", "@babel/preset-typescript",
+    "eslint", "prettier", "husky", "lint-staged", "stylelint",
+    "jest", "mocha", "chai", "ava", "tap", "vitest", "cypress", "playwright", "puppeteer",
+    "supertest", "sinon", "nock", "msw",
+    "openai", "anthropic", "@anthropic-ai/sdk", "langchain", "@ai-sdk/openai",
+    "stripe", "twilio", "sendgrid", "mailgun", "@sentry/node", "newrelic", "datadog",
+    "fastify", "koa", "hapi", "nestjs", "@nestjs/core",
+    "yarn", "pnpm", "npm-check-updates", "depcheck", "snyk", "audit-ci"
+  ],
+  "pypi": [
+    "requests", "django", "flask", "fastapi", "starlette", "uvicorn", "gunicorn",
+    "numpy", "pandas", "scipy", "matplotlib", "seaborn", "plotly", "bokeh",
+    "pytest", "unittest", "nose", "tox", "coverage",
+    "celery", "redis", "kombu", "pika",
+    "sqlalchemy", "psycopg2", "pymongo", "asyncpg", "aioredis", "aiomysql",
+    "boto3", "botocore", "google-cloud-storage", "azure-storage-blob",
+    "openai", "anthropic", "langchain", "langgraph", "transformers", "torch", "tensorflow",
+    "scikit-learn", "xgboost", "lightgbm",
+    "pillow", "opencv-python", "lxml", "beautifulsoup4", "selenium", "playwright",
+    "pyyaml", "toml", "click", "rich", "typer", "pydantic", "marshmallow",
+    "cryptography", "pyjwt", "bcrypt", "argon2-cffi", "passlib",
+    "twisted", "tornado", "aiohttp", "httpx", "urllib3",
+    "jinja2", "mako", "chameleon",
+    "jupyter", "ipython", "notebook", "jupyterlab"
+  ]
+}

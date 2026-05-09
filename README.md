@@ -5,9 +5,9 @@
 The security layer built for AI-written code. Catches vulnerabilities the moment they're introduced, in the same session with the same agent, and fixes them before you move on.
 
 [![License: ELv2](https://img.shields.io/badge/license-Elastic--2.0-blue)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-24%2F24%20passing-brightgreen)]()
-[![Bundle](https://img.shields.io/badge/bundle-1.9MB%20·%20no%20install-orange)]()
-[![Controls](https://img.shields.io/badge/NIST%20AI%20600--1-122%20controls-purple)]()
+[![Tests](https://img.shields.io/badge/tests-69%2F69%20passing-brightgreen)]()
+[![Bundle](https://img.shields.io/badge/bundle-2.0MB%20·%20no%20install-orange)]()
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)]()
 
 ---
 
@@ -39,16 +39,48 @@ To unlock short-form commands (`/security-scan-all`, `/security-fix-all`) in a p
 
 ## Commands
 
+### Scanning and fixing
+
 | Command | What it does |
 |---|---|
 | `/security-scan-all` | Full sweep: SAST + SCA + secrets + IaC across every file |
 | `/security-fix` | Patch a single finding, adapted to your actual code |
 | `/security-fix-all` | Batch-fix every finding at or above a severity threshold |
+| `/security-fix-pr` | Bundle all critical fixes into a single branch and open a PR |
 | `/security-report` | Self-contained HTML report (also JSON, Markdown, SARIF) |
 | `/security-baseline` | Save a snapshot; future scans show only *new* issues |
 | `/security-sca` | Dependency CVE audit only (OSV.dev-backed) |
 | `/security-secrets` | Credential and secret leak scan only |
-| `/nist-ai-600-1` | NIST AI 600-1 compliance attestation for 122 GenAI controls |
+
+### AI-native capabilities
+
+| Command | What it does |
+|---|---|
+| `/security-chain` | Synthesize multi-finding exploit chains across the codebase |
+| `/security-poc` | Generate adversarial proof-of-concept for a specific finding |
+| `/security-logic-review` | Intent-vs-implementation review for business-logic bugs |
+
+### Posture management
+
+| Command | What it does |
+|---|---|
+| `/security-material-change` | Score a git diff by architectural risk — auth removed, new endpoints, new shell calls |
+| `/security-drift` | Compare two scans: new routes, lost auth boundaries, new CVEs introduced |
+| `/security-sbom` | Generate a CycloneDX 1.6 or SPDX 2.3 bill of materials |
+| `/security-api-inventory` | Export the full API surface map (JSON, Markdown, OpenAPI 3.1) |
+| `/security-pipeline` | Audit GitHub Actions for supply-chain risks; emit a PBOM |
+| `/security-license` | Enforce a license allow/deny policy against your dependency tree |
+| `/security-mttr` | Show findings older than their SLA threshold; compute mean time to remediate |
+| `/security-oscr` | Map your detection coverage against the OSC&R supply chain attack framework |
+
+### Compliance attestation
+
+| Command | What it does |
+|---|---|
+| `/nist-ai-600-1` | NIST AI 600-1 attestation for 122 GenAI code-testable controls |
+| `/owasp-asvs` | OWASP ASVS Level 1+2 attestation for 15 application security controls |
+| `/pci-dss` | PCI-DSS 4.0 attestation for 12 code-testable cardholder data controls |
+| `/soc2` | SOC 2 Common Criteria attestation for 12 code-testable CC controls |
 
 All commands are available in the fully-qualified form (`/agentic-security:*`) everywhere, and as short forms in any project where you've run `/security-setup`.
 
@@ -56,21 +88,29 @@ All commands are available in the fully-qualified form (`/agentic-security:*`) e
 
 ## What it catches
 
-**40+ vulnerability types across every layer of your stack:**
+**50+ vulnerability types across every layer of your stack:**
 
 ```
 Code              SQL injection · XSS · Command injection · Path traversal · SSRF
                   IDOR · SSTI · Prototype pollution · ReDoS · JWT bypass
                   Mass assignment · Weak crypto · Race conditions
 
+AI / LLM          Prompt injection (direct, indirect, template) · Insecure tool definitions
+                  Unsanitized LLM output · System prompt data exfiltration
+
 Dependencies      CVEs from OSV.dev · EPSS exploit-probability scores
+                  Function-level reachability (only flag if the vuln fn is actually called)
                   200+ manifest formats (npm, pip, poetry, Cargo, go.mod, Gemfile…)
+                  Container base image EOL · Dependency confusion · Typosquatting
 
 Secrets           API keys · Tokens · Private keys · .env leaks · 60+ provider patterns
                   Entropy detection for keys that don't match a known pattern
 
 Infrastructure    Dockerfile · docker-compose · Kubernetes · Terraform · Helm
-                  GitHub Actions · misconfigured IAM · publicly exposed storage
+                  GitHub Actions (floating tags, secret echoes, write-all perms, OIDC misconfigs)
+
+Business logic    Always-true auth bypass · Client-controlled prices · Privilege from body
+                  TOCTOU · Terminal-state missing guard · Client-controlled discounts
 ```
 
 **Languages:** JavaScript, TypeScript, Python, PHP, Ruby, Java, Go, Vue, React, Angular, Svelte.
@@ -79,15 +119,77 @@ Infrastructure    Dockerfile · docker-compose · Kubernetes · Terraform · Hel
 
 ## Why it's different
 
-**Triage is built in.** Every finding gets an exploitability score (0–100) based on whether it's reachable from a route handler, whether the source is HTTP-facing, and how critical the sink class is. Findings are sorted by score, not just severity label. You see the 5 findings that matter most, not 300 that don't.
+**Findings ranked by real risk, not severity labels.**
+Every finding gets a toxicity score (0–100) composed from: unauthenticated route reachability, sensitive data-class (PII/PHI/PCI), HTTP-facing source, function-level reachability, and co-located cloud credentials. Two "high" findings can score 85 vs. 12. You fix the right one first.
 
-**Context-aware false-positive suppression.** Most scanners flag `crypto.createHash('md5')` as a critical issue regardless of context. We classify by surrounding variable names: a cache key or ETag is info-level; a password field is critical. SQL template literals in `codefixes/` or `test/` paths are suppressed. `escapeHtml(input); res.send(input)` (return discarded) is still flagged. For IDOR, we check for post-lookup ownership guards before flagging.
+**Function-level SCA reachability.**
+A CVE in a dependency only matters if your code calls the vulnerable function. We walk the call graph from route handlers and tag each SCA finding as `reachable`, `unreachable`, or `unknown`. Unreachable findings are demoted in the report — giving a much smaller, higher-signal triage list.
 
-**Forward-only taint flow.** A source defined *after* the sink can't create a phantom finding. Cross-file taint follows imports across up to 5 hops and shows the full propagation path.
+**Context-aware false-positive suppression.**
+`crypto.createHash('md5')` near a cache key is info-level. Near a password field, it's critical. SQL template literals in `codefixes/` are suppressed. `escapeHtml(input); res.send(input)` (return discarded) is still flagged. For IDOR, we check for post-lookup ownership guards before flagging.
 
-**CVEs ranked by real exploitation probability.** Every CVE gets an [EPSS](https://www.first.org/epss/) score, the probability it's being actively exploited in the next 30 days. Two CVEs both labeled "high" might show `EPSS:87%` vs `EPSS:2%`. Fix the right one first.
+**Forward-only taint flow.**
+A source defined *after* the sink can't create a phantom finding. Cross-file taint follows imports across up to 5 hops and shows the full propagation path.
 
-**Your code never leaves your machine.** The only outbound calls are `package@version` strings to OSV.dev and EPSS scores from first.org. No source code. No file paths.
+**AI-native attack chains.**
+`/security-chain` combines findings that share sources, sinks, or data classes into multi-step exploit paths. `/security-poc` generates a working adversarial test that either confirms the finding (TP_CONFIRMED) or categorizes it as a probable false positive (PROBABLE_FP).
+
+**CVEs ranked by real exploitation probability.**
+Every CVE gets an [EPSS](https://www.first.org/epss/) score — the probability it's being actively exploited in the next 30 days. Two CVEs both labeled "high" might show `EPSS:87%` vs `EPSS:2%`. Fix the right one first.
+
+**Your code never leaves your machine.**
+The only outbound calls are `package@version` strings to OSV.dev, CVE IDs to first.org for EPSS scores, and (opt-in with `--scorecard`) OSSF Scorecard lookups. Zero source code. Zero file paths.
+
+---
+
+## ASPM posture layer
+
+Beyond finding individual vulnerabilities, version 0.9.0 adds the posture-management layer:
+
+**Material change detection.** Score a git diff by architectural risk. A 1000-line rename is `routine`. A 3-line change that removes `verifyToken()` from middleware is `critical`. Run before merge: `/security-material-change --since HEAD~1`.
+
+**Drift reporting.** Compare any two scans: new endpoints added, auth boundaries lost, new CVEs introduced, data-class changes. Run on every PR: `/security-drift --from baseline`.
+
+**SBOM / PBOM.** Generate a CycloneDX 1.6 or SPDX 2.3 software bill of materials from your existing manifests. Export a Pipeline Bill of Materials from your GitHub Actions workflows: `/security-sbom --format cyclonedx`.
+
+**SARIF ingest.** Already running other scanners? Merge their findings into the unified report, deduped by fingerprint with provenance tracked via `sources[]`: `--ingest-sarif path/to/semgrep.sarif`.
+
+**License policy.** Declare allow/deny/review-required licenses in `.agentic-security/license-policy.yml`. The scanner flags violations at scan time: `/security-license`.
+
+**MTTR tracking.** Every finding gets `firstSeenAt` and `lastSeenAt` from the baseline. `/security-mttr` shows what's older than your SLA and what your mean time to remediate is across closed findings.
+
+**Container base image EOL.** `FROM alpine:3.10` is flagged as EOL with known CVEs — without pulling from the Docker registry.
+
+**Dependency confusion + typosquat detection.** Flags dependencies whose names are 1–2 edits from a top-1000 package, and internal-scoped packages also published on the public registry.
+
+**OSC&R coverage map.** `/security-oscr` renders your detection coverage against the Open Software Supply Chain Attack Reference framework — useful for gap analysis and customer security reviews.
+
+---
+
+## Compliance attestation
+
+Four frameworks, one command per framework. Each produces a Markdown table, a CSV spreadsheet, and a machine-readable JSON file.
+
+```
+/nist-ai-600-1    122 controls — GenAI risk management (GV/MP/MS/MG families)
+/owasp-asvs       15 controls — ASVS Level 1+2 (auth, session, input, crypto, API)
+/pci-dss           12 controls — PCI-DSS 4.0 code-testable cardholder data requirements
+/soc2              12 controls — SOC 2 Common Criteria (CC6–CC9)
+```
+
+Evidence is multi-signal: declared dependencies carry the highest weight, followed by import statements, then path patterns, code terms, config, and documentation. Negation contexts ("we don't yet implement…", "planned for") are discarded.
+
+**Example OWASP ASVS output:**
+
+```
+Coverage: 73% (11/15 controls)
+
+| ID      | Title                                    | Status      | Signals              |
+|---------|------------------------------------------|-------------|----------------------|
+| V3.4.1  | Cookies set with Secure/HttpOnly/SameSite | Compliant  | code_term+config_term |
+| V2.4.1  | Secure password storage (bcrypt/argon2)  | Partial     | import               |
+| V5.1.1  | Input validation library in use          | Not Compliant |                    |
+```
 
 ---
 
@@ -146,7 +248,7 @@ Scan complete: 296 findings across 456 files
 open security-report.html
 ```
 
-Self-contained interactive HTML with a severity chart, filterable finding list, fix templates per finding, and STRIDE attack coverage. One file you can email or drop in Slack.
+Self-contained interactive HTML with a severity chart, filterable finding list, toxicity scores, attack-path visualizations, fix templates per finding, and STRIDE coverage. One file you can email or drop in Slack.
 
 **Step 5: fix the worst**
 
@@ -169,66 +271,6 @@ It works through each finding in sequence: parameterised queries, `bcrypt` inste
 ```
 
 From now on scans only show findings introduced *after* this point. The pre-commit hook blocks any commit that adds new critical bugs. 35 criticals → 0, and you can't accidentally reintroduce them.
-
----
-
-## NIST AI 600-1 Compliance
-
-Building a GenAI product and heading into a customer security review, third-party audit, or board-level risk discussion? One command produces an auditor-ready attestation sheet against the 122 code-testable controls of NIST AI 600-1 (the Generative AI Profile of the AI Risk Management Framework).
-
-```
-/agentic-security:nist-ai-600-1
-```
-
-**Three output files:**
-
-| File | Purpose |
-|---|---|
-| `nist-ai-600-1-attestation.md` | Per-control status + evidence, ready to attach to a vendor questionnaire |
-| `nist-ai-600-1-attestation.csv` | Filterable spreadsheet, one row per control |
-| `nist-ai-600-1-attestation.json` | Machine-readable, suitable for CI gating |
-
-**Example output:**
-
-```
-Coverage: 71% (87/122 testable controls)
-
-┌────────────────────────────┬───────┬───────┐
-│ Status                     │ Count │     % │
-├────────────────────────────┼───────┼───────┤
-│ Compliant                  │    43 │ 35.2% │
-├────────────────────────────┼───────┼───────┤
-│ Partial                    │    44 │ 36.1% │
-├────────────────────────────┼───────┼───────┤
-│ Not Compliant              │    35 │ 28.7% │
-└────────────────────────────┴───────┴───────┘
-
-By family:
-
-┌──────────────┬───────┬───────────┬─────────┬───────────────┐
-│ Family       │ Total │ Compliant │ Partial │ Not Compliant │
-├──────────────┼───────┼───────────┼─────────┼───────────────┤
-│ GV (Govern)  │    19 │         3 │      11 │             5 │
-├──────────────┼───────┼───────────┼─────────┼───────────────┤
-│ MP (Map)     │    22 │         8 │      10 │             4 │
-├──────────────┼───────┼───────────┼─────────┼───────────────┤
-│ MS (Measure) │    51 │        22 │      14 │            15 │
-├──────────────┼───────┼───────────┼─────────┼───────────────┤
-│ MG (Manage)  │    30 │        10 │       9 │            11 │
-└──────────────┴───────┴───────────┴─────────┴───────────────┘
-```
-
-**How the 212 controls divide:**
-
-| Bucket | Controls | Best scanner verdict |
-|---|---|---|
-| Code-testable | 55 | Compliant |
-| Code-testable (partial) | 67 | Partial + External Attestation Required |
-| Organizational only | 90 | *Not scanned; policy/contract attestation only* |
-
-The 90 organizational controls (board oversight, legal alignment, training programs, vendor contracts) can't be evidenced from source code and are explicitly excluded. Marking them "Not Compliant" because no code matched would be misleading; the scanner only opines on what code can show.
-
-Evidence is multi-signal: declared dependencies (`opacus` → differential privacy, `fairlearn` → bias mitigation) carry the highest weight; followed by import statements; then path patterns, code terms, config, and docs. Matches inside negation contexts ("we don't yet implement…", "future work", "planned for") are discarded.
 
 ---
 
@@ -255,7 +297,7 @@ jobs:
       baseline: ${{ github.event.pull_request.base.sha || 'HEAD~1' }}
 ```
 
-Every PR gets a comment with severity counts and the top findings. Critical findings block merge.
+Every PR gets a drift-aware comment: new findings introduced, findings closed, lost auth boundaries, new unauthenticated endpoints, and the top-5 by toxicity score. Critical findings block merge.
 
 ---
 
@@ -270,7 +312,29 @@ curl -L -o agentic-security.mjs \
 node agentic-security.mjs scan .
 ```
 
-1.9 MB, no `npm install`, no dependencies, no config required.
+2.0 MB, no `npm install`, no dependencies, no config required.
+
+**Output formats:**
+
+```bash
+node agentic-security.mjs scan . --format cli       # default: triage table
+node agentic-security.mjs scan . --format json      # machine-readable
+node agentic-security.mjs scan . --format html      # interactive report
+node agentic-security.mjs scan . --format sarif     # SARIF 2.1.0
+node agentic-security.mjs scan . --format cyclonedx # CycloneDX 1.6 SBOM
+node agentic-security.mjs scan . --format spdx      # SPDX 2.3 SBOM
+node agentic-security.mjs scan . --format pbom      # Pipeline Bill of Materials
+```
+
+**Key flags:**
+
+```bash
+--sca-reachable-only           Only SCA findings where the vuln fn is route-reachable
+--ingest-sarif path/to/*.sarif Merge external scanner SARIF into this scan
+--scorecard                    Enrich deps with OSSF Scorecard scores (opt-in)
+--severity high                Filter to high+ findings only
+--since HEAD~1                 Scan only files changed since a git ref
+```
 
 ---
 
@@ -302,29 +366,32 @@ sinks:
 
 ## FAQ
 
-**Will this work on my codebase?**  
+**Will this work on my codebase?**
 Yes. JS, TS, Python, PHP, Ruby, Java, Go, and most web frameworks. Plus Dockerfile, Terraform, Kubernetes, and GitHub Actions.
 
-**Does it send my code anywhere?**  
-No. Only `package@version` strings go to OSV.dev for CVE lookups, and CVE IDs go to first.org for EPSS scores. Zero source code leaves your machine.
+**Does it send my code anywhere?**
+No. Only `package@version` strings go to OSV.dev for CVE lookups, and CVE IDs go to first.org for EPSS scores. Zero source code leaves your machine. The `--scorecard` flag makes one additional call to the public OSSF Scorecard API if you explicitly enable it.
 
-**CI says "319 findings" and I can't fix them all.**  
+**CI says "319 findings" and I can't fix them all.**
 Run `/agentic-security:security-baseline save`, commit the baseline file, and from now on CI only fails on findings introduced *after* that point. You improve incrementally without being paralyzed by existing debt.
 
-**How is this different from `npm audit`?**  
-`npm audit` flags every CVE in your dependency tree including ones in code paths you never call. We filter by vulnerable-call-depth. Also covers 19 other package manager formats beyond npm.
+**How is SCA different from `npm audit`?**
+`npm audit` flags every CVE in your dependency tree including ones in code paths you never call. We filter by function-level reachability — a CVE only surfaces if your code actually calls the vulnerable function. Also covers 19 other package manager formats beyond npm.
 
-**Short commands disappeared mid-session.**  
+**What's a toxicity score?**
+A 0–100 composite signal: unauthenticated route exposure (+30), sensitive data class (+25), HTTP-facing source (+20), function reachability (+15), co-located cloud credentials (+10). Two "high" findings might score 85 vs. 12. Sort by toxicity, not severity, and fix the top 5.
+
+**Short commands disappeared mid-session.**
 Claude Code can evict plugin commands after long-running tool calls. Run `/reload-plugins` to restore them, or use the always-available fully-qualified form: `/agentic-security:security-fix-all`.
 
 ---
 
 ## Troubleshooting
 
-**`"requesting 'pull-requests: write' but only allowed 'none'"` in CI**  
+**`"requesting 'pull-requests: write' but only allowed 'none'"` in CI**
 The `permissions:` block in the workflow above is required; add it exactly as shown.
 
-**Scanner finds nothing on a large monorepo**  
+**Scanner finds nothing on a large monorepo**
 Run with an explicit path: `/agentic-security:security-scan-all src/`. Scanning a 50k-file tree including `node_modules` will time out.
 
 ---
@@ -333,7 +400,7 @@ Run with an explicit path: `/agentic-security:security-scan-all src/`. Scanning 
 
 1. Fork the repo, branch off `main`
 2. Make your change; new vulnerability rules and FP-suppression cases are most welcome
-3. Run `npm test` in `scanner/`; all 24 tests must pass
+3. Run `npm test` in `scanner/`; all 69 tests must pass
 4. Open a PR with what you changed and why
 
 New scanner rules should include a fixture that triggers the finding and a suppression case that doesn't.

@@ -1,0 +1,75 @@
+{
+  "_doc": "OWASP ASVS Level 1+2 control coverage. Edit / extend per project. Each control: { id, title, manifest_deps[], imports[], paths[], terms[] }.",
+  "controls": [
+    {
+      "id": "V1.4.1", "title": "Trust boundaries documented",
+      "paths": ["**/THREAT_MODEL.md", "**/threat-model*", "**/architecture/**.md"],
+      "terms": ["trust boundary", "threat model", "STRIDE", "attack surface"]
+    },
+    {
+      "id": "V2.1.1", "title": "Password length ≥ 8 characters enforced",
+      "imports": ["bcrypt", "argon2", "@node-rs/argon2"],
+      "terms": ["min_length", "minLength", "minimumPasswordLength", "PASSWORD_MIN"]
+    },
+    {
+      "id": "V2.4.1", "title": "Secure password storage (bcrypt / argon2 / scrypt)",
+      "manifest_deps": ["bcrypt", "bcryptjs", "argon2", "argon2-cffi", "@node-rs/argon2"],
+      "imports": ["bcrypt", "bcryptjs", "argon2"]
+    },
+    {
+      "id": "V2.7.1", "title": "MFA available for high-value users",
+      "manifest_deps": ["speakeasy", "pyotp", "@simplewebauthn/server", "fido2-lib"],
+      "terms": ["TOTP", "WebAuthn", "MFA", "two_factor", "multi_factor"]
+    },
+    {
+      "id": "V3.2.1", "title": "Session tokens generated with strong entropy",
+      "imports": ["crypto.randomBytes", "secrets", "uuid"],
+      "terms": ["randomBytes", "secrets.token_", "uuid.v4", "uuidv4"]
+    },
+    {
+      "id": "V3.4.1", "title": "Cookies set with Secure / HttpOnly / SameSite",
+      "terms": ["httpOnly: true", "httponly", "secure: true", "sameSite", "samesite"]
+    },
+    {
+      "id": "V4.1.1", "title": "Authorization enforced on every protected endpoint",
+      "terms": ["authorize", "isAuthenticated", "requireAuth", "permit_if", "@RolesAllowed", "AuthGuard"]
+    },
+    {
+      "id": "V5.1.1", "title": "Input validation library in use",
+      "manifest_deps": ["joi", "yup", "zod", "ajv", "express-validator", "marshmallow", "pydantic", "validator"],
+      "imports": ["joi", "yup", "zod", "marshmallow", "pydantic"]
+    },
+    {
+      "id": "V5.3.4", "title": "Parameterized queries (no string-concat SQL)",
+      "imports": ["knex", "prisma", "sequelize", "sqlalchemy", "pg"],
+      "terms": ["parameterized", "$1", "execute(?", "params=("]
+    },
+    {
+      "id": "V5.5.1", "title": "Output encoding / context-aware HTML escape",
+      "imports": ["dompurify", "sanitize-html", "bleach", "html-escaper"],
+      "terms": ["escapeHtml", "DOMPurify.sanitize", "html.escape"]
+    },
+    {
+      "id": "V7.1.1", "title": "Sensitive data not logged in production",
+      "terms": ["redact", "scrubber", "PII", "PHI", "filter_logs", "logFilter"]
+    },
+    {
+      "id": "V8.3.1", "title": "Sensitive data encrypted at rest",
+      "imports": ["crypto-js", "node-forge", "cryptography", "openssl"],
+      "terms": ["AES-256", "AES_256", "encrypt_at_rest", "data-at-rest"]
+    },
+    {
+      "id": "V9.1.1", "title": "TLS enforced for all comms",
+      "terms": ["https://", "tls.connect", "ssl_ctx", "rejectUnauthorized: true", "force_ssl"]
+    },
+    {
+      "id": "V13.1.1", "title": "API documented (OpenAPI / GraphQL schema)",
+      "paths": ["**/openapi*.{yml,yaml,json}", "**/swagger*.{yml,yaml,json}", "**/*.graphql"]
+    },
+    {
+      "id": "V14.2.1", "title": "Dependency CVE scanning automated",
+      "manifest_deps": ["snyk", "audit-ci"],
+      "paths": [".github/workflows/*security*.yml", ".github/workflows/*audit*.yml", "**/.snyk"]
+    }
+  ]
+}

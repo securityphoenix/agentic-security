@@ -5,6 +5,10 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { runScan } from '../src/runScan.js';
 import { toJSON, toMarkdown, toSARIF, toCLI, toHTML, toSummary, exitCodeFor, normalizeFindings } from '../src/report/index.js';
+import { toCycloneDX, toSPDX } from '../src/posture/sbom.js';
+import { toPBOM } from '../src/sast/pipeline.js';
+import { ingestAndMerge } from '../src/sca/sarif-ingest.js';
+import fg from 'fast-glob';
 
 const USAGE = `agentic-security <command> [options]
 
@@ -17,7 +21,10 @@ Commands:
 
 Options:
   --only sast|sca|secrets      Limit scan to one pillar
-  --format json|md|sarif|cli|html|summary  Report format (default: summary)
+  --format <fmt>                  Output format: cli, json, md, sarif, html, cyclonedx, spdx, pbom (default: cli)
+  --sca-reachable-only            Only surface SCA findings where the vulnerable function is reachable
+  --ingest-sarif <path-or-glob>  Merge external SARIF (Semgrep, gitleaks, Trivy, etc.) into this scan
+  --scorecard                    Enrich components with OSSF Scorecard scores (makes outbound API calls)
   --no-network                 Skip OSV/registry queries (offline mode)
   --verbose                    Include fix bodies in CLI output
   --output <file>              Write report to file instead of stdout
@@ -65,12 +72,38 @@ async function cmdScan(args) {
     if (only === 'secrets') { scan.findings = []; scan.supplyChain = []; }
   }
 
+  // 0.9.0 Feat-18: --scorecard flag enables OSSF Scorecard enrichment
+  if (args.flags['scorecard']) process.env.AGENTIC_SECURITY_SCORECARD = '1';
+
+  // 0.7.0 Feat-7: --ingest-sarif <path-or-glob> merges SARIF from external tools (Semgrep,
+  // gitleaks, Bandit, Trivy, Checkov, etc.) into this scan's findings, deduping by
+  // fingerprint and tracking provenance via sources[].
+  if (args.flags['ingest-sarif']) {
+    const glob = args.flags['ingest-sarif'];
+    const paths = await fg(glob, { dot: false, onlyFiles: true });
+    if (paths.length) {
+      const r = ingestAndMerge(scan, paths);
+      if (process.stderr.isTTY) process.stderr.write(`[ingest] merged ${r.merged} / added ${r.added} findings from ${paths.length} SARIF file(s)\n`);
+    }
+  }
+
+  // 0.6.0 Feat-1: --sca-reachable-only filters to only SCA findings where the vulnerable
+  // function was confirmed reachable from a route handler.
+  if (args.flags['sca-reachable-only']) {
+    scan.supplyChain = (scan.supplyChain || []).filter(sc =>
+      sc.functionReachable === 'reachable' || sc.functionReachable !== 'unreachable'
+    );
+  }
+
   const includeSuppressed = !!args.flags['include-suppressed'];
   let body;
   if (format === 'json') body = JSON.stringify(toJSON(scan, meta, { includeSuppressed }), null, 2);
   else if (format === 'md' || format === 'markdown') body = toMarkdown(scan, meta);
   else if (format === 'sarif') body = JSON.stringify(toSARIF(scan, meta), null, 2);
   else if (format === 'html') body = toHTML(scan, meta);
+  else if (format === 'cyclonedx' || format === 'sbom') body = JSON.stringify(toCycloneDX(scan, meta), null, 2);
+  else if (format === 'spdx')                            body = JSON.stringify(toSPDX(scan, meta), null, 2);
+  else if (format === 'pbom')                            body = JSON.stringify(toPBOM(scan.fc || {}, meta), null, 2);
   else if (format === 'cli') body = toCLI(scan, { verbose });
   else body = toSummary(scan);
 

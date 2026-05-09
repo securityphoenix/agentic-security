@@ -7,6 +7,14 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import * as yaml from 'js-yaml';
+import { createRequire } from 'node:module';
+const _require = createRequire(import.meta.url);
+import { scanLLM } from './sast/llm.js';
+import { scanBusinessLogic } from './sast/logic.js';
+import { scanPipeline } from './sast/pipeline.js';
+import { scanContainer } from './sca/container.js';
+import { detectDepConfusion } from './sca/dep-confusion.js';
+import { loadLicensePolicy, evaluateLicensePolicy } from './posture/license-policy.js';
 
 // Disk-backed cache replacing browser sessionStorage. One JSON blob per key under ~/.claude/agentic-security/osv-cache/.
 const _CACHE_DIR = path.join(os.homedir(), '.claude', 'agentic-security', 'osv-cache');
@@ -2365,7 +2373,9 @@ function dedupeFindingsWithEvidence(findings){
 // ─── Vulnerable-function-call depth for SCA hygiene ─────────────────────────
 // For each SCA finding that names a specific vulnerable export, check whether
 // that export is actually imported or invoked in the codebase.
-const VULN_FUNCTION_HINTS={
+let _VULN_FUNCTION_HINTS_DATA;
+try { _VULN_FUNCTION_HINTS_DATA = _require('./sca/vuln-function-hints.json'); } catch(_) { _VULN_FUNCTION_HINTS_DATA = {}; }
+const VULN_FUNCTION_HINTS = {
   "lodash":["merge","defaultsDeep","set","setWith","zipObjectDeep"],
   "jsonwebtoken":["decode"],
   "marked":["parse"],
@@ -2374,24 +2384,159 @@ const VULN_FUNCTION_HINTS={
   "xml2js":["parseString"],
   "js-yaml":["load"],
   "minimist":["parse"],
+  ...(typeof _VULN_FUNCTION_HINTS_DATA === 'object' && !Array.isArray(_VULN_FUNCTION_HINTS_DATA) ? Object.fromEntries(Object.entries(_VULN_FUNCTION_HINTS_DATA).filter(([k])=>!k.startsWith('_'))) : {}),
 };
 function markUsedVulnFunctions(supplyChain,fc){
   const used={};
-  const text=Object.values(fc).join("\n");
-  for(const[pkg,fns] of Object.entries(VULN_FUNCTION_HINTS)){
-    used[pkg]=new Set();
-    for(const fn of fns){
-      const re=new RegExp(`\\brequire\\s*\\(\\s*['"]${pkg}['"]\\s*\\)\\.${fn}\\b|\\bfrom\\s+['"]${pkg}['"]|\\b${pkg === "lodash" ? "_" : pkg.replace(/\W/g,"")}\\.${fn}\\b`);
-      if(re.test(text))used[pkg].add(fn);
+  const perFile={};
+  for(const[fp,content] of Object.entries(fc)){
+    const lines=content.split('\n');
+    for(const[pkg,fns] of Object.entries(VULN_FUNCTION_HINTS)){
+      if(!perFile[pkg])perFile[pkg]=[];
+      for(const fn of fns){
+        const re=new RegExp(`\\b(?:${pkg.replace(/\W/g,'\\$&')}|_)\\.${fn}\\b`,'g');
+        for(let li=0;li<lines.length;li++){
+          if(re.test(lines[li])){
+            perFile[pkg].push({pkg,fn,file:fp,line:li+1});
+            if(!used[pkg])used[pkg]=new Set();
+            used[pkg].add(fn);
+          }
+          re.lastIndex=0;
+        }
+      }
     }
   }
   for(const sc of supplyChain||[]){
-    if(sc.type!=="vulnerable_dep")continue;
+    if(sc.type!=='vulnerable_dep')continue;
     const hints=VULN_FUNCTION_HINTS[sc.name];if(!hints)continue;
     sc.usedVulnerableFunctions=[...(used[sc.name]||[])];
+    const sites=(perFile[sc.name]||[]);
+    const seen=new Set();
+    sc.vulnerableFunctionCallSites=sites.filter(s=>{const k=`${s.file}:${s.line}:${s.fn}`;if(seen.has(k))return false;seen.add(k);return true;});
     if(!sc.usedVulnerableFunctions.length)sc.noKnownCallSite=true;
   }
   return supplyChain;
+}
+
+// Annotate each supplyChain finding with `functionReachable` ∈ {'reachable','unreachable','unknown'}.
+// The CVE only matters if the developer's code actually calls the vulnerable function
+// AND that call site sits in code reachable from a route handler.
+function _annotateFunctionReachability(supplyChain, routes, callGraph, fc){
+  for(const sc of (supplyChain||[])){
+    if(sc.type!=='vulnerable_dep')continue;
+    const sites=sc.vulnerableFunctionCallSites||[];
+    if(!sites.length){sc.functionReachable='unknown';continue;}
+    let reachable=false;
+    for(const site of sites){
+      // Classifier 1: site is inline inside a route handler (within 25 lines of the route def)
+      const fileRoutes=(routes||[]).filter(r=>r.file===site.file);
+      for(const route of fileRoutes){
+        if(site.line>=route.line&&site.line<=route.line+25){
+          // Make sure no function declaration intervenes
+          const fileLines=(fc[site.file]||'').split('\n');
+          const between=fileLines.slice(route.line,site.line-1).join('\n');
+          if(!/function\s+\w+\s*\(/.test(between)){reachable=true;break;}
+        }
+      }
+      if(reachable)break;
+      // Classifier 2: enclosing function appears in another named function's calls (cross-fn reachability)
+      const enclosing=_enclosingFn(fc[site.file]||'',site.line);
+      if(enclosing){
+        // callGraph is {filePath: {fnName: {calls: Set, ...}}}
+        outer: for(const[,fileFns] of Object.entries(callGraph||{})){
+          if(typeof fileFns!=='object'||!fileFns)continue;
+          for(const[fn,info] of Object.entries(fileFns)){
+            const calls=info&&info.calls;
+            if(fn!==enclosing&&calls&&(calls.has?.(enclosing)||(Array.isArray(calls)&&calls.includes(enclosing)))){reachable=true;break outer;}
+          }
+        }
+      }
+      if(reachable)break;
+    }
+    sc.functionReachable=reachable?'reachable':'unreachable';
+  }
+}
+function _enclosingFn(content,line){
+  const lines=content.split('\n');
+  for(let i=line-2;i>=0;i--){
+    const m=lines[i].match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\()/);
+    if(m)return m[1]||m[2]||null;
+  }
+  return null;
+}
+
+// 0.6.0 Feat-2: Toxic-combinations score — composes multi-signal risk into 0–100.
+// Composes existing per-finding signals into a 0–100 toxicity score with a
+// transparent toxicityFactors[] list. The intent: rank findings by REAL risk —
+// an unauthenticated HTTP endpoint writing to a PII field is more dangerous than
+// a theoretical prototype pollution in unused code.
+function scoreToxicity(f, ctx={}){
+  const {routes=[], supplyChain=[], hasCloudCreds=false} = ctx;
+  let score=0;
+  const factors=[];
+  const sev=f.severity||'medium';
+  // Base from severity
+  if(sev==='critical'){score+=20;factors.push('critical-severity');}
+  else if(sev==='high'){score+=15;factors.push('high-severity');}
+  else if(sev==='medium'){score+=8;}
+  else score+=3;
+  // +30 if reachable from unauth route
+  const unauthedRoutes=(routes||[]).filter(r=>!r.hasAuth);
+  const fileRoutes=unauthedRoutes.filter(r=>r.file===f.file);
+  if(fileRoutes.length>0||(f.reachable&&unauthedRoutes.length>0)){score+=30;factors.push('unauth-route-reachable');}
+  // +25 if touches PII/PHI/PCI/Confidential data class
+  const dc=f.dataClasses||[];
+  if(dc.some(c=>['PII','PHI','PCI','Confidential'].includes(c))){score+=25;factors.push('sensitive-data-class');}
+  // +20 if HTTP-facing (has a source)
+  if(f.source||f.reachable){score+=20;factors.push('http-facing');}
+  // +15 if functionReachable===true for SCA
+  if(f.functionReachable==='reachable'){score+=15;factors.push('fn-reachable');}
+  // +10 if cloud creds in same project
+  if(hasCloudCreds){score+=10;factors.push('cloud-creds-colocated');}
+  f.toxicityScore=Math.min(100,score);
+  f.toxicityFactors=factors;
+  f.toxicityLabel=score>=80?'Critical':score>=60?'High':score>=40?'Elevated':score>=20?'Medium':'Low';
+  return f;
+}
+
+// 0.9.0 Feat-18: OSSF Scorecard enrichment. Mirrors _fetchEPSS pattern.
+// Opt-in via AGENTIC_SECURITY_SCORECARD=1 env var (or --scorecard flag).
+function _githubRepoFromComponent(c){
+  // Try homepage, repository, or name patterns like @owner/pkg
+  const candidates=[c.homepage||'',c.repository||''];
+  for(const u of candidates){
+    const m=u.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/|$)/i);
+    if(m)return m[1].replace(/\.git$/,'');
+  }
+  return null;
+}
+async function _fetchScorecard(repo){
+  const CACHE_TTL=7*24*3600*1000; // 7 days
+  const cacheKey=`scorecard:${repo}`;
+  const cached=sessionStorage.getItem(cacheKey);
+  if(cached){try{const p=JSON.parse(cached);if(Date.now()-p.ts<CACHE_TTL)return p.data;}catch(_){}}
+  if(process.env.AGENTIC_SECURITY_OFFLINE)return null;
+  try{
+    const url=`https://api.securityscorecards.dev/projects/github.com/${repo}`;
+    const res=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(!res.ok)return null;
+    const data=await res.json();
+    sessionStorage.setItem(cacheKey,JSON.stringify({ts:Date.now(),data}));
+    return data;
+  }catch(_){return null;}
+}
+async function _enrichWithScorecard(components){
+  if(!process.env.AGENTIC_SECURITY_SCORECARD)return;
+  for(const c of (components||[])){
+    const repo=_githubRepoFromComponent(c);
+    if(!repo)continue;
+    try{
+      const data=await _fetchScorecard(repo);
+      if(!data)continue;
+      c.scorecardScore=data.score;
+      c.scorecardChecks=(data.checks||[]).map(ch=>({name:ch.name,score:ch.score}));
+    }catch(_){}
+  }
 }
 
 // ─── Payload synthesis — per-vuln concrete attack strings ───────────────────
@@ -3191,7 +3336,11 @@ async function queryRegistries(components){
 
 // Node port: takes { fileContents, depFileContents } maps directly instead of a JSZip object.
 // fileContents = code files keyed by relative path; depFileContents = manifest/lockfiles keyed by relative path.
-async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null}, setProgress=()=>{}){_resetSuppressions();_buildProjectIndex(fileContents);await _loadCustomRules(scanRoot);const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null}, setProgress=()=>{}){_resetSuppressions();_buildProjectIndex(fileContents);await _loadCustomRules(scanRoot);const files=Object.keys(fileContents).filter(f=>shouldScan(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));
+      aF.push(...scanLLM(p,c));
+      aLogic.push(...scanBusinessLogic(p,c));
+      aF.push(...scanPipeline(p,c));
+      aF.push(...scanContainer(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
   setProgress({current:i,total:files.length,file:"Cross-file...",phase:"Linking"});const ii=buildImportGraph(fc);const cf=crossFileTaint(pfr,fc,ii);aF.push(...cf);
   setProgress({current:i,total:files.length,file:"Stored taint...",phase:"Linking"});const storedRegistry=buildStoredTaintRegistry(fc);const stf=crossStoredTaint(fc,storedRegistry);aF.push(...stf);
   setProgress({current:i,total:files.length,file:"Session taint...",phase:"Linking"});const sess=crossSessionTaint(fc);aF.push(...sess);
@@ -3214,6 +3363,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   setProgress({current:i,total:files.length,file:"Registry metadata...",phase:"SCA"});
   let registryInfo=new Map();try{registryInfo=await queryRegistries(components);}catch(_){}
   const dd=(a,k)=>[...new Map(a.map(x=>[k(x),x])).values()];
+  // 0.6.0 Feat-1: annotate function-level reachability on SCA findings
+  try{_annotateFunctionReachability(supplyChain,dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`).map(r=>({...r})),callGraph,fc);}catch(_){}
   // Sort findings: critical first, then structural patterns last within same severity
   aF.sort((a,b)=>({critical:0,high:1,medium:2,low:3}[a.severity]??4)-({critical:0,high:1,medium:2,low:3}[b.severity]??4));
   const vulnsByKey={};for(const sc of supplyChain.filter(s=>s.type==='vulnerable_dep')){const k=`${sc.ecosystem}:${sc.name}:${sc.version}`;if(!vulnsByKey[k])vulnsByKey[k]=[];vulnsByKey[k].push(sc);}
@@ -3222,7 +3373,18 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   const annotatedComponents=components.map(c=>{const key=`${c.ecosystem}:${c.name}:${c.version}`;const vulns=vulnsByKey[key]||[];const ri=registryInfo.get(`${c.ecosystem}:${c.name}`)||{};const latestVersion=ri.latestVersion||'';const vd=(ri.versions||{})[c.version]||{};const isDeprecated=typeof vd.deprecated==='string'&&vd.deprecated.length>0;const deprecationMessage=isDeprecated?vd.deprecated:'';const license=ri.license||vd.license||'';return{...c,vulns,hasVulns:vulns.length>0,hasExploit:exploitResult.flagged.has(key),exploitPaths:exploitResult.pathsByKey.get(key)||[],latestVersion,isDeprecated,deprecationMessage,license};});
   let finalFindings;try{finalFindings=dedupeFindingsWithEvidence(aF);}catch(_){finalFindings=dd(aF,f=>f.id);}
   try{finalFindings.forEach(scoreExploitability);}catch(_){}
-  finalFindings.sort((a,b)=>(b.exploitabilityScore||0)-(a.exploitabilityScore||0)||({critical:0,high:1,medium:2,low:3}[a.severity]??4)-({critical:0,high:1,medium:2,low:3}[b.severity]??4));
+  // 0.6.0 Feat-2: Toxicity score composed across signals.
+  const _hasCloudCreds=(aSecrets||[]).some(s=>/cloud.cred|aws_access|gcp_key|azure_client/i.test(s.vuln||''));
+  const _toxCtx={routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`).map(r=>({...r})),supplyChain,hasCloudCreds:_hasCloudCreds};
+  try{finalFindings.forEach(f=>scoreToxicity(f,_toxCtx));}catch(_){}
+  for(const sc of supplyChain||[]){try{scoreToxicity(sc,_toxCtx);}catch(_){}}
+  // 0.9.0 Feat-18: OSSF Scorecard enrichment (opt-in via AGENTIC_SECURITY_SCORECARD=1)
+  try{await _enrichWithScorecard(annotatedComponents);}catch(_){}
+  // 0.8.0 Feat-10: license policy
+  try{const lp=loadLicensePolicy(scanRoot);if(lp){const lv=evaluateLicensePolicy(annotatedComponents,lp);aLogic.push(...lv);}}catch(_){}
+  // 0.9.0 Feat-15: dep confusion
+  try{const dc=detectDepConfusion(annotatedComponents,scanRoot);aF.push(...dc);}catch(_){}
+  finalFindings.sort((a,b)=>(b.toxicityScore||0)-(a.toxicityScore||0)||(b.exploitabilityScore||0)-(a.exploitabilityScore||0)||({critical:0,high:1,medium:2,low:3}[a.severity]??4)-({critical:0,high:1,medium:2,low:3}[b.severity]??4));
   classifyOrphans(aSrc,aSink,finalFindings,fc);
   return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions()};}
 
@@ -3637,6 +3799,7 @@ export {
   crossFindingChain, parseManifests, buildReachabilitySet,
   queryOSV, queryRegistries, computeExploitPathComponents,
   markUsedVulnFunctions, dedupeFindingsWithEvidence, scoreExploitability,
+  _enrichWithScorecard, scoreToxicity,
   classifyOrphans, classifyField, classifyEndpoint, shouldScan,
   _isFalsePositiveCredential, _detectSafeSinkShape,
   _loadCustomRules, _isCustomSuppressed,

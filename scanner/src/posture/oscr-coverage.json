@@ -1,0 +1,69 @@
+{
+  "_doc": "OSC&R coverage matrix — maps OX Security's Open Software supply Chain attack Reference (OSC&R) tactics × techniques to agentic-security rule IDs that cover them. Used by /security-oscr to show coverage gaps as a heatmap.",
+  "_format": "{ tactic-name: [{ id, technique, description, coveredBy: [rule-id-or-detector-name] }] }",
+  "_source": "https://www.ox.security/open-software-supply-chain-attack-reference-oscr/",
+
+  "Recon": [
+    { "id": "OSCR-T1.1", "technique": "Open-source intelligence gathering", "coveredBy": [] },
+    { "id": "OSCR-T1.2", "technique": "Active scanning of org's repos", "coveredBy": [] }
+  ],
+
+  "Resource Development": [
+    { "id": "OSCR-T2.1", "technique": "Acquire similar/typosquat package names", "coveredBy": ["dep-confusion:typosquat"] },
+    { "id": "OSCR-T2.2", "technique": "Establish accounts (compromised or fresh) on package registry", "coveredBy": [] },
+    { "id": "OSCR-T2.3", "technique": "Abuse internal-scope name confusion", "coveredBy": ["dep-confusion:scope"] }
+  ],
+
+  "Initial Access": [
+    { "id": "OSCR-T3.1", "technique": "Malicious package published & installed via dependency tree", "coveredBy": ["sca-malware-analyst", "supplyChain.osv"] },
+    { "id": "OSCR-T3.2", "technique": "Compromised CI/CD secret leaked from logs", "coveredBy": ["pipeline:secret-echoed"] },
+    { "id": "OSCR-T3.3", "technique": "Workflow script-injection via untrusted github.event input", "coveredBy": ["pipeline:script-injection"] },
+    { "id": "OSCR-T3.4", "technique": "Compromised base container image", "coveredBy": ["container-base"] }
+  ],
+
+  "Execution": [
+    { "id": "OSCR-T4.1", "technique": "Code injection (eval / dynamic require)", "coveredBy": ["sast:code-injection-eval"] },
+    { "id": "OSCR-T4.2", "technique": "Malicious post-install script in npm package", "coveredBy": ["sca-malware-analyst"] },
+    { "id": "OSCR-T4.3", "technique": "LLM-driven RCE via insecure tool definition", "coveredBy": ["llm-pi:tool", "chain:LLM-driven RCE"] }
+  ],
+
+  "Persistence": [
+    { "id": "OSCR-T5.1", "technique": "Backdoor in dependency persists after rotation", "coveredBy": ["sca-malware-analyst"] },
+    { "id": "OSCR-T5.2", "technique": "Workflow modification via push protection bypass", "coveredBy": ["pipeline:permissions-write-all"] }
+  ],
+
+  "Defense Evasion": [
+    { "id": "OSCR-T6.1", "technique": "Obfuscated payload in source", "coveredBy": ["sca-malware-analyst"] },
+    { "id": "OSCR-T6.2", "technique": "Floating action tag silently re-pointed", "coveredBy": ["pipeline:floating-tag", "pipeline:major-version-tag"] }
+  ],
+
+  "Credential Access": [
+    { "id": "OSCR-T7.1", "technique": "Hardcoded secrets exfiltrated", "coveredBy": ["secret:60+-providers", "secret:entropy"] },
+    { "id": "OSCR-T7.2", "technique": "OIDC token theft via under-restricted aud", "coveredBy": ["pipeline:oidc-no-aud"] },
+    { "id": "OSCR-T7.3", "technique": "Cloud creds via SSRF + hardcoded config", "coveredBy": ["chain:Cloud-creds Exfil"] }
+  ],
+
+  "Discovery": [
+    { "id": "OSCR-T8.1", "technique": "Internal API enumeration", "coveredBy": ["api-inventory"] },
+    { "id": "OSCR-T8.2", "technique": "Dependency enumeration", "coveredBy": ["sbom:cyclonedx", "sbom:spdx"] }
+  ],
+
+  "Lateral Movement": [
+    { "id": "OSCR-T9.1", "technique": "Auth bypass via IDOR + missing-auth combination", "coveredBy": ["chain:Account Takeover via IDOR"] },
+    { "id": "OSCR-T9.2", "technique": "Privilege escalation via mass-assignment", "coveredBy": ["logic:priv-from-body", "chain:Mass-Assign + Priv Esc"] }
+  ],
+
+  "Collection / Impact": [
+    { "id": "OSCR-T10.1", "technique": "Data exfiltration via prompt injection", "coveredBy": ["llm-pi:direct", "llm-pi:indirect", "chain:Indirect-PI → Exfil"] },
+    { "id": "OSCR-T10.2", "technique": "Stored data tampered via SQL injection", "coveredBy": ["sast:sql-injection"] },
+    { "id": "OSCR-T10.3", "technique": "Crypto downgrade enables credential cracking", "coveredBy": ["sast:weak-crypto", "chain:Weak Crypto + PII"] }
+  ],
+
+  "Compliance / Governance": [
+    { "id": "OSCR-G1.1", "technique": "License non-compliance", "coveredBy": ["license-policy"] },
+    { "id": "OSCR-G1.2", "technique": "SBOM availability", "coveredBy": ["sbom:cyclonedx", "sbom:spdx"] },
+    { "id": "OSCR-G1.3", "technique": "Pipeline provenance", "coveredBy": ["pbom"] },
+    { "id": "OSCR-G1.4", "technique": "AI-system risk attestation", "coveredBy": ["nist-ai-600-1"] },
+    { "id": "OSCR-G1.5", "technique": "Findings SLA tracking", "coveredBy": ["mttr"] }
+  ]
+}

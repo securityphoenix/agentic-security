@@ -39,6 +39,13 @@ export function normalizeFindings(scan){
       reachable: f.reachable ?? null,
       exploitability: f.exploitabilityScore ?? null,
       dataClasses: f.dataClasses || [],
+      chain: Array.isArray(f.chain) ? f.chain : null,
+      confidence: typeof f.confidence === 'number' ? f.confidence : null,
+      // 0.6.0 Feat-2
+      toxicity: f.toxicityScore ?? null,
+      toxicityFactors: f.toxicityFactors || null,
+      toxicityLabel: f.toxicityLabel || null,
+      sources: Array.isArray(f.sources) && f.sources.length ? f.sources : null,
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -92,6 +99,11 @@ export function normalizeFindings(scan){
       epssScore: sc.epssScore ?? null,
       epssPercentile: sc.epssPercentile ?? null,
       cvssVector: sc.cvssVector || null,
+      functionReachable: sc.functionReachable || null,
+      // 0.6.0 Feat-2: toxicity score
+      toxicity: sc.toxicityScore ?? null,
+      toxicityFactors: sc.toxicityFactors || null,
+      toxicityLabel: sc.toxicityLabel || null,
     });
   }
   // Sort by severity tier, then within a tier by EPSS percentile (desc) so that
