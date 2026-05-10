@@ -7,7 +7,7 @@ The security layer built for AI-written code. Catches vulnerabilities the moment
 [![License: ELv2](https://img.shields.io/badge/license-Elastic--2.0-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-72%2F72%20passing-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.05MB%20·%20no%20install-orange)]()
-[![Version](https://img.shields.io/badge/version-0.10.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.10.1-blue)]()
 
 ---
 
@@ -99,6 +99,14 @@ To unlock short-form commands (`/security-scan-all`, `/security-fix-all`) in a p
 | `/owasp-asvs` | OWASP ASVS Level 1+2 attestation for 15 application security controls |
 | `/pci-dss` | PCI-DSS 4.0 attestation for 12 code-testable cardholder data controls |
 | `/soc2` | SOC 2 Common Criteria attestation for 12 code-testable CC controls |
+
+### Project meta
+
+| Command | What it does |
+|---|---|
+| `/security-setup` | Install short-form `/security-*` commands in this project |
+| `/security-status` | Plugin & project health snapshot — version, last scan, cache, hooks, suppressions |
+| `/security-help` | List every command organized by category with usage notes |
 
 All commands are available in the fully-qualified form (`/agentic-security:*`) everywhere, and as short forms in any project where you've run `/security-setup`.
 
@@ -227,13 +235,14 @@ Evidence is multi-signal: declared dependencies carry the highest weight, follow
 
 ## Hooks (always on)
 
-One hook runs automatically once the plugin is installed:
+Two hooks run automatically once the plugin is installed:
 
 | Hook | Trigger | What happens |
 |---|---|---|
-| `PostToolUse` | After every file edit | Scans the changed file; surfaces new high/critical findings inline |
+| `SessionStart` | First Claude Code session per project | Prints a one-time welcome listing the four commands you'll use most. Gated on `.agentic-security/.welcomed` — fires exactly once per project. |
+| `PostToolUse` | After every Edit / Write / MultiEdit | Scans the changed file (≤ 1 scan per file per 5s). Prints `🔒 agentic-security: <file> (clean)` on every edit; if new high/critical findings appear, prints them inline with a fix-command pointer. |
 
-New vulnerabilities surface the moment the file is saved — no manual scan step required.
+Set `AGENTIC_SECURITY_QUIET=1` to silence the per-edit clean-scan one-liner (findings still print). Set `AGENTIC_SECURITY_OFFLINE=1` to skip every outbound call.
 
 ---
 

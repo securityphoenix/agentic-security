@@ -119,10 +119,25 @@ for (const f of findings.slice(0, 50)) {
 \`\`\`
 CMDEOF
 
+cat > .claude/commands/security-help.md << CMDEOF
+---
+description: List every agentic-security command organized by category, with one-line descriptions.
+---
+Run \`/agentic-security:security-help\` for the full command catalog.
+CMDEOF
+
+cat > .claude/commands/security-status.md << CMDEOF
+---
+description: Print a one-screen project & plugin health snapshot — version, last scan time + counts, cache size, hook activation, suppression rules.
+---
+Run \`/agentic-security:security-status\` for the project health snapshot.
+CMDEOF
+
 echo "✓ Installed shortcuts in .claude/commands/:"
 echo "  /security-scan-all, /security-fix, /security-fix-all"
 echo "  /security-report, /security-sca, /security-secrets"
 echo "  /security-mcp-audit, /security-authz, /security-kev"
+echo "  /security-help, /security-status"
 echo ""
 echo "These work in this project. Re-run /agentic-security:security-setup in other projects."
 ```

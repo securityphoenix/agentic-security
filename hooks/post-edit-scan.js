@@ -64,10 +64,22 @@ function writeThrottle(t) { try { fs.mkdirSync(stateDir, { recursive: true }); f
     baselineIds = new Set((last.findings || []).filter(f => f.file && f.file.endsWith(baseName)).map(f => f.id));
   } catch {}
   const fresh = fileFindings.filter(f => !baselineIds.has(f.id));
-  if (!fresh.length) process.exit(0);
+
+  // Set AGENTIC_SECURITY_QUIET=1 to silence the per-edit clean-scan one-liner.
+  // Findings still print regardless.
+  const quiet = process.env.AGENTIC_SECURITY_QUIET === '1';
+
+  if (!fresh.length) {
+    if (!quiet) {
+      const existing = fileFindings.length;
+      const tail = existing ? ` (${existing} pre-existing high/critical, no new)` : ' (clean)';
+      console.error(`🔒 agentic-security: ${rel}${tail}`);
+    }
+    process.exit(0);
+  }
 
   const top = fresh.slice(0, 5).map(f => `  [${f.severity.toUpperCase()}] ${f.cwe || ''} ${f.vuln} (${f.file}:${f.line})`).join('\n');
   const more = fresh.length > 5 ? `\n  ...and ${fresh.length - 5} more` : '';
-  console.error(`agentic-security: ${fresh.length} new high/critical finding(s) from this edit:\n${top}${more}\n→ Run \`/agentic-security:security-fix-all --severity high\` to remediate.`);
+  console.error(`🔒 agentic-security: ${fresh.length} new high/critical finding(s) from this edit:\n${top}${more}\n→ Run \`/agentic-security:security-fix-all --severity high\` to remediate.`);
   process.exit(0);
 })();
