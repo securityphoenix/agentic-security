@@ -8,6 +8,7 @@ import { toJSON, toMarkdown, toSARIF, toCLI, toHTML, toSummary, exitCodeFor, nor
 import { toCycloneDX, toSPDX } from '../src/posture/sbom.js';
 import { toPBOM } from '../src/sast/pipeline.js';
 import { buildAIBOM, aibomToMarkdown } from '../src/posture/aibom.js';
+import { recordScan, formatStreakLine, formatGradeDelta } from '../src/posture/streak.js';
 import { ingestAndMerge } from '../src/sca/sarif-ingest.js';
 import fg from 'fast-glob';
 
@@ -115,7 +116,21 @@ async function cmdScan(args) {
   // Persist last scan for /security-fix and /security-report
   const stateDir = path.join(path.resolve(target), '.agentic-security');
   await fsp.mkdir(stateDir, { recursive: true });
-  await fsp.writeFile(path.join(stateDir, 'last-scan.json'), JSON.stringify(toJSON(scan, meta), null, 2));
+  const persistedScan = toJSON(scan, meta);
+  await fsp.writeFile(path.join(stateDir, 'last-scan.json'), JSON.stringify(persistedScan, null, 2));
+
+  // 0.14.0 — update streak / achievements after every full scan. Suppress
+  // streak side effects when the user only wants raw JSON output (CI piping).
+  try {
+    const streak = recordScan(stateDir, persistedScan);
+    // Print celebration / streak line to stderr so it doesn't pollute --format json
+    if (process.stderr.isTTY && format !== 'json' && format !== 'sarif') {
+      const delta = formatGradeDelta(streak);
+      const line = formatStreakLine(streak);
+      if (delta) process.stderr.write('\n' + delta + '\n');
+      if (line) process.stderr.write('🛡️  ' + line + '\n');
+    }
+  } catch {}
 
   return exitCodeFor(scan);
 }

@@ -89,8 +89,22 @@ if (c > 10 || (c > 5 && kevCount > 0)) {
 const W = (s, code) => process.stdout.isTTY ? \`\\x1b[\${code}m\${s}\\x1b[0m\` : s;
 const COLOR = { 'A+': '92', 'A': '92', 'A-': '92', 'B': '32', 'B-': '32', 'C': '33', 'C-': '33', 'D': '31', 'F': '91' };
 
+// 0.14.0 — show grade-delta vs. previous scan if streak.json exists
+let delta = '';
+try {
+  const streak = JSON.parse(fs.readFileSync('.agentic-security/streak.json', 'utf8'));
+  if (streak.previousGrade && streak.previousGrade !== grade) {
+    const RANK = { 'F': 0, 'D': 1, 'C-': 2, 'C': 3, 'B-': 4, 'B': 5, 'A-': 6, 'A': 7, 'A+': 8 };
+    const prev = RANK[streak.previousGrade] ?? -1;
+    const now = RANK[grade] ?? -1;
+    if (now > prev) delta = '  📈 ' + W('Grade up: ' + streak.previousGrade + ' → ' + grade, '92');
+    else if (now < prev) delta = '  📉 ' + W('Grade down: ' + streak.previousGrade + ' → ' + grade, '91');
+  }
+} catch {}
+
 console.log('');
 console.log('  Security grade:  ' + W(grade, COLOR[grade] || '0'));
+if (delta) console.log(delta);
 console.log('');
 console.log('  ' + reason);
 console.log('');
@@ -98,6 +112,10 @@ console.log('  Next: ' + action);
 console.log('');
 console.log('  Detail: critical=' + c + '  high=' + h + '  medium=' + counts.medium + '  low=' + counts.low + '  KEV=' + kevCount);
 console.log('');
+if (grade === 'A+') {
+  console.log('  ' + W('🎉 Perfect score. Save this scan as your baseline so you know if anything regresses.', '92'));
+  console.log('');
+}
 "
 ```
 

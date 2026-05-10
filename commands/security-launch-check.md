@@ -197,6 +197,23 @@ const verdict = fail === 0 && warn === 0
   : W('Not ready', RED) + ' — ' + fail + ' blocker(s) to fix';
 console.log('  Passing: ' + ratio + '. ' + verdict + '.');
 console.log('');
+
+// 0.14.0 — celebration on 10/10 + persist launch-ready achievement
+if (fail === 0 && warn === 0) {
+  console.log('  ' + W('🚀 SHIP IT', BOLD + ';' + GREEN));
+  console.log('  ' + W('Every pre-launch check passed. You earned the Launch Ready achievement.', GREEN));
+  console.log('');
+  // Persist to streak.json
+  try {
+    const sp = '.agentic-security/streak.json';
+    let s = {};
+    try { s = JSON.parse(fs.readFileSync(sp, 'utf8')); } catch {}
+    s.launchCheckPassedAt = new Date().toISOString();
+    s.achievements = Array.from(new Set([...(s.achievements || []), 'launch-ready']));
+    fs.mkdirSync('.agentic-security', { recursive: true });
+    fs.writeFileSync(sp, JSON.stringify(s, null, 2));
+  } catch {}
+}
 "
 ```
 

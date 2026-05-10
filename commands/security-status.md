@@ -114,6 +114,44 @@ console.log('Cache (' + cacheDir + ')');
 console.log('  Size:           ' + fmtBytes(cacheSize) + '  (' + cacheCount + ' entries)');
 console.log('  CISA KEV:       refreshed ' + kevAge + '  (24h TTL)');
 console.log('');
+
+// 0.14.0 — Streaks + achievements
+const streak = readJSON(path.join(stateDir, 'streak.json'));
+if (streak && streak.totalScans) {
+  console.log('Streak');
+  if (streak.daysCleanCritical >= 1) {
+    const flame = streak.daysCleanCritical >= 7 ? '🔥 ' : '';
+    console.log('  Clean run:      ' + flame + streak.daysCleanCritical + ' day' + (streak.daysCleanCritical === 1 ? '' : 's') + ' clean of critical findings (best: ' + (streak.bestDaysCleanCritical || streak.daysCleanCritical) + ')');
+  } else if (streak.lastCriticalDate) {
+    console.log('  Clean run:      0 days (last critical: ' + streak.lastCriticalDate + ')');
+  }
+  console.log('  Total scans:    ' + streak.totalScans);
+  if (streak.totalFixesInferred > 0) console.log('  Fixes applied:  ' + streak.totalFixesInferred);
+  if (streak.lastGrade) console.log('  Current grade:  ' + streak.lastGrade + (streak.bestGrade && streak.bestGrade !== streak.lastGrade ? '  (best: ' + streak.bestGrade + ')' : ''));
+  console.log('');
+  if (streak.achievements && streak.achievements.length) {
+    const LABELS = {
+      'first-scan':      ['🛡️', 'First Scan'],
+      'first-fix':       ['🔧', 'First Fix'],
+      'clean-sweep':     ['🧹', 'Clean Sweep'],
+      'triage-master':   ['🎯', 'Triage Master (10+ fixes)'],
+      'streak-7':        ['🔥', '7-Day Streak'],
+      'streak-30':       ['🔥', '30-Day Streak'],
+      'streak-90':       ['🔥', '90-Day Streak'],
+      'grade-a':         ['🏆', 'Grade A'],
+      'grade-a-plus':    ['🥇', 'Grade A+'],
+      'launch-ready':    ['🚀', 'Launch Ready'],
+      'scan-veteran-25': ['⭐', 'Scan Veteran (25)'],
+      'scan-veteran-100':['🌟', 'Scan Veteran (100)'],
+    };
+    console.log('Achievements (' + streak.achievements.length + ')');
+    for (const a of streak.achievements) {
+      const [icon, label] = LABELS[a] || ['🏅', a];
+      console.log('  ' + icon + '  ' + label);
+    }
+    console.log('');
+  }
+}
 if (counts.critical > 0) {
   console.log('Action: ' + counts.critical + ' critical finding(s). Run /security-fix-all --severity critical');
 } else if (counts.high > 0) {

@@ -7,7 +7,7 @@ The security layer built for AI-written code. Catches vulnerabilities the moment
 [![License: PolyForm-Internal-Use-1.0.0](https://img.shields.io/badge/license-PolyForm--Internal--Use--1.0.0-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75%20passing-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.06MB%20·%20no%20install-orange)]()
-[![Version](https://img.shields.io/badge/version-0.13.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.14.0-blue)]()
 
 ---
 
@@ -170,8 +170,9 @@ A finite, beginner-friendly list of "10 things you usually miss before going liv
 | Command | What it does |
 |---|---|
 | `/security-setup` | Install short-form `/security-*` commands in this project |
-| `/security-status` | Plugin & project health snapshot — version, last scan, cache, hooks, suppressions |
+| `/security-status` | Plugin & project health snapshot — version, last scan, cache, hooks, streak, achievements |
 | `/security-help` | List every command organized by category with usage notes |
+| `/security-badge` | Print a markdown badge of your current security grade for your README |
 
 All commands are available in the fully-qualified form (`/agentic-security:*`) everywhere, and as short forms in any project where you've run `/security-setup`.
 
@@ -222,6 +223,24 @@ Every MCP server you install runs locally with whatever scope you grant it, and 
 
 **Short commands disappeared mid-session.**
 Claude Code can evict plugin commands after long-running tool calls. Run `/reload-plugins` to restore them, or use the always-available fully-qualified form: `/agentic-security:security-fix-all`.
+
+---
+
+## Show your security grade
+
+Every project that runs a scan gets a letter grade from `/security-grade`. Earn an A and you can paste a badge into your own README — same pattern as Codecov, Snyk, OSSF Scorecard:
+
+[![agentic-security: A](https://img.shields.io/static/v1?label=agentic-security&message=A&color=brightgreen&logo=shield&logoColor=white)](https://github.com/clearcapabilities/agentic-security)
+
+Run:
+
+```
+/security-badge
+```
+
+It prints the markdown for your current grade. Drop it in your README. Refresh by re-running after each scan.
+
+You also collect achievements as you go — first scan, first fix, clean sweep, 7-day streak, 30-day streak, launch ready, scan veteran. View them with `/security-status`.
 
 ---
 
@@ -337,9 +356,40 @@ The drift report shows exactly what regressed: new findings introduced, lost aut
 
 ---
 
-## What it catches
+## Compliance attestation
 
-**50+ vulnerability types across every layer of your stack:**
+Four frameworks, one command per framework. Each produces a Markdown table, a CSV spreadsheet, and a machine-readable JSON file.
+
+| Framework | Command | Controls | Scope |
+|---|---|---|---|
+| NIST AI 600-1 | `/nist-ai-600-1` | 122 | GenAI risk management (GV/MP/MS/MG families) |
+| OWASP ASVS | `/owasp-asvs` | 15 | ASVS Level 1+2 (auth, session, input, crypto, API) |
+| PCI-DSS 4.0 | `/pci-dss` | 12 | Code-testable cardholder data requirements |
+| SOC 2 | `/soc2` | 12 | Common Criteria (CC6–CC9) |
+
+Evidence is multi-signal: declared dependencies carry the highest weight, followed by import statements, then path patterns, code terms, config, and documentation. Negation contexts ("we don't yet implement…", "planned for") are discarded.
+
+**Example OWASP ASVS output**
+
+> **Coverage: 73%** (11 / 15 controls)
+>
+> | Status | ID | Control | Evidence |
+> |---|---|---|---|
+> | ✅ Compliant | V3.4.1 | Cookies set with Secure/HttpOnly/SameSite | code_term + config_term |
+> | ✅ Compliant | V4.1.1 | Access control enforced server-side | import + code_term |
+> | 🟡 Partial | V2.4.1 | Secure password storage (bcrypt/argon2) | import |
+> | 🟡 Partial | V6.2.1 | Strong cryptographic algorithms in use | code_term |
+> | ❌ Not Compliant | V5.1.1 | Input validation library in use | — |
+> | ❌ Not Compliant | V8.3.1 | Sensitive data not logged | — |
+
+---
+
+## Advanced topics
+
+For engineers and people who want the technical detail. All collapsed by default — click to expand.
+
+<details>
+<summary><strong>Full list of what it catches (50+ vulnerability types)</strong></summary>
 
 ```
 Code              SQL injection · XSS · Command injection · Path traversal · SSRF
@@ -376,39 +426,12 @@ Business logic    Always-true auth bypass · Client-controlled prices · Privile
 
 **Languages:** JavaScript, TypeScript, Python, PHP, Ruby, Java, Go, Vue, React, Angular, Svelte.
 
-> Don't recognize a term? Check the [Glossary](#glossary) — every acronym above is defined there in plain English.
+Don't recognize a term? Every acronym is defined in the [Glossary](#glossary).
 
----
+</details>
 
-## Compliance attestation
-
-Four frameworks, one command per framework. Each produces a Markdown table, a CSV spreadsheet, and a machine-readable JSON file.
-
-| Framework | Command | Controls | Scope |
-|---|---|---|---|
-| NIST AI 600-1 | `/nist-ai-600-1` | 122 | GenAI risk management (GV/MP/MS/MG families) |
-| OWASP ASVS | `/owasp-asvs` | 15 | ASVS Level 1+2 (auth, session, input, crypto, API) |
-| PCI-DSS 4.0 | `/pci-dss` | 12 | Code-testable cardholder data requirements |
-| SOC 2 | `/soc2` | 12 | Common Criteria (CC6–CC9) |
-
-Evidence is multi-signal: declared dependencies carry the highest weight, followed by import statements, then path patterns, code terms, config, and documentation. Negation contexts ("we don't yet implement…", "planned for") are discarded.
-
-**Example OWASP ASVS output**
-
-> **Coverage: 73%** (11 / 15 controls)
->
-> | Status | ID | Control | Evidence |
-> |---|---|---|---|
-> | ✅ Compliant | V3.4.1 | Cookies set with Secure/HttpOnly/SameSite | code_term + config_term |
-> | ✅ Compliant | V4.1.1 | Access control enforced server-side | import + code_term |
-> | 🟡 Partial | V2.4.1 | Secure password storage (bcrypt/argon2) | import |
-> | 🟡 Partial | V6.2.1 | Strong cryptographic algorithms in use | code_term |
-> | ❌ Not Compliant | V5.1.1 | Input validation library in use | — |
-> | ❌ Not Compliant | V8.3.1 | Sensitive data not logged | — |
-
----
-
-## Why it's different
+<details>
+<summary><strong>Why it's different from other scanners</strong></summary>
 
 **Findings ranked by real risk, not severity labels.**
 Every finding gets a toxicity score (0–100) composed from: unauthenticated route reachability, sensitive data-class (PII/PHI/PCI), HTTP-facing source, function-level reachability, and co-located cloud credentials. Two "high" findings can score 85 vs. 12. You fix the right one first.
@@ -437,9 +460,10 @@ OWASP A01 is the #1 source of real breaches. `/security-authz` covers JWT alg:no
 **Your code never leaves your machine.**
 The only outbound calls are `package@version` strings to OSV.dev, CVE IDs to first.org for EPSS, the CISA KEV catalog from cisa.gov (one fetch per 24h, cached), and — opt-in with `--scorecard` — OSSF Scorecard lookups. Zero source code. Zero file paths. Set `AGENTIC_SECURITY_OFFLINE=1` to skip every outbound call entirely.
 
----
+</details>
 
-## ASPM posture layer
+<details>
+<summary><strong>ASPM posture layer (drift, SBOM, AI-BOM, MTTR, license policy)</strong></summary>
 
 Beyond finding individual vulnerabilities, the posture-management layer covers what changes between scans and how it changes the risk profile:
 
@@ -447,7 +471,7 @@ Beyond finding individual vulnerabilities, the posture-management layer covers w
 
 **Drift reporting.** Compare any two scan JSON files: new endpoints added, auth boundaries lost, new CVEs introduced, data-class changes. Run on every PR: `/security-drift --from scan-a.json --to scan-b.json`.
 
-**SBOM / PBOM.** Generate a CycloneDX 1.6 or SPDX 2.3 software bill of materials from your existing manifests. Export a Pipeline Bill of Materials from your GitHub Actions workflows: `/security-sbom --format cyclonedx`.
+**SBOM / PBOM / AI-BOM.** Generate a CycloneDX 1.6 or SPDX 2.3 software bill of materials from your existing manifests. Export a Pipeline Bill of Materials from your GitHub Actions workflows. Export an AI-BOM (CycloneDX 1.7 ML-BOM compatible) listing every model, prompt template, framework, and vector store.
 
 **SARIF ingest.** Already running other scanners? Merge their findings into the unified report, deduped by fingerprint with provenance tracked via `sources[]`: `--ingest-sarif path/to/semgrep.sarif`.
 
@@ -459,9 +483,10 @@ Beyond finding individual vulnerabilities, the posture-management layer covers w
 
 **Dependency confusion + typosquat detection.** Flags dependencies whose names are 1–2 edits from a top-1000 package, and internal-scoped packages also published on the public registry.
 
----
+</details>
 
-## GitHub Actions
+<details>
+<summary><strong>GitHub Actions integration</strong></summary>
 
 Drop this into any repo to gate every PR on critical findings:
 
@@ -485,11 +510,10 @@ jobs:
 
 Every PR gets a drift-aware comment: new findings introduced, findings closed, lost auth boundaries, new unauthenticated endpoints, and the top-5 by toxicity score. Critical findings block merge.
 
----
+</details>
 
-## Standalone CLI
-
-No Claude Code? Run the scanner directly:
+<details>
+<summary><strong>Standalone CLI (run without Claude Code)</strong></summary>
 
 ```bash
 curl -L -o agentic-security.mjs \
@@ -524,9 +548,10 @@ node agentic-security.mjs scan . --format aibom-md  # AI-BOM as Markdown
 --since HEAD~1                 Scan only files changed since a git ref
 ```
 
----
+</details>
 
-## Customizing the scanner
+<details>
+<summary><strong>Customizing the scanner (suppressions + custom rules)</strong></summary>
 
 ### Suppressing a finding
 
@@ -549,6 +574,8 @@ sinks:
     vuln: "SQL Injection (Custom ORM)"
     severity: high
 ```
+
+</details>
 
 ---
 
