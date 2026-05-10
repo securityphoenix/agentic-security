@@ -4,7 +4,7 @@
 
 The security layer built for AI-written code. Catches vulnerabilities the moment they're introduced, in the same session with the same agent, and fixes them before you move on.
 
-[![License: PolyForm-NC-1.0.0](https://img.shields.io/badge/license-PolyForm--NC--1.0.0-blue)](./LICENSE)
+[![License: PolyForm-Shield-1.0.0](https://img.shields.io/badge/license-PolyForm--Shield--1.0.0-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75%20passing-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.06MB%20·%20no%20install-orange)]()
 [![Version](https://img.shields.io/badge/version-0.12.0-blue)]()
@@ -677,9 +677,9 @@ New scanner rules should include a fixture that triggers the finding and a suppr
 
 ## License
 
-[PolyForm Noncommercial License 1.0.0](./LICENSE).
+[PolyForm Shield License 1.0.0](./LICENSE).
 
-Free for noncommercial use — personal projects, research, education, hobby work, and qualifying noncommercial organizations (charitable, educational, government, research, environmental, public-safety). For any commercial use, contact [ross@clearcapabilities.com](mailto:ross@clearcapabilities.com) to obtain a commercial license.
+Free for any use — personal, research, education, internal tools, and commercial products — **except** building a product or service that competes with agentic-security itself. In plain English: scan your own code, embed the scanner in your own commercial app, fork it for your own internal use. Don't fork it, rebrand it, and sell it as a competing security scanner. For licensing of competing use, contact [ross@clearcapabilities.com](mailto:ross@clearcapabilities.com).
 
 Built by [Ross Young](https://clearcapabilities.com) at Clear Capabilities Inc.
 
