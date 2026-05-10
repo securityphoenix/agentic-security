@@ -5,7 +5,7 @@ description: List every agentic-security command organized by category, with one
 Print the full agentic-security command catalog.
 
 ```
-agentic-security commands — 25 total
+agentic-security commands — 31 total
 
 SCANNING & FIXING
   /security-scan-all         Full SAST + SCA + secrets + IaC sweep
@@ -34,7 +34,6 @@ POSTURE MANAGEMENT
   /security-pipeline         Audit GitHub Actions; emit a PBOM
   /security-license          Enforce license allow/deny policy on deps
   /security-mttr             Show findings older than per-severity SLA
-  /security-oscr             OSC&R supply-chain attack framework coverage map
 
 COMPLIANCE ATTESTATION
   /nist-ai-600-1             NIST AI 600-1 attestation (122 GenAI controls)

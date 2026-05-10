@@ -185,7 +185,6 @@ A finite, beginner-friendly list of "10 things you usually miss before going liv
 | `/security-pipeline` | Audit GitHub Actions for supply-chain risks; emit a PBOM |
 | `/security-license` | Enforce a license allow/deny policy against your dependency tree |
 | `/security-mttr` | Show findings older than their SLA threshold; compute mean time to remediate |
-| `/security-oscr` | Map your detection coverage against the OSC&R supply chain attack framework |
 
 ### Compliance attestation
 
@@ -487,8 +486,6 @@ Beyond finding individual vulnerabilities, the posture-management layer covers w
 
 **Dependency confusion + typosquat detection.** Flags dependencies whose names are 1–2 edits from a top-1000 package, and internal-scoped packages also published on the public registry.
 
-**OSC&R coverage map.** `/security-oscr` renders your detection coverage against the Open Software Supply Chain Attack Reference framework — useful for gap analysis and customer security reviews.
-
 ---
 
 ## GitHub Actions
@@ -635,7 +632,6 @@ Every acronym you'll see in this README and in the tool's output, in plain Engli
 - **SOC 2** — A US security audit framework focused on five "trust services criteria."
 - **NIST AI 600-1** — NIST framework for managing risks in generative-AI applications.
 - **STRIDE** — Microsoft's threat-modeling acronym: Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege.
-- **OSC&R (Open Software supply Chain Attack Reference)** — A MITRE ATT&CK-style matrix specifically for software supply-chain attacks.
 - **ASPM (Application Security Posture Management)** — Umbrella term for tools that aggregate, prioritize, and track security findings across an org.
 
 ### File formats and reports
