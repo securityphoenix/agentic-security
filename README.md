@@ -176,46 +176,20 @@ That's the entire product. You don't need anything else to ship safer code.
 
 Beyond the three easy-mode commands, agentic-security ships a full command surface for platform teams, AppSec engineers, and anyone who wants to go deeper:
 
-```
-/agentic-security:scan                  Run the scanner. Default (--all) gives a one-screen verdict.
-                                        Focused modes: --sca, --secrets, --authz, --mcp,
-                                        --pipeline, --logic, --diff.
-
-/agentic-security:show-findings         Triage FPs then view results. Default (--all) opens an
-                                        interactive HTML report. Use --kev for weaponized CVEs,
-                                        --chains for exploit chains, or --threat-model [--stride|--llm].
-
-/agentic-security:fix                   Remediate findings. Use --one <id> to patch a single finding,
-                                        --all to batch-fix by severity, or --pr to bundle fixes
-                                        into a pull request.
-
-/agentic-security:exploit-poc          Generate a working exploit payload + regression test for one
-                                        finding (or flag PROBABLE_FP if no payload can be constructed).
-
-/agentic-security:posture-management      Posture management — SBOM, AI-BOM, API inventory, license
-                                        policy, drift analysis, and SLA tracking. Use --sbom, --aibom,
-                                        --api, --license, --drift, or --mttr.
-
-/agentic-security:compliance-report  Auditor-ready attestation for NIST AI 600-1, OWASP ASVS,
-                                             PCI-DSS 4.0, or SOC 2.
-
-/agentic-security:explain      Explain a finding in plain English — what it means, how an
-                                        attacker exploits it, the worst case, and how to fix it.
-
-/agentic-security:launch-check Pre-deploy checklist of the 10 things beginners typically
-                                        miss before going live.
-
-/agentic-security:report-card        Single letter-grade snapshot (A–F) of your project's security
-                                        posture, with one concrete next action.
-
-/agentic-security:social-media        Generate copy-paste-ready posts (Twitter/X, LinkedIn,
-                                        Discord/Slack) about your security progress.
-
-/agentic-security:status       One-screen plugin & project health snapshot — version, last
-                                        scan time, finding counts, cache size, hook activation.
-
-/agentic-security:help                  Full command catalog with one-line descriptions.
-```
+| Command | Description |
+|---|---|
+| `/agentic-security:scan` | Run the scanner. Default `--all` gives a one-screen verdict. Focused modes: `--sca`, `--secrets`, `--authz`, `--mcp`, `--pipeline`, `--logic`, `--diff`. |
+| `/agentic-security:show-findings` | Triage FPs then view results. Default `--all` opens an interactive HTML report. Use `--kev` for weaponized CVEs, `--chains` for exploit chains, or `--threat-model [--stride\|--llm]`. |
+| `/agentic-security:fix` | Remediate findings. Use `--one <id>` to patch a single finding, `--all` to batch-fix by severity, or `--pr` to bundle fixes into a pull request. |
+| `/agentic-security:exploit-poc` | Generate a working exploit payload + regression test for one finding (or flag `PROBABLE_FP` if no payload can be constructed). |
+| `/agentic-security:posture-management` | SBOM, AI-BOM, API inventory, license policy, drift analysis, and SLA tracking. Use `--sbom`, `--aibom`, `--api`, `--license`, `--drift`, or `--mttr`. |
+| `/agentic-security:compliance-report` | Auditor-ready attestation for NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, or SOC 2. |
+| `/agentic-security:explain` | Explain a finding in plain English — what it means, how an attacker exploits it, the worst case, and how to fix it. |
+| `/agentic-security:launch-check` | Pre-deploy checklist of the 10 things beginners typically miss before going live. |
+| `/agentic-security:report-card` | Single letter-grade snapshot (A–F) of your project's security posture, with one concrete next action. |
+| `/agentic-security:social-media` | Generate copy-paste-ready posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress. |
+| `/agentic-security:status` | One-screen plugin & project health snapshot — version, last scan time, finding counts, cache size, hook activation. |
+| `/agentic-security:help` | Full command catalog with one-line descriptions. |
 
 For the complete reference — CI integration, SARIF output, audit-grade suppressions, custom rules, org-wide fleet scans, and every flag — read the **[Developer Guide →](https://github.com/clearcapabilities/agentic-security/blob/main/docs/developer-documentation-guide.md)**.
 
