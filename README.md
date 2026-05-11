@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.16MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.19.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.20.0-blue)]()
 
 ---
 
@@ -57,9 +57,9 @@ Three commands. The whole product. The default for everyone.
 
 ---
 
-#### `/scan-all` — daily, before deploy
+#### `/scan` — daily, before deploy
 
-**What `/scan-all` scans every run — nine pillars, no configuration required:**
+**What `/scan` scans every run — nine pillars, no configuration required:**
 
 ```
        Pillar         What we scan
@@ -111,7 +111,7 @@ A one-screen verdict. Either you're safe to ship, or you have a short list of th
   Reply with 1, 2, or 3.
 
   Or pick a single one:
-     /security-scan-all --firehose      see every finding
+     /scan --firehose      see every finding
      /security-fix --finding <id>       fix exactly one
 ```
 
@@ -121,19 +121,19 @@ The scanner asks which tier you want to fix; reply with the number and `/fix-all
 
 #### `/show-findings` — interactive HTML report
 
-Writes a self-contained HTML report to `.agentic-security/findings.html` and opens it in your default browser. The report has severity charts, a filterable findings list, per-finding evidence with the offending code snippet, and the proposed fix template. No external assets, no network required — works offline.
+Writes a self-contained HTML report to `reports/findings-<timestamp>.html` and opens it in your default browser. The report has severity charts, a filterable findings list, per-finding evidence with the offending code snippet, and the proposed fix template. No external assets, no network required — works offline.
 
 **To view the report:** it usually opens automatically when the command finishes. If it doesn't, open it manually:
 
 ```bash
 # macOS
-open .agentic-security/findings.html
+open reports/findings-<timestamp>.html
 
 # Linux
-xdg-open .agentic-security/findings.html
+xdg-open reports/findings-<timestamp>.html
 
 # Windows
-start .agentic-security/findings.html
+start reports/findings-<timestamp>.html
 ```
 
 ---
