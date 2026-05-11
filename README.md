@@ -198,5 +198,3 @@ To learn more read the **[Developer Documentation](https://github.com/clearcapab
 ## License
 
 Full legal terms in [LICENSE](./LICENSE). The short version: don't resell, don't reverse-engineer, otherwise enjoy.
-
-*Stop shipping the bugs your AI didn't catch.*
