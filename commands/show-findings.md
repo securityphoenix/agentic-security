@@ -1,53 +1,33 @@
 ---
-description: Print the findings from the last scan. No re-scan — reads .agentic-security/last-scan.json.
-argument-hint: "[--severity critical|high|medium|low]"
+description: Generate an interactive HTML report of every finding and open it in the default browser.
+argument-hint: "[path]"
 ---
 
-Print every finding from the most recent scan, grouped by severity. No re-scan is performed — this reads `.agentic-security/last-scan.json`.
+Render every finding from a scan as a self-contained interactive HTML report and try to open it in the default browser.
 
 ```bash
-node -e "
-const fs = require('node:fs');
-const path = '.agentic-security/last-scan.json';
-if (!fs.existsSync(path)) {
-  console.error('No scan on file. Run /scan-all first.');
-  process.exit(1);
-}
-const args = process.argv.slice(1);
-const sevArg = (args.find(a => a.startsWith('--severity=')) || args[args.indexOf('--severity') + 1] || '').replace('--severity=', '');
-const RANK = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
-const floor = RANK[sevArg] ?? 0;
-const scan = JSON.parse(fs.readFileSync(path, 'utf8'));
-const all = (scan.findings || []).filter(f => (RANK[f.severity] ?? 0) >= floor);
-if (!all.length) {
-  console.log('No findings at or above ' + (sevArg || 'info') + '. Last scan: ' + (scan.scannedAt || 'unknown') + '.');
-  process.exit(0);
-}
-const order = ['critical', 'high', 'medium', 'low', 'info'];
-const ICONS = { critical: '🛑', high: '⚠️ ', medium: '·', low: '·', info: '·' };
-console.log('Findings from last scan (' + (scan.scannedAt || 'unknown') + ')');
-console.log('');
-for (const sev of order) {
-  const rows = all.filter(f => f.severity === sev);
-  if (!rows.length) continue;
-  console.log(sev.toUpperCase() + ' — ' + rows.length);
-  for (const f of rows) {
-    const loc = (f.file || '') + (f.line ? ':' + f.line : '');
-    console.log('  ' + (ICONS[sev] || '·') + ' [' + (f.id || '').slice(0, 8) + '] ' + (f.vuln || f.title || '') + '  ' + loc);
-    if (f.description) console.log('      ' + f.description.split('\\n')[0]);
-  }
-  console.log('');
-}
-console.log('Total: ' + all.length + (sevArg ? ' (filtered to ' + sevArg + '+)' : ''));
-console.log('Next: /fix-all --severity ' + (sevArg || 'critical') + '  to remediate.');
-" -- ${1} ${2}
+mkdir -p .agentic-security
+node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs scan ${1:-.} --format html --output .agentic-security/findings.html
+ec=$?
+if [ $ec -le 3 ]; then
+  open .agentic-security/findings.html 2>/dev/null \
+    || xdg-open .agentic-security/findings.html 2>/dev/null \
+    || echo "Open .agentic-security/findings.html in your browser to view the report."
+  exit 0
+fi
+exit $ec
 ```
+
+The HTML report is self-contained (no external assets, no network required). It includes severity charts, a filterable findings list, per-finding evidence with the offending code snippet, and the proposed fix template.
 
 ## How to respond to the user
 
-The scanner already printed the findings. Don't repeat them — just confirm the next step:
+After the command runs, tell the user the report was written to `.agentic-security/findings.html`. If it didn't auto-open in their browser, give them the platform-specific open command:
 
-- If there are findings: suggest `/fix-all --severity <tier>` matching what's worth fixing.
-- If clean: confirm and stop.
+- macOS: `open .agentic-security/findings.html`
+- Linux: `xdg-open .agentic-security/findings.html`
+- Windows: `start .agentic-security/findings.html`
+
+Don't list individual findings inline — the whole point is the HTML view.
 
 🛡  agentic-security · created by ClearCapabilities.Com

@@ -83,27 +83,46 @@ A one-screen verdict. Either you're safe to ship, or you have a short list of th
   Type /show-findings to see the rest, or /fix-all to apply them.
 ```
 
----
-
-#### `/show-findings` — see everything from the last scan
-
-No re-scan. Reads the last scan and prints every finding grouped by severity.
+**What `/scan-all` scans every run — nine pillars, no configuration required:**
 
 ```
-Findings from last scan
+       Pillar         What we scan
+       ─────────────────────────────────────────────────────────────
+       SAST           Taint analysis (regex + AST for JS/TS), Java
+                      rule pack, Python helpers.
+       SCA            OSV + CISA KEV + EPSS, function-level
+                      reachability, dep confusion, typosquat.
+       Secrets        50+ credential patterns, high-entropy heuristic,
+                      allowlist-aware.
+       IaC            Dockerfile, docker-compose, GitHub Actions,
+                      Kubernetes manifests.
+       LLM            OWASP LLM Top 10 (2025): prompt injection,
+                      sensitive disclosure, system prompt leakage.
+       MCP            Agent-tool audit for over-privileged MCP servers.
+       Pipeline       GitHub Actions integrity: floating tags,
+                      secret echoes, OIDC misconfig.
+       Auth/AuthZ     Broken access control, IDOR, mass assignment,
+                      session fixation.
+       Container      Base-image EOL, exposed ports, runtime mode.
+```
 
-CRITICAL — 2
-  🛑 [a3f4b2c1] SQL Injection         routes/login.ts:34
-      User input concatenated directly into SQL query string.
-  🛑 [b9d8e7a2] Hardcoded Secret      config/db.ts:8
-      Database password committed to source.
+---
 
-HIGH — 1
-  ⚠️  [c2f1a0b3] Path Traversal       api/files.ts:67
-      User-controlled path passed to fs.readFile without sanitization.
+#### `/show-findings` — interactive HTML report
 
-Total: 3
-Next: /fix-all --severity critical  to remediate.
+Writes a self-contained HTML report to `.agentic-security/findings.html` and opens it in your default browser. The report has severity charts, a filterable findings list, per-finding evidence with the offending code snippet, and the proposed fix template. No external assets, no network required — works offline.
+
+**To view the report:** it usually opens automatically when the command finishes. If it doesn't, open it manually:
+
+```bash
+# macOS
+open .agentic-security/findings.html
+
+# Linux
+xdg-open .agentic-security/findings.html
+
+# Windows
+start .agentic-security/findings.html
 ```
 
 ---
@@ -139,64 +158,8 @@ Every command, flag, and output format is documented in the **[Developer Guide �
 
 ---
 
-## What `/scan-all` scans
-
-Every scan covers all nine pillars below. No configuration required.
-
-```
-       Pillar         What we scan
-       ─────────────────────────────────────────────────────────────
-       SAST           Taint analysis (regex + AST for JS/TS), Java
-                      rule pack, Python helpers.
-       SCA            OSV + CISA KEV + EPSS, function-level
-                      reachability, dep confusion, typosquat.
-       Secrets        50+ credential patterns, high-entropy heuristic,
-                      allowlist-aware.
-       IaC            Dockerfile, docker-compose, GitHub Actions,
-                      Kubernetes manifests.
-       LLM            OWASP LLM Top 10 (2025): prompt injection,
-                      sensitive disclosure, system prompt leakage.
-       MCP            Agent-tool audit for over-privileged MCP servers.
-       Pipeline       GitHub Actions integrity: floating tags,
-                      secret echoes, OIDC misconfig.
-       Auth/AuthZ     Broken access control, IDOR, mass assignment,
-                      session fixation.
-       Container      Base-image EOL, exposed ports, runtime mode.
-```
-
----
-
 ## License
 
 Full legal terms in [LICENSE](./LICENSE). The short version: don't resell, don't reverse-engineer, otherwise enjoy.
-
-For licensing inquiries, email **[ross@clearcapabilities.com](mailto:ross@clearcapabilities.com)**.
-
----
-
-## One more thing.
-
-Every generation of software gets a new superpower.
-
-Cloud made infrastructure instant.  
-Git made collaboration instant.  
-AI made coding instant.
-
-Now security has to become instant too.
-
-Agentic Security is what happens when security tooling starts —
-
-Running locally.  
-Explaining issues in plain English.  
-Coding the patch for you.  
-And disappearing into your workflow until you need it.
-
-Remember, the best security tools don't slow developers down anymore.
-
-They make shipping safer feel effortless.
-
----
-
-**🛡 agentic-security** · built with care by **[ClearCapabilities.Com](https://clearcapabilities.com)**
 
 *Stop shipping the bugs your AI didn't catch.*
