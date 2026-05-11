@@ -173,13 +173,13 @@ That's the entire product. You don't need anything else to ship safer code.
 For platform teams, AppSec engineers, and anyone who needs findings outside a chat window. Switch on with:
 
 ```bash
-agentic-security profile set pro
+agentic-security profile set developer
 ```
 
-Here's what a scan looks like in pro mode:
+Here's what a scan looks like in developer mode:
 
 ```
-agentic-security — pro mode  ·  258 finding(s) across 412 file(s)
+agentic-security — developer mode  ·  258 finding(s) across 412 file(s)
 
 Severity    File:Line                CWE      CVSS  OWASP     Vuln                       Conf
 ──────────────────────────────────────────────────────────────────────────────────────────────
