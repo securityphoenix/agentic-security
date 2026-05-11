@@ -29,7 +29,7 @@ That's the whole pitch. Two paths to use it, depending on what you are.
 
 ---
 
-## 🎨 Path 1 — "I just want to ship" (vibecoders)
+## 🎨 Easy Mode — "I just want to ship" (vibecoders)
 
 You build apps with Claude. You don't know what STRIDE means and you don't want to. You want one command that tells you you're good, or tells you exactly what to fix.
 
@@ -84,7 +84,7 @@ You don't need to remember these. The tool does.
 
 ---
 
-## ⚙️ Path 2 — "I'm a software developer"
+## ⚙️ Developer Mode — "I'm a software developer"
 
 You know how to code. You may or may not know deep AppSec, but you know what false positives feel like. You want CI/CD integration, SARIF, real numbers vs. industry benchmarks, and the ability to write your own rules.
 
