@@ -174,7 +174,7 @@ That's our product. It's quick and easy to ship safe code.
 
 > **There's a lot more under the hood.**
 
-Beyond the three easy-mode commands, agentic-security ships a full command surface for platform teams, AppSec engineers, and anyone who wants to go deeper:
+Beyond the three easy-mode commands, agentic-security ships with a lot more functionality to help developers, AppSec engineers, and anyone who wants to go deeper:
 
 | Command | Description |
 |---|---|
