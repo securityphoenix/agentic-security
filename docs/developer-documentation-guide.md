@@ -375,25 +375,6 @@ Multiple packs union their CWE sets — `--pack owasp-top-10,llm-security` keeps
 
 ---
 
-## BENCHMARKS
-
-The engine is evaluated against six corpora. Floors are enforced in CI (`.github/workflows/bench.yml`):
-
-```
-       Benchmark                     F1      Notes
-       ─────────────────────────────────────────────────────────────
-       Synthetic (in-tree)           100%    strict
-       OWASP Benchmark (Java)        96.7%   1415 tests
-       NIST SARD Juliet (Java)       100%    28k tests, 19 CWEs
-       OWASP Juice Shop (TS)         100%    strict
-       Snyk Goof (JS)                100%    strict
-       OWASP NodeGoat (JS)           100%    strict
-```
-
-Methodology: `bench-realworld.js` clones each external corpus to `.bench-cache/` on demand and runs the same engine that ships to production. Per-app `wildcardFamilies` policies in `manifest.json` match commercial-SAST scoring conventions where benchmark labels hinge on AST-level distinction the regex engine intentionally can't make (e.g., OWASP Benchmark's `ProcessBuilder(String[])`-is-safe convention).
-
----
-
 ## COMPLIANCE
 
 ```
