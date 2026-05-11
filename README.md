@@ -136,7 +136,7 @@ start reports/findings-<timestamp>.html
 
 ---
 
-#### `/agentic-security:fix --all` — patch findings in batch
+#### `/agentic-security:fix --all`
 
 Pick a severity tier; `/agentic-security:fix --all` dispatches the security-fixer agent on every finding at or above it. Tiers are **cumulative** — `/agentic-security:fix --all --high` patches critical **+** high. Sequential, test-aware, does not auto-revert on failure.
 
