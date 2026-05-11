@@ -174,11 +174,7 @@ That's the entire product. You don't need anything else to ship safer code.
 
 > **Full taxonomy. SARIF on every scan. CI gates. Audit-grade suppressions. 13 commands, everything behind flags.**
 
-For platform teams, AppSec engineers, and anyone who needs findings outside a chat window. Switch on with:
-
-```bash
-agentic-security profile set developer
-```
+For platform teams, AppSec engineers, and anyone who needs findings outside a chat window.
 
 Here's what a scan looks like in developer mode:
 
@@ -198,21 +194,81 @@ Critical: 31  High: 73  Medium: 149  Low: 5  Info: 0
 Machine-readable output written to .agentic-security/findings.{sarif,json,csv}
 ```
 
-Every finding carries CWE, CVSS, OWASP, MITRE ATT&CK technique, CAPEC pattern, exploitability score, source/sink reachability, and toxic-combinations scoring. Swap column profiles with `--columns mitre`, `capec`, or `owasp`.
+Every finding carries CWE, CVSS, OWASP, MITRE ATT&CK technique, CAPEC pattern, exploitability score, source/sink reachability, and toxic-combinations scoring.
 
-#### What else you unlock
+#### The full command surface
 
-- **Real CI gates** — `agentic-security ci . --fail-on critical`. Auto-detects PR base ref, exits non-zero on policy violations. Pre-commit hook ships in the box.
-- **Curated rule packs** — `--pack owasp-top-10`, `cwe-top-25`, `llm-security`, `supply-chain`. Multiple packs union their CWE sets.
-- **Audit-grade suppressions** — `.agentic-security/suppressions.yml` with signer ≠ reviewer, rule-version pinning, and mandatory expiry. The kind that survives an actual security review.
-- **Triage state machine** — `open → in-progress → fixed | wont-fix | false-positive`, with MTTR trend reports and opened/closed deltas.
-- **Org-wide fleet scans** — parallel workers across many repos with rolled-up output. Workspace-aware (Nx, Turborepo, pnpm).
-- **Custom YAML rules** — project-local regex/AST rules, severity overrides, scanner-version pins.
-- **Integrations** — Slack, Discord, Jira, ServiceNow, GitHub Security tab, GitLab, Splunk, Datadog, Elastic.
-- **Four compliance attestations** — NIST AI 600-1 · OWASP ASVS · PCI-DSS 4.0 · SOC 2. Each ships audit-ready CSV + JSON + Markdown evidence, control by control.
-- **Posture artifacts** — SBOM (CycloneDX 1.6, SPDX 2.3), AI-BOM (CycloneDX 1.7 ML-BOM), PBOM, API inventory, attack-chain synthesis, adversarial PoC generation.
+**Scanning**
 
-Every command, flag, and output format is in the **[Developer Guide →](docs/for-appsec-pros.md)**.
+| Command | What it does |
+|---|---|
+| `/scan --all` | Full SAST + SCA + secrets sweep — one-screen verdict |
+| `/scan --sca` | Dependency CVE audit only (OSV + CISA KEV + EPSS) |
+| `/scan --secrets` | Credential and API key sweep (60+ patterns + entropy) |
+| `/scan --authz` | Deep auth/authZ audit — JWT, OAuth2, IDOR, session fixation |
+| `/scan --mcp` | Audit MCP server configs for agent-host risks |
+| `/scan --pipeline` | Audit GitHub Actions; `--format pbom` for Pipeline BOM |
+| `/scan --logic` | Semantic business-logic review (intent vs. implementation) |
+| `/scan --diff` | Score a git diff by architectural risk (`--since <ref>`) |
+
+**Viewing & analysis**
+
+| Command | What it does |
+|---|---|
+| `/show-findings --all` | Triage FPs then open an interactive HTML report |
+| `/show-findings --kev` | List only CISA KEV findings (actively weaponized CVEs) |
+| `/show-findings --chains` | Synthesize multi-finding exploit chains |
+| `/show-findings --threat-model` | STRIDE table; add `--llm` for OWASP LLM Top 10 map |
+
+**Fixing**
+
+| Command | What it does |
+|---|---|
+| `/fix --one <id>` | Patch a single finding via the security-fixer subagent |
+| `/fix --all [--critical\|--high\|--medium\|--low]` | Batch-fix by severity tier |
+| `/fix --pr [--apply]` | Bundle fixes into a feature branch + PR |
+
+**Deep analysis**
+
+| Command | What it does |
+|---|---|
+| `/security-poc <id>` | Generate a working exploit payload + regression test |
+| `/security-explain <id>` | Plain-English explanation — what, how, worst case, fix |
+| `/security-launch-check` | Pre-deploy 10-item checklist (the things beginners miss) |
+
+**Posture management**
+
+| Command | What it does |
+|---|---|
+| `/security-posture --sbom` | CycloneDX 1.6 or SPDX 2.3 software bill of materials |
+| `/security-posture --aibom` | AI/ML Bill of Materials — models, prompts, frameworks |
+| `/security-posture --api` | Full API surface map with auth status + data classifications |
+| `/security-posture --license` | Enforce license allow/deny policy on all dependencies |
+| `/security-posture --drift` | Diff two scan snapshots — lost auth, new findings, new deps |
+| `/security-posture --mttr` | Show findings breaching per-severity SLA thresholds |
+
+**Compliance attestation**
+
+| Command | What it does |
+|---|---|
+| `/produce-compliance-report nist` | NIST AI 600-1 — 122 GenAI controls, audit-ready |
+| `/produce-compliance-report asvs` | OWASP ASVS Level 1+2 |
+| `/produce-compliance-report pci` | PCI-DSS 4.0 — 12 code-testable controls |
+| `/produce-compliance-report soc2` | SOC 2 Common Criteria CC6–CC9 |
+
+**Project meta**
+
+| Command | What it does |
+|---|---|
+| `/security-status` | Plugin + project health snapshot |
+| `/security-grade` | Letter grade (A–F) + README badge snippet |
+| `/security-help` | Full command catalog |
+| `/security-setup` | Install short-form shortcuts into this project |
+| `/security-share` | Ready-to-post content about your security progress |
+
+---
+
+Every flag, output format, CI integration, suppression schema, and custom rule option is documented in the **[Developer Guide →](docs/for-appsec-pros.md)**.
 
 ---
 
