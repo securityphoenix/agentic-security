@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.16MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.17.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.17.1-blue)]()
 
 ---
 
@@ -25,7 +25,7 @@ You don't know this yet. Neither does Claude.
 
 ---
 
-## This is `/scan`.
+## This is `/scan-all`.
 
 Type it. Get one answer.
 
@@ -53,7 +53,7 @@ But if you're not safe?
   Type /fix 1 to apply.
 ```
 
-You type `/fix 1`. Code is patched. Run `/scan` again. Green.
+You type `/fix 1`. Code is patched. Run `/scan-all` again. Green.
 
 That's the entire product.
 
@@ -67,8 +67,8 @@ For the vibecoder. The solo founder. The Cursor warrior. The "I just want to shi
 
 ```
 /security-onboard      # 30 seconds, once
-/scan                  # daily, before deploy
-/fix 1                 # when /scan has notes
+/scan-all              # daily, before deploy
+/fix 1                 # when /scan-all has notes
 ```
 
 Three commands. We thought about adding more.
@@ -106,17 +106,21 @@ It's **fast.** First scan in under five seconds on most projects. Every save aft
 
 ---
 
-## What it catches
+## What `/scan-all` catches
 
-There's a lot that an AI assistant can code incorrectly. For example:
+One command. Five pillars. Every scan.
 
-1. **SQL injection.** User input glued into queries.
-2. **Hardcoded secrets.** API keys in source — caught the moment you save.
-3. **Authorization holes.** `req.body.userId` used as the "ownership check."
-4. **JWT footguns.** Weak secrets, missing algorithm pinning, the `none` algorithm.
-5. **Prompt injection.** User input slipped into your LLM's system prompt.
+**Code (SAST).** SQL injection · XSS · command injection · path traversal · SSRF · code injection · prototype pollution · XXE · SSTI · NoSQL injection · authorization holes (IDOR, mass assignment, broken access control) · JWT footguns (alg: none, weak secrets, missing pinning) · OAuth misconfig · session fixation · insecure crypto · weak PRNG · MD5/SHA1 password hashing · error/stack-trace leaks.
 
-You'll never have to remember these.
+**LLM / agent security.** Prompt injection across Anthropic, OpenAI, LangChain, Vercel AI, Google, Mistral, Cohere, Groq, Together · prompt-template injection · MCP / agent-tool audit (dangerous capabilities, missing input validation) · unsafe model loading (`torch.load`, `pickle`, `trust_remote_code`) · AI-BOM (CycloneDX 1.7 ML-BOM).
+
+**Dependencies (SCA).** OSV + CISA KEV + EPSS — actively-exploited CVEs flagged · function-level reachability (only fires if vulnerable code is callable) · dependency confusion · typosquatting · container CVEs · 15+ package ecosystems (npm, pip, Maven, Gradle, Composer, Cargo, Go modules, Bundler, …).
+
+**Secrets.** API keys · JWTs · AWS / GCP / Azure tokens · SSH private keys · OAuth secrets · Slack webhooks · database URLs — pattern + entropy detection on every file.
+
+**Pipeline & IaC.** GitHub Actions workflow risks (floating tags, `permissions: write-all`, OIDC misconfig, secret echoes, script injection via `github.event.*`) · Dockerfile · Terraform · CloudFormation · k8s YAML · pipeline bill of materials (PBOM).
+
+**Plus the things every AppSec tool should have.** Attack-chain synthesis · adversarial PoC generation · business-logic review · toxic-combinations scoring · drift detection · MTTR / SLA tracking · audit-grade suppressions · org-wide scans · curated rule packs (OWASP Top 10, CWE Top 25, LLM Security, Supply Chain) · 4-framework compliance attestation (NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, SOC 2) · SBOM (CycloneDX + SPDX) · 11 output formats (CLI, JSON, SARIF, JUnit, CSV, HTML, Markdown, CycloneDX, SPDX, PBOM, AI-BOM).
 
 ---
 
@@ -128,7 +132,7 @@ In Claude Code:
 /plugin install agentic-security
 ```
 
-That's it. Now type `/scan`.
+That's it. Now type `/scan-all`.
 
 For CI, command line, or any project anywhere:
 

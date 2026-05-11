@@ -12,12 +12,12 @@ That's this.
 ```bash
 # Inside your Claude Code session:
 /security-setup           # install the plugin commands (one-time)
-/scan                     # safe to deploy? yes/no
+/scan-all                 # safe to deploy? yes/no
 ```
 
-That's it. If `/scan` says ✅, you're done. If it says ❌, run `/fix 1` to apply the fix.
+That's it. If `/scan-all` says ✅, you're done. If it says ❌, run `/fix 1` to apply the fix.
 
-## What `/scan` actually shows you
+## What `/scan-all` actually shows you
 
 When you're good:
 
@@ -51,8 +51,8 @@ No CWE numbers. No CVSS scores. No taxonomy you have to learn. Just a verdict an
 
 | Command | What it does |
 |---------|--------------|
-| `/scan` | Tells you if your app is safe to deploy. One verdict, one screen. |
-| `/fix <n>` | Applies the fix for finding number `n` from your last `/scan`. |
+| `/scan-all` | Tells you if your app is safe to deploy. One verdict, one screen. |
+| `/fix <n>` | Applies the fix for finding number `n` from your last `/scan-all`. |
 | `/prereview` | After Claude wrote a PR, run this *before* you merge. Catches AI-typical bugs. |
 | `/security-explain <n>` | "Why is this bad?" in plain English. Use when you're curious. |
 | `/accept <n>` | "This is fine for now." Soft-suppresses a finding for 30 days. |
@@ -81,9 +81,9 @@ agentic-security badge      # prints markdown for a README badge
 
 Slaps a "Security A+" badge on your repo. People love this.
 
-## How `/scan` is different from `/security-scan-all`
+## How `/scan-all` is different from `/security-scan-all`
 
-| | `/scan` | `/security-scan-all` |
+| | `/scan-all` | `/security-scan-all` |
 |---|---|---|
 | Output | One verdict, max 5 findings | Full per-finding list |
 | Vocabulary | Plain English | CWE / CVSS visible |
@@ -91,7 +91,7 @@ Slaps a "Security A+" badge on your repo. People love this.
 | Length | One screen | As long as it takes |
 | Best for | Daily flow | Audits, deep dives, CI |
 
-You can always run `/scan --firehose` to see everything `/security-scan-all` would show.
+You can always run `/scan-all --firehose` to see everything `/security-scan-all` would show.
 
 ## Want the full experience?
 

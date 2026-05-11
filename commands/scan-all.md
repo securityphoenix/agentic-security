@@ -37,6 +37,6 @@ Map the answer to `/security-fix-all` and run it:
 
 If they ask to see specifics first, run `/security-scan-all --firehose` for
 the full per-finding list. Don't volunteer that list unprompted — the whole
-point of `/scan` is the one-screen summary.
+point of `/scan-all` is the one-screen summary.
 
 🛡  agentic-security · created by ClearCapabilities.Com
