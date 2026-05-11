@@ -551,18 +551,21 @@ export function toShipVerdict(scan, options = {}) {
 
   if (actionable.length) {
     // Cumulative counts so each option shows what the user is actually
-    // signing up for (e.g., `high` fixes both critical AND high).
+    // signing up for (e.g., option 2 fixes both critical AND high).
     const nCrit = sev.critical || 0;
     const nHigh = nCrit + (sev.high || 0);
     const nMed  = nHigh + (sev.medium || 0);
-    const nLow  = nMed  + (sev.low || 0);
+    const nAll  = nMed  + (sev.low || 0);
+    const fix = (n) => `${n} ${n === 1 ? 'fix' : 'fixes'}`;
 
-    lines.push(c('  Which level do you want to fix first?', BOLD));
+    lines.push(c('  How many do you want to fix?', BOLD));
     lines.push('');
-    if (nCrit > 0) lines.push(`     /security-fix-all --severity critical   (${nCrit} ${nCrit === 1 ? 'fix' : 'fixes'})`);
-    if (nHigh > nCrit) lines.push(`     /security-fix-all --severity high       (${nHigh} fixes)`);
-    if (nMed > nHigh) lines.push(`     /security-fix-all --severity medium     (${nMed} fixes)`);
-    if (nLow > nMed) lines.push(`     /security-fix-all --severity low        (${nLow} fixes)`);
+    if (nCrit > 0)        lines.push(`     1. Critical only                (${fix(nCrit)})`);
+    if (nHigh > nCrit)    lines.push(`     2. Critical + High              (${fix(nHigh)})`);
+    if (nMed  > nHigh)    lines.push(`     3. Critical + High + Medium     (${fix(nMed)})`);
+    if (nAll  > nMed)     lines.push(`     4. All                          (${fix(nAll)})`);
+    lines.push('');
+    lines.push(c('  Reply with 1, 2, 3, or 4.', DIM));
     lines.push('');
     lines.push(c('  Or pick a single one:', DIM));
     lines.push(c('     /security-scan-all --firehose      see every finding', DIM));

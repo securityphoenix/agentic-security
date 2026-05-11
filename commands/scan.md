@@ -17,11 +17,23 @@ The scanner's output already includes the right call-to-action. After it
 runs, **do not list individual findings.** Instead:
 
 - If the verdict is ✅: tell the user they're safe to deploy, in one short line.
-- If the verdict is ❌: relay the severity-tier prompt the scanner printed,
-  and **ask the user which level they want to fix first** (critical, high,
-  medium, low). Wait for their answer before doing anything else.
+- If the verdict is ❌: relay the four-option prompt the scanner printed and
+  **ask which set the user wants to fix:**
+    1. Critical only
+    2. Critical + High
+    3. Critical + High + Medium
+    4. All
 
-Once the user picks a severity, run `/security-fix-all --severity <their choice>`.
+  Wait for their answer before doing anything else.
+
+Map the answer to `/security-fix-all` and run it:
+
+| Answer | Command |
+|---|---|
+| 1 (Critical only)              | `/security-fix-all --severity critical` |
+| 2 (Critical + High)            | `/security-fix-all --severity high`     |
+| 3 (Critical + High + Medium)   | `/security-fix-all --severity medium`   |
+| 4 (All)                        | `/security-fix-all --severity low`      |
 
 If they ask to see specifics first, run `/security-scan-all --firehose` for
 the full per-finding list. Don't volunteer that list unprompted — the whole

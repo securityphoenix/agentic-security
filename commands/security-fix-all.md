@@ -1,6 +1,6 @@
 ---
 description: Remediate every finding at or above a severity threshold. Silent batch — no interactive prompts.
-argument-hint: "[--severity critical|high|medium]"
+argument-hint: "[--severity critical|high|medium|low]"
 ---
 
 Read `.agentic-security/last-scan.json` and apply remediation fixes in batch.
@@ -27,6 +27,7 @@ Applied N fixes, M skipped (tests failed), K regressions introduced.
 | `critical` (default) | Only critical findings |
 | `high` | Critical + high |
 | `medium` | Critical + high + medium |
+| `low` | All findings (critical + high + medium + low) |
 
 ## Agent notes
 
