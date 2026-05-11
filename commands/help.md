@@ -52,9 +52,9 @@ COMPLIANCE ATTESTATION
   /produce-compliance-report [nist|asvs|pci|soc2]  Auditor-ready attestation for any framework
 
 PROJECT META
-  /security-setup            Install short-form commands in this project
+  
   /security-status           Plugin & project health snapshot
-  /security-help             This command
+  /help                  This command
   /security-grade            Letter grade (A–F) + README badge snippet
   /security-share            Posts (Twitter/LinkedIn/Discord/recap) about your security progress
 

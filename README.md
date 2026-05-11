@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.16MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.23.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.24.0-blue)]()
 
 ---
 
@@ -214,9 +214,7 @@ Beyond the three easy-mode commands, agentic-security ships a full command surfa
 /agentic-security:security-status       One-screen plugin & project health snapshot — version, last
                                         scan time, finding counts, cache size, hook activation.
 
-/agentic-security:security-setup        Install short-form command shortcuts into this project.
-
-/agentic-security:security-help         Full command catalog with one-line descriptions.
+/agentic-security:help                  Full command catalog with one-line descriptions.
 ```
 
 For the complete reference — CI integration, SARIF output, audit-grade suppressions, custom rules, org-wide fleet scans, and every flag — read the **[Developer Guide →](https://github.com/clearcapabilities/agentic-security/blob/main/docs/developer-documentation-guide.md)**.
