@@ -8,32 +8,30 @@ Print the full agentic-security command catalog.
 agentic-security commands
 
 EASY MODE — three commands. The whole product.
-  /scan-all                  One-screen "safe to deploy?" verdict
+  /scan                      One-screen "safe to deploy?" verdict (--sca-only or --secrets-only for focused scans)
   /show-findings             Print findings from the last scan
   /fix-all                   Batch-fix every finding at or above --severity
 
 DEVELOPER MODE — full catalog below.
 
 SCANNING & FIXING
-  /security-scan-all         Full SAST + SCA + secrets + IaC sweep
+  /scan --all                Full SAST + SCA + secrets sweep (one-screen verdict)
+  /scan --sca-only           Dependency CVE audit only (OSV.dev-backed)
+  /scan --secrets-only       Hardcoded credential / API key scan only
   /security-fix              Patch a single finding (by id) via the fixer subagent
   /fix-all                   Batch-fix every finding at or above --severity
   /security-fix-pr           Bundle critical fixes into a feature branch + PR
-  /security-report           Self-contained HTML report (also json/md/sarif/sbom)
   /security-triage           Validate findings; suppress confirmed false positives
-  /security-sca              Dependency CVE audit only (OSV.dev-backed)
-  /security-secrets          Hardcoded credential / API key scan only
 
 AI-NATIVE CAPABILITIES
   /security-chain            Synthesize multi-finding exploit chains
   /security-poc              Generate adversarial PoC for a specific finding
   /security-logic-review     Intent-vs-implementation business logic review
-  /security-threat-model     STRIDE coverage table from the last scan
+  /security-threat-model     Threat model from last scan (--stride or --llm for OWASP LLM Top 10)
   /security-mcp-audit        Audit MCP server configs (agent-host risks)
   /security-authz            Deep auth/authZ audit (OWASP A01)
   /security-kev              List CVEs in CISA Known Exploited Vulnerabilities
   /security-aibom            AI/ML Bill of Materials — models, prompts, frameworks, vector stores
-  /security-llm-threat-model OWASP LLM Top 10 (2025) coverage map
 
 POSTURE MANAGEMENT
   /security-material-change  Score a git diff by architectural risk
@@ -45,23 +43,19 @@ POSTURE MANAGEMENT
   /security-mttr             Show findings older than per-severity SLA
 
 COMPLIANCE ATTESTATION
-  /nist-ai-600-1             NIST AI 600-1 attestation (122 GenAI controls)
-  /owasp-asvs                OWASP ASVS Level 1+2 (15 controls)
-  /pci-dss                   PCI-DSS 4.0 code-testable controls (12)
-  /soc2                      SOC 2 Common Criteria CC6–CC9 (12 controls)
+  /produce-compliance-report [nist|asvs|pci|soc2]  Auditor-ready attestation for any framework
 
 PROJECT META
   /security-setup            Install short-form commands in this project
   /security-status           Plugin & project health snapshot
   /security-help             This command
-  /security-badge            Print a markdown badge for your README
-  /security-share            Copy-paste posts (Twitter/LinkedIn/Discord)
-  /security-recap            Year-in-Security recap card
+  /security-grade            Letter grade (A–F) + README badge snippet
+  /security-share            Posts (Twitter/LinkedIn/Discord/recap) about your security progress
 
 USAGE NOTES
   - Every command works as /agentic-security:<name> too (the long form).
   - Most commands accept a [path] argument to limit scope.
-  - First run /security-scan-all once. Most other commands read its output
+  - First run /scan once. Most other commands read its output
     from .agentic-security/last-scan.json.
   - PostToolUse hook scans every Edit/Write automatically. Throttled per-file
     to one scan / 5s.

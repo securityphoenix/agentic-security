@@ -22,7 +22,7 @@ KEV (Known Exploited Vulnerabilities) is CISA's authoritative list of CVEs being
 
 ## Triage priority
 
-Findings flagged `kev: true` get +20 toxicity score automatically — they sort to the top of the standard `/security-scan-all` report. This command is for when you want a focused, KEV-only view (e.g., "what do I have to fix this week per CISA BOD 22-01").
+Findings flagged `kev: true` get +20 toxicity score automatically — they sort to the top of the standard `/scan --all` report. This command is for when you want a focused, KEV-only view (e.g., "what do I have to fix this week per CISA BOD 22-01").
 
 The `kevRansomware: true` flag means CISA has linked the CVE to known ransomware campaigns. Those should be treated as the highest priority.
 

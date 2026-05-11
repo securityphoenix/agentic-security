@@ -1,0 +1,56 @@
+---
+description: Generate an auditor-ready compliance attestation for NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, or SOC 2.
+argument-hint: "[nist|asvs|pci|soc2] [path] [--format md|csv|json] [--output <file>]"
+---
+
+Run the compliance attestation scanner for the chosen framework.
+
+```bash
+FRAMEWORK="${1:-}"
+PATH_ARG="${2:-.}"
+FORMAT="${FORMAT:-md}"
+OUTPUT=""
+
+case "$FRAMEWORK" in
+  nist|"nist ai 600-1"|"nist-ai-600-1")
+    OUTPUT="${OUTPUT:-nist-ai-600-1-attestation.md}"
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/nist-compliance/scan.py "$PATH_ARG"
+    ;;
+  asvs|"owasp-asvs")
+    OUTPUT="${OUTPUT:-owasp-asvs-attestation.md}"
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/owasp-asvs/scan.py "$PATH_ARG" --format "$FORMAT" --output "$OUTPUT"
+    ;;
+  pci|"pci-dss")
+    OUTPUT="${OUTPUT:-pci-dss-attestation.md}"
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pci-dss/scan.py "$PATH_ARG" --format "$FORMAT" --output "$OUTPUT"
+    ;;
+  soc2|soc)
+    OUTPUT="${OUTPUT:-soc2-attestation.md}"
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/soc2/scan.py "$PATH_ARG" --format "$FORMAT" --output "$OUTPUT"
+    ;;
+  *)
+    echo "Usage: /produce-compliance-report [nist|asvs|pci|soc2] [path] [--format md|csv|json]"
+    echo ""
+    echo "  nist   — NIST AI 600-1 (122 GenAI controls; auditor-ready attestation)"
+    echo "  asvs   — OWASP ASVS Level 1+2 (multi-signal evidence model)"
+    echo "  pci    — PCI-DSS 4.0 (12 code-testable controls)"
+    echo "  soc2   — SOC 2 Common Criteria CC6–CC9 (12 controls)"
+    exit 1
+    ;;
+esac
+```
+
+## Frameworks
+
+**`nist`** — NIST AI 600-1: 122 code-testable controls for GenAI systems. Writes three files: `.md` for auditors, `.csv` for spreadsheet review, `.json` for CI gating. Edit `scripts/nist-compliance/evidence-rules.json` to teach the scanner your project's vocabulary.
+
+**`asvs`** — OWASP ASVS Level 1+2: multi-signal evidence model (manifest → import → path → code/config/doc terms, with negation filter). Edit `scripts/owasp-asvs/evidence-rules.json` to extend controls.
+
+**`pci`** — PCI-DSS 4.0: strong cryptography, TLS, MFA, audit logging, account lockout, vulnerability scanning automation. Pure-organisational controls are out of scope by design.
+
+**`soc2`** — SOC 2 Common Criteria: logical access, MFA, encryption, monitoring, change management, vendor risk via SBOM, incident-response runbooks. For a full vendor questionnaire, also run:
+- `/security-sbom --format cyclonedx` (CC9.2 evidence)
+- `/security-pipeline --format pbom` (CC8.1 evidence)
+- `/security-mttr` (CC7.x — proves SLA tracking)
+- `/security-api-inventory --format openapi` (CC6.x — proves access surface documented)
+- `/produce-compliance-report nist` (if the product uses GenAI)

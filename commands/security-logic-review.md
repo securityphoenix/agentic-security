@@ -1,11 +1,11 @@
 ---
-description: Find business-logic flaws that pattern matchers can't catch — broken authorization tier checks, race conditions, state-machine bypasses, intent vs. implementation gaps. Pairs with /security-scan-all.
+description: Find business-logic flaws that pattern matchers can't catch — broken authorization tier checks, race conditions, state-machine bypasses, intent vs. implementation gaps. Pairs with /scan --all.
 argument-hint: "[path] [--max <N>]"
 ---
 
 Run a semantic business-logic review of the route handlers in `${1:-.}`.
 
-1. If `.agentic-security/last-scan.json` does not exist, run `/security-scan-all` first to populate the route inventory. The reviewer uses that list to pick targets.
+1. If `.agentic-security/last-scan.json` does not exist, run `/scan --all` first to populate the route inventory. The reviewer uses that list to pick targets.
 
 2. Invoke the `security-logic-reviewer` subagent with:
    - The route list from `.agentic-security/last-scan.json` (`scan.routes` field).

@@ -1,6 +1,6 @@
 ---
 description: Generate copy-paste-ready posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress — current grade, streak, achievements. One command, three formats.
-argument-hint: "[twitter|linkedin|discord|all]"
+argument-hint: "[twitter|linkedin|discord|recap|all]"
 ---
 
 Print copy-paste posts about your project's current security state.
@@ -11,7 +11,7 @@ const fs = require('fs');
 
 let scan, streak;
 try { scan = JSON.parse(fs.readFileSync('.agentic-security/last-scan.json', 'utf8')); }
-catch { console.log('No scan yet. Run /security-scan-all first, then /security-share.'); process.exit(0); }
+catch { console.log('No scan yet. Run /scan --all first, then /security-share.'); process.exit(0); }
 try { streak = JSON.parse(fs.readFileSync('.agentic-security/streak.json', 'utf8')); }
 catch { streak = {}; }
 
@@ -116,9 +116,51 @@ if (target === 'discord' || target === 'slack' || target === 'all') {
   out(lines.join('\\n'));
 }
 
-if (!['twitter', 'x', 'linkedin', 'discord', 'slack', 'all'].includes(target)) {
+if (target === 'recap' || target === 'all') {
+  let streak2;
+  try { streak2 = JSON.parse(fs.readFileSync('.agentic-security/streak.json', 'utf8')); } catch { streak2 = {}; }
+  if (streak2.totalScans) {
+    function daysSince(iso) { if (!iso) return 0; return Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 86400000)); }
+    const daysActive = daysSince(streak2.firstScanDate);
+    const totalScans2 = streak2.totalScans || 0;
+    const fixes2 = streak2.totalFixesInferred || 0;
+    const longestStreak = streak2.bestDaysCleanCritical || streak2.daysCleanCritical || 0;
+    const currentStreak2 = streak2.daysCleanCritical || 0;
+    const firstFindings = streak2.totalFindingsAtFirstScan ?? 0;
+    const lastFindings = streak2.totalFindingsAtLastScan ?? 0;
+    const findingsResolved = Math.max(0, firstFindings - lastFindings);
+    const TIER_ORDER2 = ['streak-365','streak-180','streak-90','streak-30','streak-7','triage-gold','triage-silver','triage-master','grade-a-plus','grade-a','launch-ready','clean-sweep','first-fix','first-scan'];
+    const TIER_LABELS2 = { 'streak-365':'💠 Diamond Streak','streak-180':'💎 Platinum Streak','streak-90':'🥇 Gold Streak','streak-30':'🥈 Silver Streak','streak-7':'🥉 Bronze Streak','triage-gold':'🥇 Gold Fixer','triage-silver':'🥈 Silver Fixer','triage-master':'🎯 Bronze Fixer','grade-a-plus':'🌟 Grade A+','grade-a':'🏆 Grade A','launch-ready':'🚀 Launch Ready','clean-sweep':'🧹 Clean Sweep','first-fix':'🔧 First Fix','first-scan':'🛡️ First Scan' };
+    const earned2 = streak2.achievements || [];
+    const topThree = TIER_ORDER2.filter(id => earned2.includes(id)).slice(0, 3);
+    console.log('');
+    console.log(W('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '1'));
+    console.log(W('       Your Year in Security 🔒', '1'));
+    console.log(W('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '1'));
+    console.log('');
+    console.log('  ' + W(daysActive + ' days', '1;96') + ' protected · ' + W(totalScans2, '1') + ' scans run');
+    console.log('');
+    if (fixes2 > 0) console.log('  🔧  You shipped ' + W(fixes2 + ' fix' + (fixes2===1?'':'es'), '1;92'));
+    if (findingsResolved > 0 && firstFindings > 0) console.log('  📉  Resolved ' + W(findingsResolved + ' finding' + (findingsResolved===1?'':'s'), '1') + ' since day one (' + Math.round(100*findingsResolved/firstFindings) + '% of where you started)');
+    if (longestStreak > 0) console.log('  🔥  Longest clean run: ' + W(longestStreak + ' day' + (longestStreak===1?'':'s') + ' without a critical', '1;93'));
+    if (currentStreak2 > 0 && currentStreak2 !== longestStreak) console.log('  ⏱️   Current streak: ' + W(currentStreak2 + ' day' + (currentStreak2===1?'':'s'), '1'));
+    if (streak2.lastGrade) {
+      let line = '  🏷️   Grade: ';
+      if (streak2.previousGrade && streak2.previousGrade !== streak2.lastGrade) line += W(streak2.previousGrade, '2') + ' → ' + W(streak2.lastGrade, '1');
+      else line += W(streak2.lastGrade, '1');
+      if (streak2.bestGrade && streak2.bestGrade !== streak2.lastGrade) line += '   (best: ' + streak2.bestGrade + ')';
+      console.log(line);
+    }
+    if (topThree.length) { console.log(''); console.log(W('  Top achievements:', '1')); for (const id of topThree) console.log('    ' + (TIER_LABELS2[id] || id)); if (earned2.length > topThree.length) console.log('    ' + W('+ ' + (earned2.length - topThree.length) + ' more', '2')); }
+    console.log('');
+    console.log(W('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '1'));
+    console.log('');
+  }
+}
+
+if (!['twitter', 'x', 'linkedin', 'discord', 'slack', 'recap', 'all'].includes(target)) {
   console.error('Unknown target: ' + target);
-  console.error('Usage: /security-share [twitter|linkedin|discord|all]');
+  console.error('Usage: /security-share [twitter|linkedin|discord|recap|all]');
   process.exit(1);
 }
 " -- "$1"

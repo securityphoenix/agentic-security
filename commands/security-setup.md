@@ -1,5 +1,5 @@
 ---
-description: Install short-form /security-* command shortcuts into this project so you can type /security-scan-all instead of /agentic-security:security-scan-all.
+description: Install short-form command shortcuts into this project so you can type /scan-all instead of /agentic-security:scan-all.
 ---
 
 Install project-level command shortcuts for agentic-security so the short forms work in this project.
@@ -16,18 +16,6 @@ if [ -z "$BUNDLE" ]; then
   echo "ERROR: agentic-security plugin bundle not found. Ensure the plugin is installed."
   exit 1
 fi
-
-cat > .claude/commands/security-scan-all.md << CMDEOF
----
-description: Run a full security scan (SAST + SCA + Secrets) on this project or a given path.
-argument-hint: "[path]"
----
-\`\`\`bash
-node $BUNDLE scan \${1:-.} --format cli --verbose
-\`\`\`
-After the scan, the JSON report is written to \`.agentic-security/last-scan.json\`.
-If you see critical findings, run \`/fix-all --severity critical\` to remediate.
-CMDEOF
 
 cat > .claude/commands/security-fix.md << CMDEOF
 ---
@@ -48,34 +36,12 @@ argument-hint: "[--severity critical|high|medium]"
 Read \`.agentic-security/last-scan.json\`. For every finding whose severity is at or above \`\${1:-critical}\`, dispatch the security-fixer subagent in sequence (not in parallel — each fix may invalidate later findings). After each batch, re-run \`/security-scan\` to confirm fixes landed. Stop and report if a fix's tests fail.
 CMDEOF
 
-cat > .claude/commands/security-report.md << CMDEOF
+cat > .claude/commands/scan.md << CMDEOF
 ---
-description: Generate an HTML security report (or JSON/Markdown/SARIF).
-argument-hint: "[--format html|json|md|sarif] [--output <file>]"
+description: Run the scanner. Default is full sweep; use --sca-only or --secrets-only for focused scans.
+argument-hint: "[path] [--all|--sca-only|--secrets-only]"
 ---
-\`\`\`bash
-node $BUNDLE scan . --format \${1:-html} --output \${2:-security-report.html}
-\`\`\`
-CMDEOF
-
-cat > .claude/commands/security-sca.md << CMDEOF
----
-description: Run a dependency vulnerability scan (SCA only) against this project.
-argument-hint: "[path]"
----
-\`\`\`bash
-node $BUNDLE scan \${1:-.} --only sca --format cli
-\`\`\`
-CMDEOF
-
-cat > .claude/commands/security-secrets.md << CMDEOF
----
-description: Scan for leaked credentials and hardcoded secrets.
-argument-hint: "[path]"
----
-\`\`\`bash
-node $BUNDLE scan \${1:-.} --only secrets --format cli
-\`\`\`
+Run \`/agentic-security:scan \$@\` to scan this project.
 CMDEOF
 
 cat > .claude/commands/security-mcp-audit.md << CMDEOF
@@ -165,43 +131,39 @@ node $BUNDLE scan . --format \${1:-aibom-md}
 \`\`\`
 CMDEOF
 
-cat > .claude/commands/security-llm-threat-model.md << CMDEOF
+cat > .claude/commands/security-threat-model.md << CMDEOF
 ---
-description: Map findings to OWASP LLM Top 10 (2025) — Prompt Injection, Sensitive Disclosure, Supply Chain, Poisoning, Improper Output, Excessive Agency, System Prompt Leakage, Vector Weaknesses, Misinformation, Unbounded Consumption.
+description: Threat model from the last scan — STRIDE (default) or OWASP LLM Top 10 (--llm).
+argument-hint: "[--stride|--llm]"
 ---
-Run \`/agentic-security:security-llm-threat-model\` for the OWASP LLM Top 10 coverage map.
+Run \`/agentic-security:security-threat-model \${1:---stride}\` for the threat model.
 CMDEOF
 
-cat > .claude/commands/security-badge.md << CMDEOF
+cat > .claude/commands/produce-compliance-report.md << CMDEOF
 ---
-description: Print a markdown badge of your current security grade for your project's README.
+description: Auditor-ready compliance attestation for NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, or SOC 2.
+argument-hint: "[nist|asvs|pci|soc2]"
 ---
-Run \`/agentic-security:security-badge\` for the badge markdown.
+Run \`/agentic-security:produce-compliance-report \${1}\` for the compliance attestation.
 CMDEOF
 
 cat > .claude/commands/security-share.md << CMDEOF
 ---
-description: Generate copy-paste posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress.
-argument-hint: "[twitter|linkedin|discord|all]"
+description: Posts (Twitter/LinkedIn/Discord/recap) about your security progress.
+argument-hint: "[twitter|linkedin|discord|recap|all]"
 ---
-Run \`/agentic-security:security-share \${1:-all}\` for shareable posts.
-CMDEOF
-
-cat > .claude/commands/security-recap.md << CMDEOF
----
-description: Year-in-Security recap card — days active, scans run, fixes shipped, longest streak, top achievements.
----
-Run \`/agentic-security:security-recap\` for the recap card.
+Run \`/agentic-security:security-share \${1:-all}\` for shareable posts and recap.
 CMDEOF
 
 echo "✓ Installed shortcuts in .claude/commands/:"
-echo "  /security-scan-all, /security-fix, /fix-all"
-echo "  /security-report, /security-sca, /security-secrets"
+echo "  /scan, /show-findings, /fix-all"
+echo "  /security-fix, /security-fix-pr, "
 echo "  /security-mcp-audit, /security-authz, /security-kev"
 echo "  /security-help, /security-status"
 echo "  /security-explain, /security-grade, /security-launch-check"
-echo "  /security-aibom, /security-llm-threat-model"
-echo "  /security-badge, /security-share, /security-recap"
+echo "  /security-aibom, /security-threat-model [--stride|--llm]"
+echo "  /security-share [twitter|linkedin|discord|recap|all]"
+echo "  /produce-compliance-report [nist|asvs|pci|soc2]"
 echo ""
 echo "These work in this project. Re-run /agentic-security:security-setup in other projects."
 ```

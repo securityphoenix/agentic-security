@@ -103,7 +103,7 @@ if (startedAt) {
   if (lastScan.routes) console.log('  Routes:         ' + lastScan.routes.length);
   if (lastScan.components) console.log('  Components:     ' + lastScan.components.length);
 } else {
-  console.log('  When:           never — run /security-scan-all to bootstrap');
+  console.log('  When:           never — run /scan --all to bootstrap');
 }
 console.log('');
 console.log('Configuration');
@@ -161,7 +161,7 @@ if (counts.critical > 0) {
 } else if (counts.high > 0) {
   console.log('Action: ' + counts.high + ' high finding(s). Run /fix-all --severity high');
 } else if (!startedAt) {
-  console.log('Action: run /security-scan-all to take a first inventory');
+  console.log('Action: run /scan --all to take a first inventory');
 } else {
   console.log('Status: clean ✓');
 }

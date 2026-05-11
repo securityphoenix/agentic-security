@@ -11,7 +11,7 @@ let scan = null;
 try { scan = JSON.parse(fs.readFileSync('.agentic-security/last-scan.json', 'utf8')); } catch {}
 
 if (!scan) {
-  console.log('No scan yet. Run /security-scan-all first to take a baseline.');
+  console.log('No scan yet. Run /scan --all first to take a baseline.');
   process.exit(0);
 }
 
@@ -78,7 +78,7 @@ if (c > 10 || (c > 5 && kevCount > 0)) {
 } else if (counts.medium > 0) {
   grade = 'A';
   reason = '0 critical and 0 high. ' + counts.medium + ' medium finding(s) remain — typically hardening, not breach risks.';
-  action = 'Optional: review medium findings with /security-report.';
+  action = 'Optional: review medium findings with /show-findings.';
 } else {
   grade = 'A+';
   reason = 'No critical, high, or medium findings. Clean across the board.';
@@ -86,7 +86,7 @@ if (c > 10 || (c > 5 && kevCount > 0)) {
 }
 
 // Render
-const W = (s, code) => process.stdout.isTTY ? \`\\x1b[\${code}m\${s}\\x1b[0m\` : s;
+const W = (s, code) => process.stdout.isTTY ? `\x1b[${code}m${s}\x1b[0m` : s;
 const COLOR = { 'A+': '92', 'A': '92', 'A-': '92', 'B': '32', 'B-': '32', 'C': '33', 'C-': '33', 'D': '31', 'F': '91' };
 
 // 0.14.0 — show grade-delta vs. previous scan if streak.json exists
@@ -116,7 +116,16 @@ if (grade === 'A+') {
   console.log('  ' + W('🎉 Perfect score. Save this scan as your baseline so you know if anything regresses.', '92'));
   console.log('');
 }
+
+// Badge — inline so users get the README snippet without a separate command
+const colors = { 'A+': 'brightgreen', 'A': 'brightgreen', 'A-': 'green', 'B': 'green', 'B-': 'yellowgreen', 'C': 'yellow', 'C-': 'orange', 'D': 'orange', 'F': 'red' };
+const params = new URLSearchParams({ label: 'agentic-security', message: grade, color: colors[grade] || 'lightgrey', logo: 'shield', logoColor: 'white' });
+const badgeUrl = 'https://img.shields.io/static/v1?' + params.toString();
+const repo = 'https://github.com/clearcapabilities/agentic-security';
+console.log('  README badge:');
+console.log('  [![agentic-security: ' + grade + '](' + badgeUrl + ')](' + repo + ')');
+console.log('');
 "
 ```
 
-Print the output verbatim. The user wants a one-glance posture summary.
+Print the output verbatim. The user wants a one-glance posture summary with a README badge snippet.

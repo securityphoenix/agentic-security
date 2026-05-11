@@ -5,7 +5,7 @@ argument-hint: "<finding-id>"
 
 Generate a concrete proof-of-concept (or false-positive verdict) for finding `${1}`.
 
-1. If `.agentic-security/last-scan.json` does not exist, ask the user to run `/security-scan-all` first and stop.
+1. If `.agentic-security/last-scan.json` does not exist, ask the user to run `/scan --all` first and stop.
 
 2. Load the finding by ID:
    ```bash

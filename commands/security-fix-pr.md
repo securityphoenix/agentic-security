@@ -12,7 +12,7 @@ Apply fixes for every finding at or above `${SEVERITY:-critical}` severity, bund
 1. **Pre-flight checks**:
    - Verify the working tree is clean (`git status --porcelain` empty). If not, ask the user to commit or stash first.
    - Verify `gh auth status` succeeds. If not, fall back to local-branch-only mode.
-   - Verify `.agentic-security/last-scan.json` exists. If not, run `/security-scan-all` first.
+   - Verify `.agentic-security/last-scan.json` exists. If not, run `/scan --all` first.
 
 2. **Build the bundle plan**:
    - Read `.agentic-security/last-scan.json`.
@@ -53,7 +53,7 @@ This PR bundles ${COUNT} findings remediated by \`agentic-security\`.
 
 - Each fix was validated by running the project's test command after the change.
 - Any fix that broke tests was reverted; those findings remain open.
-- Re-run \`/security-scan-all\` and \`/security-poc\` for any individual finding to verify.
+- Re-run \`/scan --all\` and \`/security-poc\` for any individual finding to verify.
 
 🤖 Generated with [agentic-security](https://github.com/clearcapabilities/agentic-security)
 EOF

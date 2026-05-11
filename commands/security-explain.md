@@ -73,7 +73,7 @@ if (finding) {
   console.log('');
 } else {
   console.error(\`No finding or CWE matched '\${arg}'.\`);
-  console.error('Run /security-scan-all first, then /security-explain <finding-id>.');
+  console.error('Run /scan --all first, then /security-explain <finding-id>.');
   process.exit(1);
 }
 

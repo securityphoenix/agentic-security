@@ -12,7 +12,7 @@ const path = require('path');
 let scan = null;
 try { scan = JSON.parse(fs.readFileSync('.agentic-security/last-scan.json', 'utf8')); } catch {}
 if (!scan) {
-  console.log('No scan yet. Run /security-scan-all first, then /security-launch-check.');
+  console.log('No scan yet. Run /scan --all first, then /security-launch-check.');
   process.exit(0);
 }
 

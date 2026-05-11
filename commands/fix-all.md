@@ -42,6 +42,6 @@ Applied N fixes, M skipped (tests failed), K regressions introduced.
 
 - Use the `security-fixer` subagent for every file edit.
 - Warn the user **before starting** if the git tree is dirty — the batch can't be safely rolled back if there are uncommitted changes mixed in. Suggest committing or stashing first.
-- After the loop completes (or stops), the user can run `/security-scan-all` to confirm the final state.
+- After the loop completes (or stops), the user can run `/scan --all` to confirm the final state.
 
 🛡  agentic-security · created by ClearCapabilities.Com

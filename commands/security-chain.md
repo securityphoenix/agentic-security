@@ -5,7 +5,7 @@ argument-hint: "[--severity critical|high|all]"
 
 Read `.agentic-security/last-scan.json` and identify multi-finding **exploit chains** — combinations of individual findings that compose into worse outcomes than any single line item.
 
-1. If `.agentic-security/last-scan.json` does not exist, run `/security-scan-all` first and stop. The user must have a scan before chains can be synthesised.
+1. If `.agentic-security/last-scan.json` does not exist, run `/scan --all` first and stop. The user must have a scan before chains can be synthesised.
 
 2. Load the findings list and filter to severity ≥ `${1:-high}` for the chaining input set. Lower-severity findings can still appear as *components* of a chain when paired with a high-severity partner.
 
