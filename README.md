@@ -146,17 +146,24 @@ For licensing inquiries, email **[ross@clearcapabilities.com](mailto:ross@clearc
 
 ## One more thing.
 
-Every security tool you've ever used was built by security people. For security people.
+Every generation of software gets a new superpower.
 
-This one wasn't.
+Cloud made infrastructure instant.  
+Git made collaboration instant.  
+AI made coding instant.
 
-This was built by people who ship code, for people who ship code. It is small, opinionated, and almost embarrassingly fast. It catches the things you'd find on a post-mortem two weeks from now — today, while the code is still on your screen.
+Now security has to become instant too.
 
-Install it. Use it for one day.
+Agentic Security is what happens when security tooling starts —
 
-If it doesn't change how you ship, uninstall it. Costs nothing.
+Running locally.  
+Explaining issues in plain English.  
+Coding the patch for you.  
+And disappearing into your workflow until you need it.
 
-If it does, tell someone.
+Remember, the best security tools don't slow developers down anymore.
+
+They make shipping safer feel effortless.
 
 ---
 
