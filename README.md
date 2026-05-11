@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.16MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.17.1-blue)]()
+[![Version](https://img.shields.io/badge/version-0.18.0-blue)]()
 
 ---
 
@@ -25,9 +25,15 @@ You don't know this yet. Neither does Claude.
 
 ---
 
-## This is `/scan-all`.
+## Two modes. One tool.
 
-Type it. Get one answer.
+Both modes run the same engine. They differ in how much you see.
+
+### 🎨 Easy Mode
+
+Three commands. The whole product. The default for everyone.
+
+**`/scan-all`** — daily, before deploy. One-screen verdict.
 
 ```
 ─────────────────────────────────────────
@@ -35,9 +41,7 @@ Type it. Get one answer.
 ─────────────────────────────────────────
 ```
 
-You're done. Push it.
-
-But if you're not safe?
+…or, when there's work to do:
 
 ```
 ─────────────────────────────────────────
@@ -50,30 +54,40 @@ But if you're not safe?
 
      Why: An attacker can dump your entire users table.
 
-  Type /fix-all to apply.
+  Type /show-findings to see the rest, or /fix-all to apply them.
 ```
 
-You type `/fix-all`. Code is patched. Run `/scan-all` again. Green.
+**`/show-findings`** — print every finding from the last scan, grouped by severity. No re-scan.
+
+```
+Findings from last scan
+
+CRITICAL — 2
+  🛑 [a3f4b2c1] SQL Injection         routes/login.ts:34
+      User input concatenated directly into SQL query string.
+  🛑 [b9d8e7a2] Hardcoded Secret      config/db.ts:8
+      Database password committed to source.
+
+HIGH — 1
+  ⚠️  [c2f1a0b3] Path Traversal       api/files.ts:67
+      User-controlled path passed to fs.readFile without sanitization.
+
+Total: 3
+Next: /fix-all --severity critical  to remediate.
+```
+
+**`/fix-all`** — batch-fix every finding at or above a severity. Sequential, test-aware, doesn't auto-revert.
+
+```
+Fixing 3 findings…
+  ✓ routes/login.ts:34   SQL Injection      → parameterized query
+  ✓ config/db.ts:8       Hardcoded Secret   → moved to env var
+  ✓ api/files.ts:67      Path Traversal     → path.join + allowlist
+
+Applied 3 fixes, 0 skipped, 0 regressions introduced.
+```
 
 That's the entire product.
-
----
-
-## Two modes. One tool.
-
-### 🎨 Easy Mode
-
-For the vibecoder. The solo founder. The Cursor warrior. The "I just want to ship" generation.
-
-```
-/scan-all              # daily, before deploy — one-screen verdict
-/show-findings         # print the findings from the last scan
-/fix-all               # batch-fix everything at/above a severity
-```
-
-Three commands. We thought about adding more.
-
-We didn't.
 
 ### ⚙️ Developer Mode
 
@@ -81,32 +95,27 @@ For the senior engineer. The platform team. The person who actually reads SARIF.
 
 ```bash
 agentic-security profile set pro
-agentic-security scan . --format sarif
-agentic-security ci . --fail-on critical          # one-shot CI runner
-agentic-security scan --pack owasp-top-10 .       # focus on a curated CWE pack
 ```
 
-Full taxonomy: CWE / CVSS / OWASP / MITRE ATT&CK. SARIF, JSON, JUnit, CSV — every scan. CI gates. Curated rule packs (`owasp-top-10`, `cwe-top-25`, `llm-security`, `supply-chain`). Pre-commit hook. Slack, Jira, GitHub Security, SIEM. Audit-grade suppressions with reviewer + expiry. Triage workflow with MTTR trends. Org-wide scans across a fleet of repos. Custom rules in YAML.
+Unlocks the full surface — 35+ commands and every output format. What you get on top of Easy Mode:
 
-[Developer guide →](docs/for-appsec-pros.md)
+- **Full taxonomy in every finding** — CWE, CVSS, OWASP, MITRE ATT&CK, CAPEC.
+- **Machine-readable output** — SARIF 2.1.0, JSON, JUnit, CSV written on every scan.
+- **CI gating** — `agentic-security ci . --fail-on critical` with PR-base detection; pre-commit hook included.
+- **Curated rule packs** — `owasp-top-10`, `cwe-top-25`, `llm-security`, `supply-chain`.
+- **Audit-grade suppressions** — `.agentic-security/suppressions.yml` with signer ≠ reviewer, rule_version pinning, mandatory expiry.
+- **Triage workflow** — per-finding state machine (`open` → `in-progress` → `fixed`/`wont-fix`/`false-positive`) with MTTR trend reports.
+- **Org-wide fleet scans** — parallel worker pool across many repos with rolled-up output.
+- **Custom rules in YAML** — project-local regex/AST rules, severity overrides, version pins.
+- **Integrations** — Slack, Discord, Jira, GitHub Security tab, SIEM (Splunk / Datadog / Elastic).
+- **Compliance attestations** — NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, SOC 2 — audit-ready CSV + JSON + Markdown.
+- **Posture artifacts** — SBOM (CycloneDX 1.6, SPDX 2.3), PBOM, AI-BOM (CycloneDX 1.7 ML-BOM), API inventory, attack-chain synthesis, PoC generation.
 
----
-
-## Why people stay
-
-It runs **where you already are.** Inside Claude Code. No new tool to learn. No new tab to keep open. No surveys, no signups.
-
-It runs **on your machine.** Your code never leaves it. No cloud. No phone-home.
-
-It speaks **plain English.** Not "Reflected XSS via unsanitized template literal." Just: *"User input goes straight into your HTML response. Here's the fix."*
-
-It **actually fixes things.** Most security tools tell you to "consider validation." This one writes the diff.
-
-It's **fast.** First scan in under five seconds on most projects. Every save after that is instant.
+Every command, flag, and output format is documented in the [Developer Guide →](docs/for-appsec-pros.md).
 
 ---
 
-## COVERAGE
+## What scans does `/scan-all` run?
 
 ```
        Pillar         What we scan
