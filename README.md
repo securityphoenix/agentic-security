@@ -32,10 +32,10 @@ That command lives inside Claude Code, runs locally on your laptop, and explains
 In **Claude Code** (recommended — gets you the slash commands):
 
 ```
-/plugin install agentic-security
+/plugin marketplace add https://github.com/clearcapabilities/agentic-security
 ```
 
-That's it. Type `/scan-all` to confirm it's working.
+That's it. Type `/scan` to confirm it's working.
 
 For **CI, terminal, or any project anywhere** (no Claude Code required):
 
