@@ -138,9 +138,9 @@ npx @clearcapabilities/agentic-security-scanner scan .
 
 ## License
 
-Free for solo developers and teams of ≤ 10. Bigger team? Email **[ross@clearcapabilities.com](mailto:ross@clearcapabilities.com)** for a per-seat license.
-
 Full legal terms in [LICENSE](./LICENSE). The short version: don't resell, don't reverse-engineer, otherwise enjoy.
+
+For licensing inquiries, email **[ross@clearcapabilities.com](mailto:ross@clearcapabilities.com)**.
 
 ---
 
