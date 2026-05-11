@@ -2,7 +2,7 @@
 
 ### The Claude Code Plugin that Catches what your AI Assistant Misses.
 
-> Built by **[ClearCapabilities.Com](https://clearcapabilities.com)** · Runs inside Claude Code
+> Built by **[ClearCapabilities.Com](https://clearcapabilities.com)**
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
