@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-75%2F75-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.16MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.20.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.21.0-blue)]()
 
 ---
 
@@ -111,15 +111,15 @@ A one-screen verdict. Either you're safe to ship, or you have a short list of th
   Reply with 1, 2, or 3.
 
   Or pick a single one:
-     /scan --firehose      see every finding
-     /security-fix --finding <id>       fix exactly one
+     /show-findings --all  see every finding in HTML
+     /fix --one <id>       fix exactly one
 ```
 
-The scanner asks which tier you want to fix; reply with the number and `/fix-all` runs the matching `--severity` automatically.
+The scanner asks which tier you want to fix; reply with the number and `/fix --all` runs the matching `--severity` automatically.
 
 ---
 
-#### `/show-findings` — interactive HTML report
+#### `/show-findings --all` — interactive HTML report
 
 Writes a self-contained HTML report to `reports/findings-<timestamp>.html` and opens it in your default browser. The report has severity charts, a filterable findings list, per-finding evidence with the offending code snippet, and the proposed fix template. No external assets, no network required — works offline.
 
@@ -138,21 +138,21 @@ start reports/findings-<timestamp>.html
 
 ---
 
-#### `/fix-all` — patch findings in batch
+#### `/fix --all` — patch findings in batch
 
-Pick a severity tier; `/fix-all` dispatches the security-fixer agent on every finding at or above it. Tiers are **cumulative** — `/fix-all --high` patches critical **+** high. Sequential, test-aware, does not auto-revert on failure.
+Pick a severity tier; `/fix --all` dispatches the security-fixer agent on every finding at or above it. Tiers are **cumulative** — `/fix --all --high` patches critical **+** high. Sequential, test-aware, does not auto-revert on failure.
 
 | Flag | Fixes |
 |---|---|
-| `/fix-all --critical` (default) | Critical only |
-| `/fix-all --high` | Critical + High |
-| `/fix-all --medium` | Critical + High + Medium |
-| `/fix-all --low` | Everything |
+| `/fix --all --critical` (default) | Critical only |
+| `/fix --all --high` | Critical + High |
+| `/fix --all --medium` | Critical + High + Medium |
+| `/fix --all --low` | Everything |
 
 Example — fixing all critical and high-severity findings:
 
 ```
-> /fix-all --high
+> /fix --all --high
 
 Checking git state…   clean ✓
 Fixing 104 findings (31 critical + 73 high)…
@@ -172,7 +172,7 @@ That's the entire product. You don't need anything else to ship safer code.
 
 ### ⚙️ Developer Mode
 
-> **Full taxonomy. SARIF on every scan. CI gates. Audit-grade suppressions. 35+ commands.**
+> **Full taxonomy. SARIF on every scan. CI gates. Audit-grade suppressions. 13 commands, everything behind flags.**
 
 For platform teams, AppSec engineers, and anyone who needs findings outside a chat window. Switch on with:
 

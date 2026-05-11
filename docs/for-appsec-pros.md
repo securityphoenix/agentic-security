@@ -29,7 +29,7 @@ DESCRIPTION
        agentic-security profile set pro
 ```
 
-Flips the defaults: full taxonomy visible (CWE/CVSS/OWASP/MITRE/CAPEC), confidence threshold lowered (≥0.3 vs. ≥0.9 in vibecoder), all 37+ commands accessible, SARIF + CSV written on every scan, suppression schema upgraded to audit-grade.
+Flips the defaults: full taxonomy visible (CWE/CVSS/OWASP/MITRE/CAPEC), confidence threshold lowered (≥0.3 vs. ≥0.9 in vibecoder), all 13 commands and their flags accessible, SARIF + CSV written on every scan, suppression schema upgraded to audit-grade.
 
 Confirm with:
 
@@ -58,9 +58,15 @@ Confirm with:
               Lint .agentic-security/rules.yml for schema errors, invalid
               regex, severity overrides, and disabled rules.
 
-       fix --finding <id>
+       fix --one <id>
               Emit the canonical patch template for one finding. The
               security-fixer subagent applies it to the file.
+
+       fix --all [--critical|--high|--medium|--low]
+              Batch-fix every finding at or above the severity tier.
+
+       fix --pr [--apply]
+              Bundle fixes into a feature branch and open a pull request.
 
        digest --slack <url> | --discord <url>
               POST a structured digest payload to a Slack/Discord webhook.
@@ -130,7 +136,7 @@ Every scan writes to `.agentic-security/` in the project:
        findings.json    Normalized findings, programmable schema.
        findings.sarif   SARIF 2.1.0 for GitHub Security tab, GitLab, etc.
        findings.csv     Spreadsheet / BigQuery / executive reports.
-       last-scan.json   Used by /security-fix and /security-report.
+       last-scan.json   Used by /fix --one, /show-findings, /security-posture.
        suppressions.yml Audit-grade suppressions (see SUPPRESSIONS).
        rules.yml        Custom rules, severity overrides, version pins.
        triage.json      Triage state machine (see TRIAGE).
@@ -302,7 +308,7 @@ Add to `.pre-commit-config.yaml`:
 
 ```yaml
        - repo: https://github.com/clearcapabilities/agentic-security
-         rev: v0.20.0
+         rev: v0.21.0
          hooks:
            - id: agentic-security
 ```
@@ -397,13 +403,24 @@ Methodology: `bench-realworld.js` clones each external corpus to `.bench-cache/`
        agentic-security scan --format pbom          # Pipeline BOM
 ```
 
-Framework-specific attestations:
+Framework-specific attestations (Claude Code slash commands):
 
 ```
-       /owasp-asvs        OWASP ASVS 4.0
-       /pci-dss           PCI-DSS 4.0
-       /soc2              SOC 2
-       /nist-ai-600-1     NIST AI 600-1 (Generative AI risk)
+       /produce-compliance-report asvs    OWASP ASVS Level 1+2
+       /produce-compliance-report pci     PCI-DSS 4.0
+       /produce-compliance-report soc2    SOC 2 Common Criteria CC6–CC9
+       /produce-compliance-report nist    NIST AI 600-1 (Generative AI risk)
+```
+
+Posture artifacts:
+
+```
+       /security-posture --sbom           CycloneDX 1.6 or SPDX 2.3
+       /security-posture --aibom          CycloneDX 1.7 ML-BOM (AI components)
+       /security-posture --api            API surface map (md/json/openapi)
+       /security-posture --license        License allow/deny policy enforcement
+       /security-posture --drift          Diff two scan snapshots
+       /security-posture --mttr           SLA breach report
 ```
 
 Each produces an evidence-backed attestation sheet (CSV + JSON + Markdown) suitable for handing to an auditor.
