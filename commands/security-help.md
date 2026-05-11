@@ -16,8 +16,8 @@ DEVELOPER MODE — full catalog below.
 
 SCANNING
   /scan --all                Full SAST + SCA + secrets sweep (one-screen verdict)
-  /scan --sca-only           Dependency CVE audit only (OSV.dev-backed)
-  /scan --secrets-only       Hardcoded credential / API key scan only
+  /scan --sca           Dependency CVE audit only (OSV.dev-backed)
+  /scan --secrets       Hardcoded credential / API key scan only
   /scan --authz              Deep auth/authZ audit — JWT, OAuth2, IDOR, session fixation
   /scan --mcp                Audit MCP server configs for agent-host risks
   /scan --pipeline           Audit GitHub Actions; --format pbom for Pipeline BOM

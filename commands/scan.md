@@ -1,6 +1,6 @@
 ---
-description: Run the agentic-security scanner. Default (--all) gives a one-screen "safe to deploy?" verdict. Focused modes: --sca-only, --secrets-only, --authz, --mcp, --pipeline, --logic, --diff.
-argument-hint: "[path] [--all|--sca-only|--secrets-only|--authz|--mcp|--pipeline [--format pbom|cli|json]|--logic [--max <N>]|--diff [--since <git-ref>]]"
+description: Run the agentic-security scanner. Default (--all) gives a one-screen "safe to deploy?" verdict. Focused modes: --sca, --secrets, --authz, --mcp, --pipeline, --logic, --diff.
+argument-hint: "[path] [--all|--sca|--secrets|--authz|--mcp|--pipeline [--format pbom|cli|json]|--logic [--max <N>]|--diff [--since <git-ref>]]"
 ---
 
 Run the scanner against the target path.
@@ -12,16 +12,16 @@ EXTRA=""
 i=1
 for arg in "$@"; do
   case "$arg" in
-    --all|--sca-only|--secrets-only|--authz|--mcp|--pipeline|--logic|--diff) FLAG="$arg" ;;
+    --all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff) FLAG="$arg" ;;
     *) [ "$FLAG" = "--all" ] && PATH_ARG="$arg" || EXTRA="$EXTRA $arg" ;;
   esac
 done
 
 case "$FLAG" in
-  --sca-only)
+  --sca)
     node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs scan "$PATH_ARG" --only sca --format cli
     ec=$?; [ $ec -le 3 ] && exit 0 || exit $ec ;;
-  --secrets-only)
+  --secrets)
     node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs scan "$PATH_ARG" --only secrets --format cli
     ec=$?; [ $ec -le 3 ] && exit 0 || exit $ec ;;
   --authz)
@@ -62,9 +62,9 @@ esac
 | Critical + High + Medium | `/fix --all --medium` |
 | All | `/fix --all --low` |
 
-**`/scan --sca-only`** — Dependency CVE audit only (OSV.dev-backed). If suspicious packages appear, invoke the `sca-malware-analyst` subagent for a CLEAN/SUSPICIOUS/MALICIOUS verdict.
+**`/scan --sca`** — Dependency CVE audit only (OSV.dev-backed). If suspicious packages appear, invoke the `sca-malware-analyst` subagent for a CLEAN/SUSPICIOUS/MALICIOUS verdict.
 
-**`/scan --secrets-only`** — Secret sweep (60+ provider patterns + entropy detection). For any hit: rotate the credential immediately, move to a secrets manager, audit git history.
+**`/scan --secrets`** — Secret sweep (60+ provider patterns + entropy detection). For any hit: rotate the credential immediately, move to a secrets manager, audit git history.
 
 **`/scan --authz`** — Deep auth/authZ audit (OWASP A01). Covers: JWT algorithm confusion, hardcoded JWT secrets, missing `algorithms:[]` constraint, OAuth2 PKCE absent on public clients, `redirect_uri` from request without allowlist, session fixation, multi-tenant queries missing `tenantId`/`orgId` filter.
 

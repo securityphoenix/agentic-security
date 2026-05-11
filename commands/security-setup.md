@@ -27,8 +27,8 @@ CMDEOF
 
 cat > .claude/commands/scan.md << CMDEOF
 ---
-description: Run the scanner. Default is full sweep; use --sca-only or --secrets-only for focused scans.
-argument-hint: "[path] [--all|--sca-only|--secrets-only]"
+description: Run the scanner. Default is full sweep; use --sca or --secrets for focused scans.
+argument-hint: "[path] [--all|--sca|--secrets]"
 ---
 Run \`/agentic-security:scan \$@\` to scan this project.
 CMDEOF
