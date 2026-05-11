@@ -1,13 +1,22 @@
 ---
 description: Remediate every finding at or above a severity threshold. Silent batch — no interactive prompts.
-argument-hint: "[--severity critical|high|medium|low]"
+argument-hint: "[--critical|--high|--medium|--low]  (or: --severity <tier>)"
 ---
 
 Read `.agentic-security/last-scan.json` and apply remediation fixes in batch.
 
+## Flag syntax
+
+Both forms are accepted and equivalent:
+
+- **Shorthand**: `/fix-all --critical`, `/fix-all --high`, `/fix-all --medium`, `/fix-all --low`
+- **Long form**: `/fix-all --severity critical`, `/fix-all --severity high`, etc.
+
+The tier is **cumulative** — `/fix-all --high` fixes both critical and high findings. `--critical` (default) fixes critical only.
+
 ## Behavior
 
-This command runs **non-interactively**. No `[y/s/d/q]` prompts. For every finding at or above the chosen `--severity` threshold (default `critical`):
+This command runs **non-interactively**. No `[y/s/d/q]` prompts. For every finding at or above the chosen tier (default `critical`):
 
 1. Dispatch the `security-fixer` subagent for that finding. It reads the affected file, applies the fix template adapted to the surrounding code, and runs the project test command (if one is configured).
 2. After the fix applies, re-scan the affected file (`scanner --format json --since HEAD~0`) to verify the finding no longer reproduces and to detect any new findings the patch may have introduced.
@@ -20,14 +29,14 @@ After the run, print a one-line summary:
 Applied N fixes, M skipped (tests failed), K regressions introduced.
 ```
 
-## --severity argument
+## Severity tiers
 
-| Value | Behavior |
+| Flag | Fixes |
 |---|---|
-| `critical` (default) | Only critical findings |
-| `high` | Critical + high |
-| `medium` | Critical + high + medium |
-| `low` | All findings (critical + high + medium + low) |
+| `--critical` (default) | Critical only |
+| `--high` | Critical + High |
+| `--medium` | Critical + High + Medium |
+| `--low` | Everything (critical + high + medium + low) |
 
 ## Agent notes
 

@@ -96,15 +96,22 @@ A one-screen verdict. Either you're safe to ship, or you have a short list of th
 ─────────────────────────────────────────
   ❌  Not safe to deploy
 ─────────────────────────────────────────
+  • 31 critical · 73 high · 149 advisory
 
-  1. routes/login.ts:34
-     - db.query(`SELECT * FROM users WHERE email = '${req.body.email}'`)
-     + db.query('SELECT * FROM users WHERE email = $1', [req.body.email])
+  How many do you want to fix?
 
-     Why: An attacker can dump your entire users table.
+     1. Critical only                (31 fixes)
+     2. Critical + High              (104 fixes)
+     3. Critical + High + Medium     (253 fixes)
 
-  Type /show-findings to see the rest, or /fix-all to apply them.
+  Reply with 1, 2, or 3.
+
+  Or pick a single one:
+     /security-scan-all --firehose      see every finding
+     /security-fix --finding <id>       fix exactly one
 ```
+
+The scanner asks which tier you want to fix; reply with the number and `/fix-all` runs the matching `--severity` automatically.
 
 ---
 
@@ -127,17 +134,32 @@ start .agentic-security/findings.html
 
 ---
 
-#### `/fix-all` — patch everything at or above a severity
+#### `/fix-all` — patch findings in batch
 
-Sequential, test-aware. Does not auto-revert on failure — stops and tells you which fix broke what.
+Pick a severity tier; `/fix-all` dispatches the security-fixer agent on every finding at or above it. Tiers are **cumulative** — `/fix-all --high` patches critical **+** high. Sequential, test-aware, does not auto-revert on failure.
+
+| Flag | Fixes |
+|---|---|
+| `/fix-all --critical` (default) | Critical only |
+| `/fix-all --high` | Critical + High |
+| `/fix-all --medium` | Critical + High + Medium |
+| `/fix-all --low` | Everything |
+
+Example — fixing all critical and high-severity findings:
 
 ```
-Fixing 3 findings…
-  ✓ routes/login.ts:34   SQL Injection      → parameterized query
-  ✓ config/db.ts:8       Hardcoded Secret   → moved to env var
-  ✓ api/files.ts:67      Path Traversal     → path.join + allowlist
+> /fix-all --high
 
-Applied 3 fixes, 0 skipped, 0 regressions introduced.
+Checking git state…   clean ✓
+Fixing 104 findings (31 critical + 73 high)…
+
+  ✓  routes/login.ts:34       SQL Injection                → parameterized query
+  ✓  lib/insecurity.ts:43     MD5 Password Hashing         → bcrypt (cost 12)
+  ✓  routes/b2bOrder.ts:17    RCE via vm.runInContext      → JSON.parse
+  ✓  routes/order.ts:35       IDOR                         → ownership check
+  …  +100 more
+
+Applied 104 fixes, 0 skipped (tests failed), 0 regressions introduced.
 ```
 
 That's the entire product. You don't need anything else to ship safer code.
