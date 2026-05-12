@@ -43,7 +43,12 @@ DEEP ANALYSIS
   /launch-check     Pre-deploy 10-item checklist
 
 DEPENDENCY HYGIENE
-  /trim-dependencies           Find and remove packages installed but never imported in source code
+  /trim-dependencies           Find packages installed but never imported — with CVE counts and removal commands
+  /install-script-audit        Audit npm postinstall/preinstall hooks — the primary supply-chain attack vector
+  /dep-pinning                 Flag loose version ranges (^, ~, *) that allow silent supply-chain injection
+  /vendor-audit                Find copy-pasted third-party code that never receives security updates
+  /dep-freshness               Score how stale your direct deps are — stale deps accumulate unpatched CVEs
+  /dep-alternatives            Find heavy or risky deps with native/lighter/maintained replacements
 
 POSTURE MANAGEMENT
   /posture-management --sbom   CycloneDX 1.6 or SPDX 2.3 software bill of materials
