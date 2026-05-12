@@ -42,6 +42,9 @@ DEEP ANALYSIS
   /explain          Plain-English explanation of any finding
   /launch-check     Pre-deploy 10-item checklist
 
+DEPENDENCY HYGIENE
+  /trim-dependencies           Find and remove packages installed but never imported in source code
+
 POSTURE MANAGEMENT
   /posture-management --sbom   CycloneDX 1.6 or SPDX 2.3 software bill of materials
   /posture-management --aibom  AI/ML Bill of Materials — models, prompts, frameworks
@@ -51,7 +54,7 @@ POSTURE MANAGEMENT
   /posture-management --mttr   Show findings exceeding per-severity SLA thresholds
 
 COMPLIANCE ATTESTATION
-  /compliance-report [nist|asvs|pci|soc2]  Auditor-ready attestation for any framework
+  /compliance-report [nist|asvs|pci|soc2|llm]  Auditor-ready attestation for any framework
 
 PROJECT META
   

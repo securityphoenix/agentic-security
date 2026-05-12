@@ -5230,7 +5230,120 @@ async function queryRegistries(components){
         const resp=await fetch('https://pypi.org/pypi/'+encodeURIComponent(name)+'/json');
         if(!resp.ok)return;
         const d=await resp.json();
-        infoMap.set('pypi:'+name,{latestVersion:d.info?.version||'',license:d.info?.license||'',versions:{}});
+        const info=d.info||{};
+        // Build per-version deprecation from PyPI yank data
+        const versions={};
+        for(const[ver,files]of Object.entries(d.releases||{})){
+          const yankedFile=Array.isArray(files)&&files.find(f=>f.yanked);
+          if(yankedFile)versions[ver]={deprecated:yankedFile.yanked_reason||'This release has been yanked from PyPI.'};
+        }
+        // Package-level deprecation: inactive classifier or description prefix
+        const classifiers=info.classifiers||[];
+        const isInactive=classifiers.some(c=>/Development Status.*Inactive/i.test(c));
+        const descStart=(info.description||'').slice(0,300);
+        const isDeprecatedByDesc=/^\s*#*\s*(?:deprecated|this (?:package|project|library) is deprecated|this (?:package|project) has been deprecated|use .{3,50} instead)/i.test(descStart);
+        if(isInactive||isDeprecatedByDesc){
+          const msg=descStart.slice(0,200).replace(/\n+/g,' ').trim();
+          for(const ver of Object.keys(d.releases||{})){
+            if(!versions[ver])versions[ver]={deprecated:msg||'Package marked as deprecated or inactive on PyPI.'};
+          }
+        }
+        infoMap.set('pypi:'+name,{latestVersion:info.version||'',license:info.license||'',versions});
+      }catch(_){}
+    }));
+  }
+  // Packagist (PHP) — package.abandoned is a string (replacement) or true
+  const packagistNames=[...new Set(components.filter(c=>c.ecosystem==='packagist').map(c=>c.name))];
+  for(let i=0;i<packagistNames.length;i+=CHUNK){
+    await Promise.all(packagistNames.slice(i,i+CHUNK).map(async name=>{
+      try{
+        const resp=await fetch('https://packagist.org/packages/'+name+'.json');
+        if(!resp.ok)return;
+        const d=await resp.json();
+        const pkg=d.package||{};
+        const abandoned=pkg.abandoned;
+        const versions={};
+        if(abandoned){
+          const msg=typeof abandoned==='string'?`Package abandoned; use ${abandoned} instead.`:'Package has been abandoned by its maintainer.';
+          for(const ver of Object.keys(pkg.versions||{}))versions[ver]={deprecated:msg};
+        }
+        const latest=Object.keys(pkg.versions||{}).find(v=>!/dev/.test(v))||'';
+        infoMap.set('packagist:'+name,{latestVersion:latest,license:'',versions});
+      }catch(_){}
+    }));
+  }
+  // crates.io (Rust) — versions[].yanked per release; requires User-Agent per policy
+  const cargoNames=[...new Set(components.filter(c=>c.ecosystem==='cargo').map(c=>c.name))];
+  const CRATES_UA={'User-Agent':'agentic-security/scanner (security@clearcapabilities.com)'};
+  for(let i=0;i<cargoNames.length;i+=CHUNK){
+    await Promise.all(cargoNames.slice(i,i+CHUNK).map(async name=>{
+      try{
+        const resp=await fetch('https://crates.io/api/v1/crates/'+encodeURIComponent(name),{headers:CRATES_UA});
+        if(!resp.ok)return;
+        const d=await resp.json();
+        const versions={};
+        for(const v of (d.versions||[])){
+          if(v.yanked)versions[v.num]={deprecated:`Version ${v.num} has been yanked from crates.io.`};
+        }
+        const latest=(d.crate||{}).newest_version||'';
+        infoMap.set('cargo:'+name,{latestVersion:latest,license:'',versions});
+      }catch(_){}
+    }));
+  }
+  // RubyGems — /api/v1/versions/<name>.json returns [{number, yanked, ...}]
+  const gemNames=[...new Set(components.filter(c=>c.ecosystem==='rubygems').map(c=>c.name))];
+  for(let i=0;i<gemNames.length;i+=CHUNK){
+    await Promise.all(gemNames.slice(i,i+CHUNK).map(async name=>{
+      try{
+        const resp=await fetch('https://rubygems.org/api/v1/versions/'+encodeURIComponent(name)+'.json');
+        if(!resp.ok)return;
+        const list=await resp.json();
+        const versions={};
+        let latest='';
+        for(const v of (Array.isArray(list)?list:[])){
+          if(!latest&&!v.prerelease&&!v.yanked)latest=v.number;
+          if(v.yanked)versions[v.number]={deprecated:`Version ${v.number} has been yanked from RubyGems.`};
+        }
+        infoMap.set('rubygems:'+name,{latestVersion:latest,license:'',versions});
+      }catch(_){}
+    }));
+  }
+  // pub.dev (Dart/Flutter) — top-level isDiscontinued + optional replacedBy
+  const pubNames=[...new Set(components.filter(c=>c.ecosystem==='pub').map(c=>c.name))];
+  for(let i=0;i<pubNames.length;i+=CHUNK){
+    await Promise.all(pubNames.slice(i,i+CHUNK).map(async name=>{
+      try{
+        const resp=await fetch('https://pub.dev/api/packages/'+encodeURIComponent(name),{headers:{Accept:'application/vnd.pub.v2+json'}});
+        if(!resp.ok)return;
+        const d=await resp.json();
+        const versions={};
+        if(d.isDiscontinued){
+          const replacement=d.replacedBy?` Use ${d.replacedBy} instead.`:'';
+          const msg=`Package has been discontinued by its publisher.${replacement}`;
+          for(const v of (d.versions||[]))versions[v.version]={deprecated:msg};
+        }
+        const latest=(d.latest||{}).version||'';
+        infoMap.set('pub:'+name,{latestVersion:latest,license:'',versions});
+      }catch(_){}
+    }));
+  }
+  // Maven Central — no deprecated field; flag outdated versions (equivalent of mvn versions:display-dependency-updates)
+  const mavenComps=[...new Map(components.filter(c=>c.ecosystem==='maven'&&c.group&&c.name).map(c=>[`${c.group}/${c.name}`,c])).values()];
+  for(let i=0;i<mavenComps.length;i+=CHUNK){
+    await Promise.all(mavenComps.slice(i,i+CHUNK).map(async c=>{
+      try{
+        const q=encodeURIComponent(`g:"${c.group}" AND a:"${c.name}"`);
+        const resp=await fetch(`https://search.maven.org/solrsearch/select?q=${q}&rows=1&wt=json`);
+        if(!resp.ok)return;
+        const d=await resp.json();
+        const doc=(d.response?.docs||[])[0];
+        if(!doc)return;
+        const latest=doc.latestVersion||'';
+        const versions={};
+        if(latest&&latest!==c.version){
+          versions[c.version]={outdated:`A newer version is available: ${latest}. Run: mvn versions:use-latest-versions or update <version>${latest}</version> in pom.xml / build.gradle.`};
+        }
+        infoMap.set(`maven:${c.group}/${c.name}`,{latestVersion:latest,license:'',versions});
       }catch(_){}
     }));
   }
@@ -5382,7 +5495,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   const vulnsByKey={};for(const sc of supplyChain.filter(s=>s.type==='vulnerable_dep')){const k=`${sc.ecosystem}:${sc.name}:${sc.version}`;if(!vulnsByKey[k])vulnsByKey[k]=[];vulnsByKey[k].push(sc);}
   const exploitResult=computeExploitPathComponents(aF,components,reach.byFile);
   for(const[key,paths]of exploitResult.pathsByKey){const[eco,name,...vp]=key.split(':');const ver=vp.join(':');for(const f of paths){if(!f.linkedComponents)f.linkedComponents=[];if(!f.linkedComponents.some(c=>c.name===name&&c.ecosystem===eco))f.linkedComponents.push({ecosystem:eco,name,version:ver});}}
-  const annotatedComponents=components.map(c=>{const key=`${c.ecosystem}:${c.name}:${c.version}`;const vulns=vulnsByKey[key]||[];const ri=registryInfo.get(`${c.ecosystem}:${c.name}`)||{};const latestVersion=ri.latestVersion||'';const vd=(ri.versions||{})[c.version]||{};const isDeprecated=typeof vd.deprecated==='string'&&vd.deprecated.length>0;const deprecationMessage=isDeprecated?vd.deprecated:'';const license=ri.license||vd.license||'';return{...c,vulns,hasVulns:vulns.length>0,hasExploit:exploitResult.flagged.has(key),exploitPaths:exploitResult.pathsByKey.get(key)||[],latestVersion,isDeprecated,deprecationMessage,license};});
+  const annotatedComponents=components.map(c=>{const key=`${c.ecosystem}:${c.name}:${c.version}`;const vulns=vulnsByKey[key]||[];const riKey=c.ecosystem==='maven'&&c.group?`maven:${c.group}/${c.name}`:`${c.ecosystem}:${c.name}`;const ri=registryInfo.get(riKey)||{};const latestVersion=ri.latestVersion||'';const vd=(ri.versions||{})[c.version]||{};const isDeprecated=typeof vd.deprecated==='string'&&vd.deprecated.length>0;const deprecationMessage=isDeprecated?vd.deprecated:'';const isOutdated=!isDeprecated&&typeof vd.outdated==='string'&&vd.outdated.length>0;const outdatedMessage=isOutdated?vd.outdated:'';const license=ri.license||vd.license||'';return{...c,vulns,hasVulns:vulns.length>0,hasExploit:exploitResult.flagged.has(key),exploitPaths:exploitResult.pathsByKey.get(key)||[],latestVersion,isDeprecated,deprecationMessage,isOutdated,outdatedMessage,license};});
   let finalFindings;try{finalFindings=dedupeFindingsWithEvidence(aF);}catch(_){finalFindings=dd(aF,f=>f.id);}
   try{finalFindings.forEach(scoreExploitability);}catch(_){}
   // 0.6.0 Feat-2: Toxicity score composed across signals.
@@ -5809,14 +5922,36 @@ function generateRecs(findings,routes,sinks,sources,logicVulns,supplyChain,compo
     if(seenDeprecated.has(dk))continue;
     seenDeprecated.add(dk);
     const latestNote=comp.latestVersion?` The current maintained release is v${comp.latestVersion}.`:'';
-    const fixCmd=comp.ecosystem==='pypi'
-      ?`pip uninstall ${comp.name}\n# find replacement at https://pypi.org/search/\npip install <replacement>`
-      :`npm uninstall ${comp.name}\n# find replacement at https://www.npmjs.com\nnpm install <replacement>`;
+    const fixCmd={
+      pypi:`pip uninstall ${comp.name}\n# find replacement at https://pypi.org/search/\npip install <replacement>`,
+      packagist:`composer remove ${comp.name}\n# find replacement at https://packagist.org\ncomposer require <replacement>`,
+      cargo:`# remove ${comp.name} from Cargo.toml\ncargo remove ${comp.name}`,
+      rubygems:`gem uninstall ${comp.name}\n# find replacement at https://rubygems.org\ngem install <replacement>`,
+      pub:`flutter pub remove ${comp.name}\n# find replacement at https://pub.dev\nflutter pub add <replacement>`,
+    }[comp.ecosystem]||`npm uninstall ${comp.name}\n# find replacement at https://www.npmjs.com\nnpm install <replacement>`;
     recs.push({id:id++,category:"Deprecated Dependency",severity:"medium",priority:"Medium",
       title:`Deprecated: ${comp.name}@${comp.version}`,
       description:`${comp.deprecationMessage||'This package has been officially deprecated by its publisher.'}${latestNote} Deprecated packages do not receive security patches.`,
       file:comp.filePath||'package manifest',lines:'N/A',
       recommendation:`Replace ${comp.name} with an actively maintained alternative. Remove it from your dependency manifest.`,
+      codeExample:fixCmd,
+      cwe:"CWE-1104",stride:"Tampering",
+      ecosystem:comp.ecosystem,packageName:comp.name,packageVersion:comp.version,
+      latestVersion:comp.latestVersion||''});
+  }
+  // Outdated Maven dependencies (equivalent of mvn versions:display-dependency-updates)
+  const seenOutdated=new Set();
+  for(const comp of (components||[]).filter(c=>c.isOutdated)){
+    const ok=`${comp.ecosystem}:${comp.group}/${comp.name}`;
+    if(seenOutdated.has(ok))continue;
+    seenOutdated.add(ok);
+    const gav=comp.group?`${comp.group}:${comp.name}`:`${comp.name}`;
+    const fixCmd=`<!-- pom.xml -->\n<dependency>\n  <groupId>${comp.group||'...'}</groupId>\n  <artifactId>${comp.name}</artifactId>\n  <version>${comp.latestVersion||'LATEST'}</version>\n</dependency>\n\n# Or let the Versions plugin update it:\nmvn versions:use-latest-versions -DincludeScope=compile`;
+    recs.push({id:id++,category:"Outdated Dependency",severity:"low",priority:"Low",
+      title:`Outdated: ${gav}@${comp.version}`,
+      description:`${comp.outdatedMessage||`A newer version of ${gav} is available.`} Outdated dependencies accumulate unpatched CVEs over time.`,
+      file:comp.filePath||'pom.xml',lines:'N/A',
+      recommendation:`Update ${gav} to ${comp.latestVersion||'the latest version'} in your pom.xml or build.gradle.`,
       codeExample:fixCmd,
       cwe:"CWE-1104",stride:"Tampering",
       ecosystem:comp.ecosystem,packageName:comp.name,packageVersion:comp.version,

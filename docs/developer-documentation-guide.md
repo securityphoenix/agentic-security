@@ -15,7 +15,8 @@ SYNOPSIS
        /show-findings [--all|--kev|--chains|--threat-model]
        /exploit-poc <finding-id>
        /explain <finding-id|CWE-N|vuln-name>
-       /compliance-report [nist|asvs|pci|soc2]
+       /compliance-report [nist|asvs|pci|soc2|llm]
+       /trim-dependencies [path] [--dry-run] [--include-dev]
        /posture-management [--sbom|--aibom|--api|--license|--drift|--mttr]
        /status
        /report-card
@@ -34,7 +35,9 @@ DESCRIPTION
 
          SAST        Taint analysis (regex + AST) for JS/TS, Java, Python.
          SCA         OSV + CISA KEV + EPSS, function-level reachability,
-                     dep confusion, typosquat detection.
+                     dep confusion, typosquat detection, deprecated
+                     packages (npm, PyPI, Packagist, crates.io,
+                     RubyGems, pub.dev).
          Secrets     60+ credential patterns, high-entropy heuristic,
                      allowlist-aware.
          IaC         Dockerfile, docker-compose, GitHub Actions, Kubernetes.
@@ -46,7 +49,8 @@ DESCRIPTION
          Auth/AuthZ  Broken access control, IDOR, mass assignment,
                      session fixation, JWT confusion, OAuth2 PKCE.
          Container   Base-image EOL, exposed ports, runtime mode.
-         Compliance  NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, SOC 2.
+         Compliance  NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, SOC 2,
+                     OWASP LLM Top 10 (2025).
 ```
 
 ---
@@ -100,6 +104,11 @@ Confirm with:
        rules validate
               Lint .agentic-security/rules.yml for schema errors, invalid
               regex, severity overrides, and disabled rules.
+
+       trim-dependencies [PATH] [--dry-run] [--include-dev]
+              Find installed packages never imported in source code.
+              Reports per-package on-disk size and transitive dep count.
+              Default is --dry-run; pass --apply to execute removals.
 
        digest --slack <url> | --discord <url>
               POST a structured digest payload to a Slack/Discord webhook.
@@ -1317,6 +1326,8 @@ HTML report:         /show-findings --all
 Weaponized CVEs:     /show-findings --kev
 Exploit chains:      /show-findings --chains
 Threat model:        /show-findings --threat-model --llm
+
+Trim bloat deps:     /trim-dependencies
 
 SBOM:                /posture-management --sbom
 AI-BOM:              /posture-management --aibom

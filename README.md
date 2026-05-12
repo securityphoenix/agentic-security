@@ -65,7 +65,9 @@ Four commands. The whole product. The default for everyone.
        SAST           Taint analysis (regex + AST for JS/TS), Java
                       rule pack, Python helpers.
        SCA            OSV + CISA KEV + EPSS, function-level
-                      reachability, dep confusion, typosquat.
+                      reachability, dep confusion, typosquat,
+                      deprecated packages (npm, PyPI, Packagist,
+                      crates.io, RubyGems, pub.dev).
        Secrets        50+ credential patterns, high-entropy heuristic,
                       allowlist-aware.
        IaC            Dockerfile, docker-compose, GitHub Actions,
@@ -215,8 +217,9 @@ Beyond the four easy-mode commands, agentic-security ships with a lot more funct
 | `/agentic-security:show-findings` | Triage FPs then view results. Default `--all` opens an interactive HTML report. Use `--kev` for weaponized CVEs, `--chains` for exploit chains, or `--threat-model [--stride\|--llm]`. |
 | `/agentic-security:fix` | Remediate findings. Use `--one <id>` to patch a single finding, `--all` to batch-fix by severity, or `--pr` to bundle fixes into a pull request. |
 | `/agentic-security:exploit-poc` | Generate a working exploit payload + regression test for one finding (or flag `PROBABLE_FP` if no payload can be constructed). |
+| `/agentic-security:trim-dependencies` | Find and remove packages installed but never imported in source code — reduces attack surface and bloat. |
 | `/agentic-security:posture-management` | SBOM, AI-BOM, API inventory, license policy, drift analysis, and SLA tracking. Use `--sbom`, `--aibom`, `--api`, `--license`, `--drift`, or `--mttr`. |
-| `/agentic-security:compliance-report` | Auditor-ready attestation for NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, or SOC 2. |
+| `/agentic-security:compliance-report` | Auditor-ready attestation for NIST AI 600-1, OWASP ASVS, PCI-DSS 4.0, SOC 2, or OWASP LLM Top 10 (2025). |
 | `/agentic-security:explain` | Explain a finding in plain English — what it means, how an attacker exploits it, the worst case, and how to fix it. |
 | `/agentic-security:launch-check` | Pre-deploy checklist of the 10 things beginners typically miss before going live. |
 | `/agentic-security:report-card` | Single letter-grade snapshot (A–F) of your project's security posture, with one concrete next action. |
