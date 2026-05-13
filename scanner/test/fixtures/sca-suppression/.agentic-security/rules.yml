@@ -1,0 +1,5 @@
+suppressions:
+  - rule: "GHSA-test-1234, Demo Vuln in fakelib"
+    files:
+      - "**"
+    reason: "test-suppression"

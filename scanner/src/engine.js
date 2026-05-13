@@ -2144,8 +2144,19 @@ function _isCustomSuppressed(vuln, file){
   for (const sup of _customSuppressions) {
     if (sup.rule !== vuln) continue;
     for (const fp of sup.files) {
-      // Simple glob support: ** matches anything; file ends with the literal path
       if (fp === '**') return sup;
+      // prefix/**: file must start with that prefix
+      if (fp.endsWith('/**')) {
+        const prefix = fp.slice(0, -3);
+        if (file === prefix || file.startsWith(prefix + '/')) return sup;
+        continue;
+      }
+      // **/suffix: file must end with that suffix
+      if (fp.startsWith('**/')) {
+        const suffix = fp.slice(3);
+        if (file === suffix || file.endsWith('/' + suffix)) return sup;
+        continue;
+      }
       if (file === fp || file.endsWith('/' + fp) || file === fp.replace(/^\.\//, '')) return sup;
     }
   }

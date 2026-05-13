@@ -1,0 +1,22 @@
+sources:
+  - pattern: "getCurrentUser\\s*\\("
+    category: "Custom Session"
+    label: "getCurrentUser"
+    inputType: "session"
+
+sinks:
+  - pattern: "executeRaw\\s*\\("
+    type: "Custom SQL Sink"
+    severity: "critical"
+    vuln: "Custom SQL Sink — User Data in executeRaw"
+    cwe: "CWE-89"
+
+suppressions:
+  - rule: "MD5/SHA1 Password Hashing"
+    files:
+      - "legacy/**"
+    reason: "active-migration"
+  - rule: "Weak Cryptographic Hash (MD5/SHA1)"
+    files:
+      - "legacy/**"
+    reason: "active-migration"
