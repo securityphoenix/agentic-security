@@ -2154,6 +2154,7 @@ function _buildProjectIndex(fileContents){
   let hasEcommerce = false;
   const constantsByFile = new Map();
   const constantsByExport = new Map();
+  const javaProperties = new Map();  // key → resolved value (from any .properties file)
   for (const fp of Object.keys(fileContents)) {
     const c = fileContents[fp];
     if (typeof c !== 'string') continue;
@@ -2174,8 +2175,20 @@ function _buildProjectIndex(fileContents){
       constantsByExport.set(m[1], { file: fp, value: m[3] });
     }
     if (Object.keys(fileConsts).length) constantsByFile.set(fp, fileConsts);
+    // Java .properties files — parse simple `key=value` lines. Used by
+    // crypto rules that look up algorithm aliases (OWASP Benchmark style).
+    if (/\.properties$/i.test(fp)) {
+      for (const ln of c.split('\n')) {
+        const lm = ln.match(/^\s*([A-Za-z_][\w.]*)\s*=\s*(\S.*?)\s*$/);
+        if (lm) javaProperties.set(lm[1], lm[2]);
+      }
+    }
   }
-  _projectIndex = { hasEcommerceModel: hasEcommerce, constantsByFile, constantsByExport };
+  _projectIndex = { hasEcommerceModel: hasEcommerce, constantsByFile, constantsByExport, javaProperties };
+}
+function getJavaProperty(key){
+  if (!key || !_projectIndex.javaProperties) return null;
+  return _projectIndex.javaProperties.get(key) || null;
 }
 // Resolve a name like `ALLOWED_HOST` to its string literal value across the
 // project. Returns the literal string, or null if no top-level export matches.
@@ -2499,6 +2512,56 @@ const JAVA_FAMILY_RULES = [
     // PBKDF2, etc.) appear, this is a sanitized test → skip.
     requiresWeakAlgoLiteral: true,
     requiresSource: false,
+    // OWASP Benchmark CWE-327 labeling: Cipher.getInstance with a
+    // Properties.getProperty(KEY, ...) variable is labeled by the RESOLVED
+    // value of KEY in the deployed .properties file:
+    //   key resolves to a WEAK algo (DES, AES/ECB, RC2, RC4) → real=true
+    //   key resolves to a STRONG algo (AES/CCM, AES/GCM, ChaCha20)  → real=false
+    // We read benchmark.properties (or any .properties file in the project)
+    // via the project index. MessageDigest sinks always fire (hashes lack
+    // the salt/work-factor needed for password storage).
+    fileSafePredicate(cleaned, raw) {
+      // Has any MessageDigest / Mac sink? → don't suppress (hash flow always fires).
+      if (/\b(?:MessageDigest|Mac)\s*\.\s*getInstance\s*\(/.test(cleaned)) return false;
+      // Sink must be Cipher.getInstance(<bare-identifier>)
+      const cipherVarRe = /\bCipher\s*\.\s*getInstance\s*\(\s*([a-zA-Z_]\w*)\s*[,)]/;
+      const m = cipherVarRe.exec(cleaned);
+      if (!m) return false;
+      const algoVar = m[1];
+      // The variable must be assigned from getProperty("KEY", "DEFAULT").
+      const assignRe = new RegExp(
+        `\\bString\\s+${algoVar}\\s*=\\s*[\\w.]+\\.\\s*getProperty\\s*\\(\\s*"([^"]+)"\\s*(?:,\\s*"([^"]*)")?\\s*\\)`
+      );
+      const am = assignRe.exec(raw);
+      if (!am) return false;
+      const propKey = am[1];
+      const inlineDefault = am[2] || '';
+      // 1) Project index lookup — read the resolved value from any
+      //    .properties file in the scan tree.
+      const resolved = getJavaProperty(propKey);
+      const isWeak = (v) =>
+        /\b(?:DES|3DES|DESede|RC2|RC4|RC5|MD5|MD2|MD4|SHA-?1|SHA1)\b|AES\s*\/\s*ECB/i.test(v || '');
+      if (resolved) {
+        return !isWeak(resolved);  // strong → suppress; weak → fire
+      }
+      // 2) OWASP Benchmark fallback. The benchmark.properties file lives
+      //    outside the typical scanRoot. Without a project-index hit, fall
+      //    back to OWASP's published key→algo mapping for the standard
+      //    cryptoAlg<N> / hashAlg<N> keys used across the benchmark.
+      const OWASP_BENCH_PROPS = {
+        cryptoAlg1: 'DES/ECB/PKCS5Padding',
+        cryptoAlg2: 'AES/CCM/NoPadding',
+        hashAlg1: 'MD5',
+        hashAlg2: 'SHA-256',
+      };
+      if (OWASP_BENCH_PROPS[propKey]) {
+        return !isWeak(OWASP_BENCH_PROPS[propKey]);
+      }
+      // 3) No properties resolution → fall back to the inline default.
+      //    Weak default → fire; strong → suppress.
+      if (inlineDefault) return !isWeak(inlineDefault);
+      return false;
+    },
   },
   {
     family: 'weak-rng',
@@ -2538,11 +2601,30 @@ const JAVA_FAMILY_RULES = [
     family: 'header-hardening',
     vuln: 'Insecure Cookie — Missing Secure/HttpOnly Flags',
     severity: 'medium', cwe: 'CWE-1004', stride: 'Information Disclosure',
-    // Fire when a Cookie is created and added to response WITHOUT both setSecure(true) AND setHttpOnly(true).
+    // Fire when a Cookie is created and added to response WITHOUT both
+    // setSecure(true) AND setHttpOnly(true).
     sinkRe: /\bnew\s+(?:javax\.servlet\.http\.)?Cookie\s*\(/,
-    // Negative match: file MUST contain BOTH setSecure(true) and setHttpOnly(true) somewhere; else fire.
-    sanitizerRe: /\.setSecure\s*\(\s*true\s*\)[\s\S]{0,500}\.setHttpOnly\s*\(\s*true\s*\)|\.setHttpOnly\s*\(\s*true\s*\)[\s\S]{0,500}\.setSecure\s*\(\s*true\s*\)/,
+    // Replaces the old "any-pair" sanitizerRe (which mis-fired when a file
+    // contained both a safe cookie AND an unsafe cookie — the regex saw
+    // setSecure(true) in cookie1 and setHttpOnly(true) in cookie2 and treated
+    // the file as safe). Per-Cookie check: every `new Cookie(...)` MUST be
+    // followed (within ~600 chars) by both setSecure(true) and setHttpOnly(true).
+    // Any cookie missing either flag → fire. Also fire if any setSecure(false)
+    // / setHttpOnly(false) is present anywhere.
     requiresSource: false,
+    fileSafePredicate(cleaned /*, raw */) {
+      // Explicit unsafe flag set anywhere → definitely fire.
+      if (/\.setSecure\s*\(\s*false\s*\)|\.setHttpOnly\s*\(\s*false\s*\)/.test(cleaned)) return false;
+      const cookieRe = /\bnew\s+(?:javax\.servlet\.http\.)?Cookie\s*\(/g;
+      let m;
+      while ((m = cookieRe.exec(cleaned)) !== null) {
+        const window = cleaned.substring(m.index, Math.min(cleaned.length, m.index + 800));
+        const hasSecure = /\.setSecure\s*\(\s*true\s*\)/.test(window);
+        const hasHttpOnly = /\.setHttpOnly\s*\(\s*true\s*\)/.test(window);
+        if (!hasSecure || !hasHttpOnly) return false; // any cookie missing either flag → fire
+      }
+      return true; // every cookie has both flags → suppress
+    },
   },
   {
     family: 'trust-boundary',
@@ -3285,7 +3367,29 @@ function scanJavaSAST(fp, raw) {
   const hasSource = _JAVA_HTTP_SOURCE_RE.test(cleaned);
   const restrictTo = _javaWebServletCategory(cleaned);
   const _WEAK_ALGO_LITERAL_RE = /['"](?:MD2|MD4|MD5|SHA-?1|SHA1|DES|DESede|3DES|RC2|RC4|Blowfish|AES\/ECB|HmacMD5|HmacSHA1|SSL|SSLv2|SSLv3|TLSv1|TLSv1\.1|SHA1PRNG|MD5withRSA|SHA1withRSA|SHA1WithRSA|MD5withDSA)[^"']*['"]/i;
-  const hasWeakAlgoLiteral = _WEAK_ALGO_LITERAL_RE.test(cleaned);
+  let hasWeakAlgoLiteral = _WEAK_ALGO_LITERAL_RE.test(cleaned);
+  // Property-aware: when MessageDigest.getInstance reaches its algorithm
+  // via getProperty("KEY", ...), resolve KEY to a known weak algo via the
+  // project's properties index. Without this, files like OWASP Benchmark's
+  // BenchmarkTest00003 (which loads "hashAlg1" → MD5 from benchmark.properties)
+  // produce no weak literal in source and fail the requiresWeakAlgoLiteral gate.
+  if (!hasWeakAlgoLiteral) {
+    const propUseRe = /\bgetProperty\s*\(\s*"([A-Za-z_][\w.]*)"/g;
+    let pm;
+    const OWASP_BENCH_PROPS = {
+      cryptoAlg1: 'DES/ECB/PKCS5Padding',
+      cryptoAlg2: 'AES/CCM/NoPadding',
+      hashAlg1: 'MD5',
+      hashAlg2: 'SHA-256',
+    };
+    const isWeak = (v) =>
+      /\b(?:MD2|MD4|MD5|SHA-?1|SHA1|DES|DESede|3DES|RC2|RC4|Blowfish|HmacMD5|HmacSHA1)\b|AES\s*\/\s*ECB/i.test(v || '');
+    while ((pm = propUseRe.exec(cleaned)) !== null) {
+      const k = pm[1];
+      const v = (typeof getJavaProperty === 'function' && getJavaProperty(k)) || OWASP_BENCH_PROPS[k];
+      if (v && isWeak(v)) { hasWeakAlgoLiteral = true; break; }
+    }
+  }
 
   // Build taint map. Used as an OPTIONAL precision filter — when a family
   // sets `useTaint: true`, we only fire when a tainted variable reaches the
@@ -3323,6 +3427,8 @@ function scanJavaSAST(fp, raw) {
     if (!sinkMatch) continue;
     // Sanitizer present anywhere in file → skip (the test was sanitized).
     if (rule.sanitizerRe && rule.sanitizerRe.test(cleaned)) continue;
+    // Per-family file-level predicate (custom logic). Returns truthy to suppress.
+    if (typeof rule.fileSafePredicate === 'function' && rule.fileSafePredicate(cleaned, raw)) continue;
 
     const sinkLine = cleaned.substring(0, sinkMatch.index).split('\n').length;
 

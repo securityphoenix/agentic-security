@@ -31,7 +31,8 @@
         "sql-injection",
         "xss",
         "ldap-injection",
-        "xpath-injection"
+        "xpath-injection",
+        "trust-boundary"
       ],
       "license": {
         "spdx": "GPL-2.0-only",

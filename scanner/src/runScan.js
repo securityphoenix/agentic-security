@@ -40,6 +40,11 @@ export async function readTree(root, { ignore = [] } = {}) {
     const base = path.basename(rel);
     if (DEP_FILE_NAMES.has(base)) depFileContents[rel] = content;
     if (shouldScan(rel)) fileContents[rel] = content;
+    // Auxiliary files: .properties files are referenced by Java rules
+    // (e.g. OWASP Benchmark's benchmark.properties resolves algorithm
+    // aliases). They are not scannable for vulns themselves, but the
+    // project index parses key=value lines for cross-file lookup.
+    else if (/\.properties$/i.test(rel)) fileContents[rel] = content;
   }
   return { fileContents, depFileContents };
 }
