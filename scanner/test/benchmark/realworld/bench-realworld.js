@@ -57,8 +57,26 @@ async function ensureClone(name, repo, sha) {
   if (!exists) {
     await fs.mkdir(CACHE_ROOT, { recursive: true });
     console.error(`  cloning ${repo} @ ${sha.slice(0,7)} → ${dest}`);
-    sh('git', ['clone', '--quiet', '--depth', '50', repo, dest]);
-    sh('git', ['-C', dest, 'checkout', '--quiet', sha]);
+    // Branch / tag / HEAD refs: clone the specific ref shallowly. Full SHAs
+    // require a deep-enough clone, so we fall back to depth 100.
+    const isFullSha = /^[a-f0-9]{40}$/.test(sha);
+    const isHead = sha === 'HEAD' || sha === 'main' || sha === 'master';
+    if (isHead) {
+      sh('git', ['clone', '--quiet', '--depth', '1', repo, dest]);
+    } else if (isFullSha) {
+      sh('git', ['clone', '--quiet', '--depth', '100', repo, dest]);
+      sh('git', ['-C', dest, 'checkout', '--quiet', sha]);
+    } else {
+      // Branch or tag name. Use --branch to clone directly at the ref.
+      try {
+        sh('git', ['clone', '--quiet', '--depth', '1', '--branch', sha, repo, dest]);
+      } catch (_) {
+        // Some hosts reject --branch <tag>; fall back to full clone + checkout.
+        await fs.rm(dest, { recursive: true, force: true });
+        sh('git', ['clone', '--quiet', repo, dest]);
+        sh('git', ['-C', dest, 'checkout', '--quiet', sha]);
+      }
+    }
   } else if (VERBOSE) {
     console.error(`  cache hit: ${dest}`);
   }
@@ -319,7 +337,10 @@ async function main() {
   const manifest = JSON.parse(await fs.readFile(MANIFEST, 'utf8'));
   const familyMap = await loadFamilyMap();
   const apps = manifest.apps;
-  const targets = ALL ? Object.keys(apps) : [APP];
+  const INCLUDE_QUARANTINED = flag('--include-quarantined');
+  const targets = ALL
+    ? Object.keys(apps).filter(name => INCLUDE_QUARANTINED || !apps[name]._quarantined)
+    : [APP];
   for (const t of targets) {
     if (!apps[t]) { console.error(`unknown app: ${t} (have: ${Object.keys(apps).join(', ')})`); process.exit(2); }
   }
@@ -327,10 +348,13 @@ async function main() {
   const results = [];
   for (const t of targets) {
     try {
-      results.push(await runOne(t, apps[t], familyMap));
+      const r = await runOne(t, apps[t], familyMap);
+      r.quarantined = !!apps[t]._quarantined;
+      r.mode = apps[t].mode || 'strict';
+      results.push(r);
     } catch (e) {
       console.error(`  FAILED: ${e.message}`);
-      results.push({ name: t, error: e.message });
+      results.push({ name: t, error: e.message, quarantined: !!apps[t]._quarantined });
     }
   }
 

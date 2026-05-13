@@ -1,0 +1,5 @@
+{
+  "_doc": "OpenZeppelin Contracts v5.1 — CLEAN-CODE benchmark. Industry-standard hardened Solidity library. The scanner should fire ~zero findings; any finding indicates an FP in the solidity.js rule set. wildcardFamilies is intentionally empty: we want a precise count.",
+  "wildcardFamilies": [],
+  "expected": []
+}

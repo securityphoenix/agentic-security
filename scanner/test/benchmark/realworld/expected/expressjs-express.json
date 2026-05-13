@@ -1,0 +1,9 @@
+{
+  "_doc": "Express.js 5.1 lib/ — CLEAN-CODE benchmark. Mature, audited JS framework. The scanner should fire ~zero or only well-understood advisory findings (e.g., no auth on the framework itself).",
+  "wildcardFamilies": [
+    "dos-no-timeout",
+    "dos-sync-io",
+    "header-hardening"
+  ],
+  "expected": []
+}

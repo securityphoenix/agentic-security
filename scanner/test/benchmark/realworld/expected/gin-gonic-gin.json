@@ -1,0 +1,8 @@
+{
+  "_doc": "gin-gonic/gin v1.10 — CLEAN-CODE benchmark for the Go rule set including go-extended.js. A web framework with extensive test coverage; the scanner should fire ~zero on the framework's own implementation files.",
+  "wildcardFamilies": [
+    "dos-no-timeout",
+    "header-hardening"
+  ],
+  "expected": []
+}

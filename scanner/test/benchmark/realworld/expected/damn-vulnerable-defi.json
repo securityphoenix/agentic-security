@@ -1,0 +1,13 @@
+{
+  "_doc": "Damn Vulnerable DeFi v4 curated expected entries. Each level has one or more documented vulnerabilities; we credit any finding in the listed family across the contracts directory (matchAny) since the scanner emits at the contract level. Wildcards in the manifest credit family-level hits regardless of specific level.",
+  "wildcardFamilies": [
+    "reentrancy",
+    "tx-origin-auth",
+    "unprotected-selfdestruct",
+    "delegatecall-untrusted",
+    "weak-rng",
+    "integer-overflow",
+    "unchecked-low-level-call"
+  ],
+  "expected": []
+}

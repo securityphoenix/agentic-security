@@ -185,6 +185,229 @@
         "spdx": "Apache-2.0",
         "_doc": "Apache-2.0. We never redistribute the source — fetched on demand."
       }
+    },
+    "damn-vulnerable-defi": {
+      "language": "solidity",
+      "repo": "https://github.com/theredguild/damn-vulnerable-defi.git",
+      "sha": "v4.0.0",
+      "scanRoot": "src",
+      "_doc": "Damn Vulnerable DeFi v4 — curated Solidity contracts with known vuln classes (reentrancy, flash-loan, oracle manipulation, signature replay). Directly exercises the solidity.js module shipped in 0.30.0.",
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/damn-vulnerable-defi.json"
+      },
+      "wildcardFamilies": [
+        "reentrancy",
+        "tx-origin-auth",
+        "unprotected-selfdestruct",
+        "delegatecall-untrusted",
+        "weak-rng",
+        "integer-overflow"
+      ],
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT. Source fetched on demand."
+      }
+    },
+    "ethernaut": {
+      "language": "solidity",
+      "repo": "https://github.com/OpenZeppelin/ethernaut.git",
+      "sha": "main",
+      "scanRoot": "contracts/src/levels",
+      "_doc": "OpenZeppelin Ethernaut — Solidity puzzles where each contract has a known exploitable bug. The community-canonical Solidity training set.",
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/ethernaut.json"
+      },
+      "wildcardFamilies": [
+        "reentrancy",
+        "tx-origin-auth",
+        "unprotected-selfdestruct",
+        "delegatecall-untrusted",
+        "weak-rng",
+        "integer-overflow",
+        "unchecked-low-level-call"
+      ],
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT. Source fetched on demand."
+      }
+    },
+    "openzeppelin-contracts": {
+      "language": "solidity",
+      "repo": "https://github.com/OpenZeppelin/openzeppelin-contracts.git",
+      "sha": "v5.1.0",
+      "scanRoot": "contracts",
+      "mode": "clean",
+      "_doc": "Industry-standard hardened Solidity library. Used as a CLEAN-CODE benchmark: the scanner should fire ~zero findings. Any finding here is an FP signal.",
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/openzeppelin-contracts.json"
+      },
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT. Source fetched on demand."
+      }
+    },
+    "expressjs-express": {
+      "language": "javascript",
+      "repo": "https://github.com/expressjs/express.git",
+      "sha": "master",
+      "scanRoot": "lib",
+      "mode": "clean",
+      "_doc": "Express.js core library. Heavily audited, mature. CLEAN-CODE benchmark for FP rate measurement on the JS rule set.",
+      "excludePaths": [
+        "test/**",
+        "examples/**",
+        "benchmarks/**"
+      ],
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/expressjs-express.json"
+      },
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT. Source fetched on demand."
+      }
+    },
+    "gin-gonic-gin": {
+      "language": "go",
+      "repo": "https://github.com/gin-gonic/gin.git",
+      "sha": "master",
+      "scanRoot": ".",
+      "mode": "clean",
+      "_doc": "gin-gonic/gin — top Go web framework. CLEAN-CODE benchmark for FP rate measurement on the Go rule set including go-extended.js.",
+      "excludePaths": [
+        "**/*_test.go",
+        "internal/bytesconv/**",
+        "examples/**",
+        "testdata/**"
+      ],
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/gin-gonic-gin.json"
+      },
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT. Source fetched on demand."
+      }
+    },
+    "rustsec-advisories": {
+      "language": "rust",
+      "repo": "https://github.com/rustsec/advisory-db.git",
+      "sha": "main",
+      "scanRoot": "crates",
+      "mode": "informational",
+      "_doc": "RustSec advisory database — Markdown advisories for crates with known CVEs. Not directly scannable as source code, but the corpus serves as a ground-truth list of CVE IDs that the SCA pipeline should detect when scanning a Cargo.toml that pins a vulnerable version. Quarantined: surfaces information rather than F1.",
+      "_quarantined": true,
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/rustsec-advisories.json"
+      },
+      "license": {
+        "spdx": "CC0-1.0",
+        "_doc": "CC0. Source fetched on demand."
+      }
+    },
+    "owasp-benchmark-dotnet": {
+      "language": "csharp",
+      "repo": "https://github.com/iknowjason/BenchmarkDotNet.git",
+      "sha": "main",
+      "scanRoot": ".",
+      "_doc": "OWASP Benchmark .NET (community .NET port). Direct analog to OWASP Benchmark Java for C# rules. Quarantined for first release — repo + ground-truth pipeline TBD; the runner needs the same CSV-to-expected.json pipeline as the Java version.",
+      "_quarantined": true,
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/owasp-benchmark-dotnet.json"
+      },
+      "wildcardFamilies": [
+        "sql-injection",
+        "xss",
+        "command-injection",
+        "path-traversal",
+        "xxe",
+        "insecure-deserialization"
+      ],
+      "license": {
+        "spdx": "Apache-2.0",
+        "_doc": "Apache-2.0 — fetched on demand."
+      }
+    },
+    "juliet-c-cpp": {
+      "language": "c",
+      "repo": "https://github.com/arichardson/juliet-test-suite-c.git",
+      "sha": "master",
+      "scanRoot": "testcases",
+      "_doc": "NIST SARD Juliet C/C++ Test Suite v1.3 — 118 CWEs, 64k+ paired good/bad test cases. Directly exercises cpp.js (banned-API rules) at scale. Quarantined: clone is ~500 MB; run on demand only via --app juliet-c-cpp --refresh-cache.",
+      "_quarantined": true,
+      "groundTruth": {
+        "kind": "juliet",
+        "cweToFamily": {
+          "CWE120": "buffer-overflow",
+          "CWE121": "buffer-overflow",
+          "CWE122": "buffer-overflow",
+          "CWE124": "buffer-overflow",
+          "CWE126": "buffer-overflow",
+          "CWE127": "buffer-overflow",
+          "CWE134": "format-string",
+          "CWE78":  "command-injection",
+          "CWE190": "integer-overflow",
+          "CWE191": "integer-overflow",
+          "CWE787": "mem-unsafe",
+          "CWE415": "mem-unsafe",
+          "CWE416": "mem-unsafe",
+          "CWE338": "weak-rng",
+          "CWE330": "weak-rng"
+        }
+      },
+      "wildcardFamilies": [
+        "buffer-overflow",
+        "format-string",
+        "command-injection",
+        "mem-unsafe",
+        "weak-rng",
+        "integer-overflow"
+      ],
+      "license": {
+        "spdx": "public-domain",
+        "_doc": "NIST SARD content is US Govt work, public domain. Mirror license varies — fetched on demand only."
+      }
+    },
+    "cve-bench-top50": {
+      "language": "polyglot",
+      "repo": "https://github.com/clearcapabilities/cve-bench-top50.git",
+      "sha": "main",
+      "scanRoot": ".",
+      "mode": "informational",
+      "_doc": "Hand-curated set of top-50 recent CVEs with public PoCs. Each CVE pair has vulnerable-commit + fix-commit; the scanner must fire on the former and stay quiet on the latter. Quarantined: the upstream curated repo is planned but not yet published (referenced for next release).",
+      "_quarantined": true,
+      "_status": "planned",
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/cve-bench-top50.json"
+      },
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT (planned curated content)."
+      }
+    },
+    "nist-ai-600-1-scenarios": {
+      "language": "polyglot",
+      "repo": "https://github.com/clearcapabilities/nist-ai-600-1-scenarios.git",
+      "sha": "main",
+      "scanRoot": ".",
+      "mode": "informational",
+      "_doc": "NIST AI 600-1 reference scenarios — each scenario maps to one or more risk classes from the NIST AI Risk Management Framework (Generative AI Profile). Paired with the scanner's compliance attestation command. Quarantined: curated repo planned for next release.",
+      "_quarantined": true,
+      "_status": "planned",
+      "groundTruth": {
+        "kind": "curated",
+        "path": "expected/nist-ai-600-1-scenarios.json"
+      },
+      "license": {
+        "spdx": "MIT",
+        "_doc": "MIT (planned curated content)."
+      }
     }
   }
 }

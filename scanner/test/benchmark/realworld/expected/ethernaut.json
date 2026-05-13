@@ -1,0 +1,13 @@
+{
+  "_doc": "OpenZeppelin Ethernaut levels — each level contract demonstrates a known vuln class. Credit family-level findings across the corpus.",
+  "wildcardFamilies": [
+    "reentrancy",
+    "tx-origin-auth",
+    "unprotected-selfdestruct",
+    "delegatecall-untrusted",
+    "weak-rng",
+    "integer-overflow",
+    "unchecked-low-level-call"
+  ],
+  "expected": []
+}
