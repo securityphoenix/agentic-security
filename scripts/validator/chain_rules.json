@@ -1,0 +1,111 @@
+{
+  "_meta": {
+    "description": "Multi-finding correlation rules. Each rule fires when findings matching `primary` and `secondary` co-exist in the same scan. Severity narrative is upgraded to reflect the chain, not the individual links.",
+    "schema": {
+      "name": "Chain name",
+      "primary_cwe": "CWE pattern that anchors the chain",
+      "secondary_cwe": "CWE pattern that enables the chain (pipe-separated alternatives)",
+      "same_file_required": "If true, both findings must be in the same file",
+      "narrative": "How to describe the chain in a report",
+      "chained_severity": "critical | high — what the combined chain rates"
+    }
+  },
+  "rules": [
+    {
+      "name": "IDOR + Missing Auth = Pre-Auth Account Takeover",
+      "primary_cwe": "CWE-639",
+      "secondary_cwe": "CWE-862|CWE-306|CWE-287",
+      "same_file_required": false,
+      "narrative": "IDOR on {primary.file}:{primary.line} accepts arbitrary user IDs, and {secondary.file}:{secondary.line} ships without an auth check. Chained, this means an unauthenticated attacker can read or modify any user's data without ever logging in. Either finding alone is bad; together they are a pre-auth account-takeover path.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "SSRF + Cloud-Metadata Leak = IAM Compromise",
+      "primary_cwe": "CWE-918",
+      "secondary_cwe": "CWE-200|CWE-201|CWE-209",
+      "same_file_required": false,
+      "narrative": "SSRF on {primary.file}:{primary.line} can hit `169.254.169.254`, and the response leak at {secondary.file}:{secondary.line} echoes upstream body back to the caller. The attacker reads IAM temporary credentials directly. The combined finding is full-account cloud takeover, not just internal-network probing.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Path Traversal + Arbitrary Write = RCE via cron/init",
+      "primary_cwe": "CWE-22",
+      "secondary_cwe": "CWE-73|CWE-434",
+      "same_file_required": false,
+      "narrative": "Path traversal on {primary.file}:{primary.line} combined with arbitrary write at {secondary.file}:{secondary.line} lets the attacker drop a webshell into a routable directory, overwrite cron files in /etc/cron.d/, or replace systemd unit files. Reproducible RCE — not just file read.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Stored XSS + No CSP = Full Session Hijack",
+      "primary_cwe": "CWE-79",
+      "secondary_cwe": "CWE-693|CWE-1021",
+      "same_file_required": false,
+      "narrative": "Stored XSS at {primary.file}:{primary.line} without a CSP header (gap at {secondary.file}:{secondary.line}) means there is no in-browser mitigation. Any user who loads the affected page is fully compromised — token exfil, action-on-behalf-of, persistent re-injection.",
+      "chained_severity": "high"
+    },
+    {
+      "name": "Prompt Injection + Tool Access = Data Exfiltration",
+      "primary_cwe": "LLM01",
+      "secondary_cwe": "LLM05|LLM07|LLM08",
+      "same_file_required": false,
+      "narrative": "Prompt-injection vector at {primary.file}:{primary.line} combined with the unrestricted tool surface at {secondary.file}:{secondary.line} allows an attacker to instruct the agent to call `fetch_url` / `execute_code` / `read_file` against attacker-controlled targets. The user's data and the agent's secrets exfil through tools the user never invoked.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Mass Assignment + Missing Auth = Privilege Escalation",
+      "primary_cwe": "CWE-915",
+      "secondary_cwe": "CWE-862|CWE-306",
+      "same_file_required": false,
+      "narrative": "Mass assignment at {primary.file}:{primary.line} accepts `{role: 'admin'}`. The endpoint at {secondary.file}:{secondary.line} doesn't gate by role. Any user can self-promote to admin in one POST.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Open Redirect + OAuth Callback = Code Theft",
+      "primary_cwe": "CWE-601",
+      "secondary_cwe": "CWE-287|CWE-345",
+      "same_file_required": false,
+      "narrative": "Open redirect on {primary.file}:{primary.line} with OAuth/SAML auth flow at {secondary.file}:{secondary.line} permits stealing the authorization code or SAML response by redirecting the victim post-auth to an attacker domain. Token-grade compromise, not just phishing.",
+      "chained_severity": "high"
+    },
+    {
+      "name": "SQLi + Hardcoded DB Admin Creds = Lateral Movement",
+      "primary_cwe": "CWE-89",
+      "secondary_cwe": "CWE-798|CWE-259",
+      "same_file_required": false,
+      "narrative": "SQL injection at {primary.file}:{primary.line} can pivot to other databases when the connection at {secondary.file}:{secondary.line} uses an over-privileged hardcoded account that's reused across services. The blast radius is multi-tenant, not just this one DB.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Reflected XSS + CSRF Token in DOM = Stateful CSRF",
+      "primary_cwe": "CWE-79",
+      "secondary_cwe": "CWE-352",
+      "same_file_required": false,
+      "narrative": "Reflected XSS at {primary.file}:{primary.line} can read the CSRF token from the DOM (the protection at {secondary.file}:{secondary.line} relies on token validity, not origin). XSS forges a valid CSRF request, bypassing CSRF protection entirely.",
+      "chained_severity": "high"
+    },
+    {
+      "name": "JWT alg:none + Hardcoded Secret = Forge Any Token",
+      "primary_cwe": "CWE-345",
+      "secondary_cwe": "CWE-798",
+      "same_file_required": true,
+      "narrative": "The same file accepts `alg:none` JWTs ({primary.line}) AND stores a verifier secret ({secondary.line}). Forge a valid token for any user (sub of choice) — full impersonation without a credential phish.",
+      "chained_severity": "critical"
+    },
+    {
+      "name": "Webhook Without Signature + Replay Window = Action Replay",
+      "primary_cwe": "CWE-345",
+      "secondary_cwe": "CWE-294",
+      "same_file_required": false,
+      "narrative": "Webhook handler at {primary.file}:{primary.line} doesn't verify signatures, and the action handler at {secondary.file}:{secondary.line} has no idempotency / replay window. An attacker submits forged or replayed webhook events to drive state changes.",
+      "chained_severity": "high"
+    },
+    {
+      "name": "User Input in System Prompt + No Output Validation = Prompt-to-SQL",
+      "primary_cwe": "LLM01",
+      "secondary_cwe": "CWE-89",
+      "same_file_required": false,
+      "narrative": "User input flows into the system prompt at {primary.file}:{primary.line}, and the LLM output is later used as a SQL fragment at {secondary.file}:{secondary.line}. The attacker steers the LLM into emitting malicious SQL the app then executes. Prompt-driven SQLi.",
+      "chained_severity": "critical"
+    }
+  ]
+}

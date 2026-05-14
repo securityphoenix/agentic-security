@@ -255,52 +255,98 @@ Together with `/fix --one`, this closes the loop: **find → prove → fix → t
 
 ## Automating PoC execution
 
-After `/validate-findings` has generated test files, use `scripts/run-poc-tests.py` to batch-execute them outside of Claude — in CI, in a pre-commit hook, or from the terminal.
+After `/validate-findings` has generated test files, use `scripts/run-poc-tests.py` to batch-execute them outside of Claude — in CI, in a pre-commit hook, or from the terminal. The script reads `.agentic-security/last-scan.json` for findings, discovers test files under `.agentic-security/poc/<id>/poc.*`, checks the same verdict cache that `/validate-findings` writes, and auto-detects the project test framework (jest / vitest / pytest / go test / cargo test / rspec / phpunit / dotnet test).
+
+### Basic usage
 
 ```bash
-# Run all PoCs for the current project
-python3 scripts/run-poc-tests.py
-
-# Only critical and high findings
-python3 scripts/run-poc-tests.py --severity high
-
-# Single finding by ID
-python3 scripts/run-poc-tests.py --id <finding-id>
-
-# List which findings have generated PoCs (without running)
-python3 scripts/run-poc-tests.py --list
-
-# CI gate — exits 1 if any TP_PROVEN findings, writes JUnit XML
-python3 scripts/run-poc-tests.py --severity high --junit poc-results.xml
-
-# Re-run even if a cached verdict exists
-python3 scripts/run-poc-tests.py --no-cache
-
-# Machine-readable output
-python3 scripts/run-poc-tests.py --json
+python3 scripts/run-poc-tests.py                          # run all
+python3 scripts/run-poc-tests.py --severity high          # only critical + high
+python3 scripts/run-poc-tests.py --id <finding-id>        # single finding
+python3 scripts/run-poc-tests.py --list                   # show what PoCs exist
+python3 scripts/run-poc-tests.py --no-cache               # ignore cached verdicts
+python3 scripts/run-poc-tests.py --json                   # machine-readable output
+python3 scripts/run-poc-tests.py --junit poc-results.xml  # CI integration
 ```
 
-The script reads `.agentic-security/last-scan.json` for findings, discovers test files under `.agentic-security/poc/<id>/poc.*`, checks the same verdict cache that `/validate-findings` writes, and auto-detects the project test framework (jest / vitest / pytest / go test / cargo test / etc.).
+### Red-team modes
 
-**Exit codes:** `0` = no proven vulnerabilities · `1` = at least one `TP_PROVEN` finding
+Beyond running the canonical PoC, the script offers six pentester-grade modes that can be combined freely:
 
-**Verdicts emitted:**
+| Flag | What it does |
+|---|---|
+| `--variants` | Runs every adversarial-variant payload (canonical, encoded, comment-split, time-based, etc.). Reports which encodings the application's filter / WAF lets through. |
+| `--auth-ladder` | Re-runs each PoC under three privilege levels (unauth / low / high). Reveals authz vulns that only fire at specific levels (IDOR, broken role checks, missing tier enforcement). |
+| `--verify-fix` | Inverts the verdict semantics. Use AFTER `/fix` to confirm the patched code no longer triggers the PoC. Emits `FIX_VERIFIED` (good) or `FIX_INCOMPLETE` (the fix didn't actually block the original PoC). |
+| `--chains` | Cross-references each `TP_PROVEN` finding against the other findings in the scan via `chain_rules.json`. Surfaces multi-step attacks (e.g. SSRF + cloud-metadata leak = IAM compromise; IDOR + missing auth = pre-auth account takeover). |
+| `--blind` | Spins up a local HTTP listener on `127.0.0.1:<random>` and injects a per-finding callback URL into `AS_POC_OOB_URL`. If the listener gets hit, the verdict is upgraded to `TP_PROVEN_OOB` — proving blind SQLi, blind SSRF, and blind XSS that exit-code-based assertions can't catch. |
+| `--post-exploit` | For each `TP_PROVEN` finding, prints a per-vuln-class "so what" block: blast radius + escalation paths (SQLi → credential table extraction → webshell write → persistence). Makes the finding undeniable in a pentest report. |
+
+### Output modes
+
+| Flag | What it produces |
+|---|---|
+| `--junit <path>` | JUnit XML for GitHub Actions / GitLab / Jenkins test reporters |
+| `--evidence <path>` | Self-contained JSON evidence bundle: every `TP_PROVEN` finding plus its PoC source, test output, variant matrix, auth matrix, chain narrative, and post-exploit guide. Suitable for client deliverables. |
+| `--json` | Machine-readable verdict array for downstream tooling |
+
+### Optional config files
+
+These are honored if present, ignored gracefully if not:
+
+| Path | Purpose |
+|---|---|
+| `.agentic-security/auth-fixtures.json` | Token + user_id for `unauth` / `low` / `high` levels (consumed by `--auth-ladder` via `AS_POC_AUTH_LEVEL` and `AS_POC_AUTH_TOKEN` env vars) |
+| `.agentic-security/poc/<id>/variants.json` | List of `{label, payload}` entries (consumed by `--variants` via `AS_POC_PAYLOAD` env var) |
+| `scripts/validator/post_exploit_templates.json` | Per-CWE blast-radius + next-steps text |
+| `scripts/validator/chain_rules.json` | CWE-pair correlation rules |
+
+For the env-var injection to work, generated tests should read the env vars when present, e.g.:
+
+```javascript
+const payload = process.env.AS_POC_PAYLOAD || "' OR '1'='1' --";
+const token   = process.env.AS_POC_AUTH_TOKEN || "";
+const oobUrl  = process.env.AS_POC_OOB_URL || "";
+```
+
+### Verdicts emitted
 
 | Verdict | Meaning |
 |---|---|
 | `TP_PROVEN` | Test ran and failed — vulnerable behaviour confirmed |
+| `TP_PROVEN_OOB` | OOB callback fired (blind-vuln class proven via out-of-band signal) |
 | `PROBABLE_FP_VERIFIED` | Test ran and passed — data flow is blocked |
+| `FIX_VERIFIED` | (`--verify-fix` mode) Test now passes — patch worked |
+| `FIX_INCOMPLETE` | (`--verify-fix` mode) Test still fails — patch didn't block the original PoC |
 | `INDETERMINATE_TEST_INVALID` | Test errored (missing dep, compile failure, timeout) |
 | `CACHED` | Returned from verdict cache — no test executed |
 | `NO_POC` | No test generated yet — run `/validate-findings` first |
 
-**Typical workflow:**
+### Exit codes
 
-```
+`0` = no proven or incomplete-fix findings · `1` = at least one `TP_PROVEN`, `TP_PROVEN_OOB`, or `FIX_INCOMPLETE` (CI gate).
+
+### End-to-end pentester workflow
+
+```bash
+# 1. Scan
 /scan --all
+
+# 2. Generate PoCs for everything high+
 /validate-findings --all --severity high
-python3 scripts/run-poc-tests.py --severity high --junit poc-results.xml
+
+# 3. Run the full red-team battery
+python3 scripts/run-poc-tests.py \
+    --severity high \
+    --variants --auth-ladder --chains --blind --post-exploit \
+    --junit ci-results.xml \
+    --evidence pentest-evidence.json
+
+# 4. Apply fixes
 /fix --all --high
+
+# 5. Confirm the fixes actually worked
+python3 scripts/run-poc-tests.py --severity high --verify-fix
 ```
 
 ## Scope (compliance note)
