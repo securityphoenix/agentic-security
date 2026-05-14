@@ -25,6 +25,7 @@
 // own SAST passes.
 
 import { blankComments } from './_comment-strip.js';
+import { deadBranchRanges, isLineInDeadRange } from './java-ast-folding.js';
 
 const JAVA_EXT = /\.java$/i;
 
@@ -148,16 +149,27 @@ export function findSuppressionLines(file, raw) {
   return suppressed;
 }
 
-/** Filter findings array against the suppression set. */
+/** Filter findings array against the suppression set + AST dead-branch ranges. */
 export function applyJavaBenchSuppressions(findings, file, raw) {
   if (!JAVA_EXT.test(file)) return findings;
   const suppressed = findSuppressionLines(file, raw);
-  if (!suppressed.size) return findings;
+  // AST-level: if the taint flow's source OR sink line falls in a constant-folded
+  // dead branch, the finding is unreachable.
+  let deadRanges = [];
+  try { deadRanges = deadBranchRanges(raw); } catch { /* parse error → no AST suppress */ }
+  if (!suppressed.size && deadRanges.length === 0) return findings;
   return findings.filter(f => {
-    const L = f.line ?? f.sink?.line ?? f.source?.line ?? 0;
+    const sinkLine = f.line ?? f.sink?.line ?? 0;
+    const srcLine = f.source?.line ?? 0;
+    // Pattern-based suppression (argv-form, parameterized SQL, etc.)
     const fam = mapVulnToFamily(f.vuln || '');
-    if (!fam) return true;
-    return !suppressed.has(`${L}:${fam}`);
+    if (fam && suppressed.has(`${sinkLine}:${fam}`)) return false;
+    // AST-based suppression: if EITHER the sink OR the source lives in dead code,
+    // the finding is unreachable at runtime.
+    if (deadRanges.length && (isLineInDeadRange(sinkLine, deadRanges) || isLineInDeadRange(srcLine, deadRanges))) {
+      return false;
+    }
+    return true;
   });
 }
 
@@ -235,4 +247,55 @@ export function scanJavaBenchExtras(file, raw) {
   }
 
   return findings;
+}
+
+// ─── Item #9: Request-wrapper / framework-source recognition ──────────────
+//
+// Identify classes that wrap HttpServletRequest in their constructor and
+// expose getters returning String / String[] / Object — all such getters
+// produce tainted values. OWASP Benchmark uses this pattern via
+// `org.owasp.benchmark.helpers.SeparateClassRequest`.
+//
+// Output: { className, getters: [methodName, ...] }
+// Callers can use this to add new source-identifiers to the engine's
+// taint scan on a per-scan basis.
+
+const REQUEST_WRAPPER_CLASS_RE = /\b(?:public\s+|private\s+|protected\s+|static\s+)*class\s+(\w+)\s*[^{]*?\{[^]*?(?:HttpServletRequest|ServletRequest)\b[^]*?\b(?:public|String|Object)\s+\w+\s*\(/g;
+
+/** Parse a Java file and return the names of any classes that wrap an
+ *  HttpServletRequest and expose String-returning getters. */
+export function findRequestWrapperGetters(file, raw) {
+  if (!JAVA_EXT.test(file) || !raw || raw.length > 500_000) return [];
+  const content = blankComments(raw);
+  const out = [];
+
+  // Match each class block: `class X { ... }` and check it for both
+  //   - HttpServletRequest field/constructor-arg/ivar
+  //   - public String getX(...) methods
+  const classRe = /\bclass\s+(\w+)\b[^{]*\{/g;
+  let cm;
+  while ((cm = classRe.exec(content))) {
+    const className = cm[1];
+    const bodyStart = content.indexOf('{', cm.index);
+    if (bodyStart < 0) continue;
+    // Find matching closing brace via a depth counter
+    let depth = 1, i = bodyStart + 1;
+    while (i < content.length && depth > 0) {
+      const ch = content[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      i++;
+    }
+    const body = content.substring(bodyStart, i);
+    if (!/\bHttpServletRequest\b|\bServletRequest\b/.test(body)) continue;
+    const getters = [];
+    const getterRe = /\bpublic\s+(?:String|String\s*\[\s*\]|Object)\s+(\w+)\s*\(/g;
+    let gm;
+    while ((gm = getterRe.exec(body))) {
+      if (gm[1] === 'class') continue;
+      getters.push(gm[1]);
+    }
+    if (getters.length) out.push({ className, getters });
+  }
+  return out;
 }
