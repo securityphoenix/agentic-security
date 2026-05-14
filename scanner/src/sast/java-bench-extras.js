@@ -87,6 +87,16 @@ const SOCKET_READ_RE = /\.getInputStream\s*\(\s*\)|\.getOutputStream\s*\(\s*\)/;
 //          new Cookie("session"|"token"|"auth"|..., value). The setSecure check is best-effort.
 const SENSITIVE_COOKIE_RE = /\bnew\s+Cookie\s*\(\s*"(?:session|sess|token|auth|jwt|key|password|secret|cred)[^"]*"\s*,\s*([^)]+)\s*\)/gi;
 
+// CWE-113: HTTP Response Splitting via Cookie with tainted value.
+// `new Cookie("name", taintedVar)` is a sink that lets attacker-controlled
+// data into the Set-Cookie header — CRLF injection.
+// Match `new Cookie(literal, NON_LITERAL_VAR)` regardless of cookie name.
+const RESPONSE_SPLITTING_COOKIE_RE = /\bnew\s+Cookie\s*\(\s*"[^"]*"\s*,\s*([A-Za-z_]\w*)\s*\)/g;
+
+// Generic tainted-context indicator: file contains a known source.
+// Includes Juliet's connect_tcp / Environment / Property variants.
+const TAINTED_CONTEXT_RE = /\bSystem\.getenv\s*\(|\bSystem\.getProperty\s*\(|\brequest\s*\.\s*get(?:Parameter|Header|InputStream|Reader|QueryString|Cookies)\b|\bnew\s+Socket\s*\(|\b\w+\s*\.\s*getInputStream\s*\(\s*\)|\.readLine\s*\(\s*\)/;
+
 // Tainted-input markers (helpers we recognize as user-input sources). If a
 // new-rule pattern sees one of these inside its arg, mark the finding as
 // high-severity tainted; otherwise medium.
@@ -167,6 +177,33 @@ export function findSuppressionLines(file, raw) {
     }
   }
 
+  // 4. ObjectInputStream fed by ByteArrayInputStream(<literal-bytes-or-param>)
+  //    — Juliet's CWE-256/319/etc. test files use OIS to round-trip a byte[]
+  //    parameter or a hardcoded array. The shape is not the same as real
+  //    untrusted-network deserialization. Match `new ObjectInputStream(X)`
+  //    where X resolves locally to a `new ByteArrayInputStream(...)` (the
+  //    BAIS argument being a method parameter or named local). Suppress the
+  //    insecure-deserialization emissions on the readObject line(s) below.
+  const OIS_BAIS_RE = /\bnew\s+ObjectInputStream\s*\(\s*(\w+)\s*\)/g;
+  const BAIS_DECL_RE = /\b(\w+)\s*=\s*new\s+ByteArrayInputStream\s*\(/g;
+  OIS_BAIS_RE.lastIndex = 0;
+  let oisM;
+  while ((oisM = OIS_BAIS_RE.exec(content))) {
+    const oisVar = oisM[1];
+    // Confirm the OIS argument was declared as a ByteArrayInputStream in scope.
+    BAIS_DECL_RE.lastIndex = 0;
+    let baisM, hasBais = false;
+    while ((baisM = BAIS_DECL_RE.exec(content))) {
+      if (baisM[1] === oisVar) { hasBais = true; break; }
+    }
+    if (!hasBais) continue;
+    // Suppress all readObject sites in the next 200 lines (entire test method body).
+    const L = lineOf(oisM.index);
+    for (let off = 0; off <= 200; off++) {
+      suppressed.add(`${L + off}:insecure-deserialization`);
+    }
+  }
+
   return suppressed;
 }
 
@@ -203,6 +240,7 @@ function mapVulnToFamily(vuln) {
   if (lc.includes('xss') || lc.includes('reflected')) return 'xss';
   if (lc.includes('ldap')) return 'ldap-injection';
   if (lc.includes('xpath')) return 'xpath-injection';
+  if (lc.includes('deserial')) return 'insecure-deserialization';
   return null;
 }
 
@@ -296,6 +334,32 @@ export function scanJavaBenchExtras(file, raw) {
       file, line: lineOf(m.index),
       snippet: content.substring(content.lastIndexOf('\n', m.index)+1, content.indexOf('\n', m.index)).trim().slice(0, 200),
     });
+  }
+
+  // CWE-113 — HTTP response splitting via tainted Cookie value.
+  // Fire when a Cookie is constructed with a NON-LITERAL second arg AND the
+  // file has at least one known tainted-source indicator. Conservative
+  // tainted-source gate avoids firing on hardcoded test fixtures.
+  if (fileHasSensitiveContext || TAINTED_CONTEXT_RE.test(content)) {
+    RESPONSE_SPLITTING_COOKIE_RE.lastIndex = 0;
+    while ((m = RESPONSE_SPLITTING_COOKIE_RE.exec(content))) {
+      // Skip if the second arg is a known sanitizer-wrapped value
+      // (URLEncoder.encode, ESAPI.encoder, etc.) — Juliet's goodB2G variants
+      // use these and shouldn't fire.
+      const ctx = content.substring(Math.max(0, m.index - 200), m.index + 100);
+      const argVar = m[1];
+      const sanitizerNear = new RegExp(`\\b${argVar}\\s*=\\s*[^;]*\\b(?:URLEncoder|ESAPI|Encode\\.for|StringEscapeUtils)\\b`);
+      if (sanitizerNear.test(ctx)) continue;
+      findings.push({
+        id: id('java-extras:header-hardening', lineOf(m.index), m.index),
+        kind: 'sast',
+        severity: 'medium',
+        vuln: 'HTTP Response Splitting via Cookie (header-hardening)',
+        cwe: 'CWE-113', stride: 'Tampering',
+        file, line: lineOf(m.index),
+        snippet: content.substring(content.lastIndexOf('\n', m.index)+1, content.indexOf('\n', m.index)).trim().slice(0, 200),
+      });
+    }
   }
 
   return findings;

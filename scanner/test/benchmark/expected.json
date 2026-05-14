@@ -76,7 +76,8 @@
       "NoSQL Injection (User-Controlled Query Filter)": "sql-injection",
       "Sensitive cookie without secure flag (data exposure)": "data-exposure",
       "Cleartext HTTP transmission (new URL with http://)": "insecure-http",
-      "Open Redirect (response.sendRedirect with non-literal)": "open-redirect"
+      "Open Redirect (response.sendRedirect with non-literal)": "open-redirect",
+      "HTTP Response Splitting via Cookie (header-hardening)": "header-hardening"
     },
     "prefix": {
       "Command Injection": "command-injection",
@@ -146,7 +147,8 @@
       "Untyped Actix extractor": "input-validation",
       "Cleartext HTTP": "insecure-http",
       "Sensitive cookie": "data-exposure",
-      "Open Redirect (response.sendRedirect": "open-redirect"
+      "Open Redirect (response.sendRedirect": "open-redirect",
+      "HTTP Response Splitting": "header-hardening"
     }
   },
   "fixtures": {

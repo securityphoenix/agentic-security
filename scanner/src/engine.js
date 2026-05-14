@@ -2516,7 +2516,7 @@ const GRAPHQL_VULN_PATTERNS=[
 //   (b) a category-specific sink is present
 //   (c) no canonical sanitizer is present in scope
 // Designed to lift OWASP Benchmark recall to ≥95% on the 10 covered families.
-const _JAVA_HTTP_SOURCE_RE = /\b(?:request|req)\s*\.\s*(?:getParameter|getParameterMap|getParameterNames|getParameterValues|getHeader|getHeaders|getHeaderNames|getCookies|getQueryString|getRequestURI|getRequestURL|getInputStream|getReader|getRemoteUser|getRemoteAddr|getPathInfo|getPathTranslated|getServletPath)\b|\b@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam|MatrixParam)\b|\bCookie\b[^;]{0,200}getValue\s*\(|\btheCookie\s*\.\s*getValue\s*\(|\bgetValue\s*\(\s*\)/;
+const _JAVA_HTTP_SOURCE_RE = /\b(?:request|req)\s*\.\s*(?:getParameter|getParameterMap|getParameterNames|getParameterValues|getHeader|getHeaders|getHeaderNames|getCookies|getQueryString|getRequestURI|getRequestURL|getInputStream|getReader|getRemoteUser|getRemoteAddr|getPathInfo|getPathTranslated|getServletPath)\b|\b@(?:RequestParam|PathVariable|RequestBody|RequestHeader|CookieValue|QueryParam|PathParam|FormParam|HeaderParam|MatrixParam)\b|\bCookie\b[^;]{0,200}getValue\s*\(|\btheCookie\s*\.\s*getValue\s*\(|\bgetValue\s*\(\s*\)|\bSystem\s*\.\s*get(?:env|Property)\s*\(|\bnew\s+(?:Server)?Socket\s*\(|\.openConnection\s*\(\s*\)/;
 const _JAVA_TAINTED_VAR_RE = /\b(?:param|userInput|input|fileName|name|value|cmd|command|query|path|search|filter|q|s|user|email|id|data|bar|sql|sqlString|host|hostname|url|uri|file|content|text|body|header|cookie|attr|attribute|key|expr|expression|target|dest|destination|source|src|payload|msg|message|comment|review|description|title|category|tag|date|email|phone|address|zip|code|token|password|secret|userid|username|login|alg|algorithm)\b/;
 
 const JAVA_FAMILY_RULES = [
@@ -3174,7 +3174,25 @@ const _JAVA_SOURCE_BINDS = [
   /\b([A-Za-z_]\w*)\s*=\s*\w+\s*\.\s*(?:getTheValue|getTheParameter|getTheHeader|getTheCookie)\s*\(/g,
   // BufferedReader br = request.getReader(); Stream s = request.getInputStream();
   /\b([A-Za-z_]\w*)\s*=\s*[^;]*\brequest\s*\.\s*(?:getReader|getInputStream)\s*\(/g,
+  // String x = System.getenv("VAR"); String x = System.getProperty("VAR");
+  // Juliet's CWE-* test files use these as tainted sources.
+  /\b([A-Za-z_]\w*)\s*=\s*[^;]*\bSystem\s*\.\s*get(?:env|Property)\s*\(/g,
 ];
+
+// Juliet-shape source binds — applied only when the file has Socket /
+// URLConnection / openConnection context. These are too broad to apply
+// universally (clean apps use readLine for CLI parsing, config readers,
+// etc.) but in Juliet files they reliably indicate the BadSource pattern.
+const _JAVA_JULIET_SOURCE_BINDS = [
+  // var = X.getInputStream()  — taints the resulting Reader/InputStream.
+  /\b([A-Za-z_]\w*)\s*=\s*[^;]*\b\w+\s*\.\s*getInputStream\s*\(/g,
+  // var = X.readLine()  — Juliet's canonical Socket-read pattern.
+  /\b([A-Za-z_]\w*)\s*=\s*\w+\s*\.\s*readLine\s*\(\s*\)/g,
+];
+
+// Indicator regex: file uses raw network I/O, suggesting Juliet-shape taint
+// chains (or genuine network code with potentially-tainted input).
+const _JAVA_NETWORK_CONTEXT_RE = /\bnew\s+(?:Server)?Socket\s*\(|\.openConnection\s*\(\s*\)|\bnew\s+URL\s*\(\s*"http[s]?:\/\//;
 
 // Sanitizer wrappers — when a variable receives the output of one of these,
 // it's no longer tainted. Family-aware: `forHtml` sanitizes XSS but NOT SQL.
@@ -3222,19 +3240,110 @@ function _javaFindSanitizerMethods(cleaned) {
   return out;
 }
 
+// Find methods that pass taint through — they return one of their parameters
+// (directly or via a local var assigned from a param). Used for single-file
+// inter-procedural taint propagation: when a tainted arg is passed to such a
+// method, the result is tainted.
+//
+// Roadmap item #4. Covers the OWASP Benchmark pattern:
+//   String bar = doSomething(request, param);  // taint through param
+//   ...
+//   private static String doSomething(HttpServletRequest req, String param) {
+//     return param;  // direct
+//   }
+//
+// Returns Map<methodName, Set<paramPosition>>. paramPosition is 0-indexed.
+function _javaFindTaintPassthroughMethods(cleaned) {
+  const out = new Map();
+  const re = /\b(?:public|private|protected|static|final|\s)+\s*[\w.<>\[\]]+\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:throws\s+[\w.,\s]+)?\s*\{/g;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const methodName = m[1];
+    const paramList = m[2];
+    if (['if','for','while','switch','catch','synchronized','class','new'].includes(methodName)) continue;
+    if (!paramList || !paramList.trim()) continue;
+    // Parse param names: each is "<Type> <name>". Strip annotations and arrays.
+    const params = paramList.split(',').map(p => {
+      const trimmed = p.replace(/@\w+(?:\([^)]*\))?\s*/g, '').trim();
+      const parts = trimmed.split(/\s+/);
+      return parts[parts.length - 1].replace(/[\[\]\.]/g, '');
+    });
+    if (!params.length) continue;
+    // Body extends to matching close brace.
+    let depth = 1, j = m.index + m[0].length;
+    while (j < cleaned.length && depth > 0) {
+      const ch = cleaned[j];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      j++;
+    }
+    const body = cleaned.substring(m.index + m[0].length, j - 1);
+    // Skip if body contains a sanitizer — sanitizer detection takes precedence.
+    if (_JAVA_GENERIC_SANITIZER_RE.test(body)) continue;
+    // Build local-var taint set: vars assigned from any param (transitive).
+    // Use the same iterative-fixed-point logic as the main taint map.
+    const localTainted = new Set(params);
+    let changed = true, safety = 6;
+    while (changed && safety-- > 0) {
+      changed = false;
+      const assignRe = /\b([A-Za-z_]\w*)\s*=(?!=)\s*([^;]+?)(?:;|\/\/|$)/g;
+      let am;
+      while ((am = assignRe.exec(body)) !== null) {
+        const lhs = am[1];
+        const rhs = am[2];
+        if (['if','for','while','return','this','new'].includes(lhs)) continue;
+        if (localTainted.has(lhs)) continue;
+        // Skip if RHS goes through a sanitizer.
+        if (_JAVA_GENERIC_SANITIZER_RE.test(rhs)) continue;
+        const tokens = rhs.match(/\b[A-Za-z_]\w*\b/g) || [];
+        if (tokens.some(t => localTainted.has(t))) {
+          localTainted.add(lhs);
+          changed = true;
+        }
+      }
+    }
+    // Look for `return <X>` where X is in localTainted.
+    const returnRe = /\breturn\s+([A-Za-z_]\w*)\s*[;)]/g;
+    const passthroughPositions = new Set();
+    let rm;
+    while ((rm = returnRe.exec(body)) !== null) {
+      const retVar = rm[1];
+      if (!localTainted.has(retVar)) continue;
+      // Find which param position(s) this var traces back to.
+      // Conservative: mark all params as potential passthroughs.
+      // Engine sees `methodCall(arg1, arg2)`; if any arg is tainted and method
+      // is in the index, mark result tainted. Per-position precision would
+      // require tracking the var's exact source.
+      for (let i = 0; i < params.length; i++) passthroughPositions.add(i);
+    }
+    if (passthroughPositions.size > 0) out.set(methodName, passthroughPositions);
+  }
+  return out;
+}
+
 function _buildJavaTaintMap(cleaned, lines) {
   const tainted = new Set();
   const sanitized = new Set();
   const sourceVarLine = new Map();
   const sanitizerMethods = _javaFindSanitizerMethods(cleaned);
+  const passthroughMethods = _javaFindTaintPassthroughMethods(cleaned);
   // Pass 1: find direct source-bound variables.
-  for (const re of _JAVA_SOURCE_BINDS) {
-    const r = new RegExp(re.source, re.flags);
-    let m;
-    while ((m = r.exec(cleaned)) !== null) {
-      tainted.add(m[1]);
-      const ln = cleaned.substring(0, m.index).split('\n').length;
-      if (!sourceVarLine.has(m[1])) sourceVarLine.set(m[1], ln);
+  const sourceBindGroups = [_JAVA_SOURCE_BINDS];
+  // Juliet-shape patterns (readLine, getInputStream chains) only apply when
+  // the file uses raw network I/O — otherwise they'd over-fire on CLI
+  // parsers and config readers in clean apps.
+  if (_JAVA_NETWORK_CONTEXT_RE.test(cleaned)) {
+    sourceBindGroups.push(_JAVA_JULIET_SOURCE_BINDS);
+  }
+  for (const group of sourceBindGroups) {
+    for (const re of group) {
+      const r = new RegExp(re.source, re.flags);
+      let m;
+      while ((m = r.exec(cleaned)) !== null) {
+        tainted.add(m[1]);
+        const ln = cleaned.substring(0, m.index).split('\n').length;
+        if (!sourceVarLine.has(m[1])) sourceVarLine.set(m[1], ln);
+      }
     }
   }
   // OWASP Benchmark convention: `param` is almost always the user-controlled
@@ -3273,6 +3382,21 @@ function _buildJavaTaintMap(cleaned, lines) {
           if (!sanitized.has(lhs)) { sanitized.add(lhs); changed = true; }
           tainted.delete(lhs);
           continue;
+        }
+        // Inter-procedural taint passthrough: RHS calls a helper method that
+        // returns one of its parameters, and a tainted var is passed at that
+        // position. Mark LHS tainted. (Roadmap item #4.)
+        if (passthroughMethods.size > 0) {
+          for (const [methodName] of passthroughMethods) {
+            const callRe = new RegExp(`\\b${methodName}\\s*\\(([^)]*)\\)`);
+            const cm = callRe.exec(rhs);
+            if (!cm) continue;
+            const argTokens = (cm[1].match(/\b[A-Za-z_]\w*\b/g) || []);
+            if (argTokens.some(t => tainted.has(t) && !sanitized.has(t))) {
+              if (!tainted.has(lhs)) { tainted.add(lhs); changed = true; }
+              break;
+            }
+          }
         }
         // Otherwise: if RHS references any tainted var (and isn't a pure literal),
         // LHS becomes tainted.
