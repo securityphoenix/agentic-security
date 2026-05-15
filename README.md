@@ -2,7 +2,7 @@
 
 ### The Claude Code plugin that catches what your AI assistant misses.
 
-> Built by **[Clear Capabilities](https://www.clearcapabilities.com/products/agentic-security)** · Local-first · No cloud, no signups, no API keys
+> Built by **[Clear Capabilities](https://www.clearcapabilities.com/products/agentic-security)**
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
