@@ -261,7 +261,7 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 - **Deterministic mode.** Byte-stable output + rule-pack lockfile (`rules.lock.json`) for audits and CI baselines.
 - **Diff-aware.** `--pr` mode scans only changed files; auto-detects PR base from GitHub / GitLab / Buildkite / Bitbucket env vars.
 - **Standards-shaped output.** SARIF, JUnit, CycloneDX (SBOM + ML-BOM + PBOM), SPDX. Drops directly into existing dashboards.
-- **Honest F1.** 100% wildcard / 87.9% strict on OWASP Benchmark, with a public per-app baseline file. We tell you where we miss.
+- **Honest F1.** 100% wildcard / 89.6% strict on OWASP Benchmark (file-level, OWASP-scorecard convention) with a public per-app baseline file. We tell you where we miss.
 
 ### 5-minute pro setup
 
@@ -409,9 +409,11 @@ Evaluated against the OWASP Benchmark (2,740 Java test cases), 33 real-world vul
 | Scoring mode | What it measures | Score |
 |---|---|---|
 | **Wildcard-relaxed** (default) | "Does the scanner find at least one finding in each vulnerability family this app contains?" — i.e. family-level coverage. The mode most published security tool benchmarks use. | **100% on 35/35 benchmarks** |
-| **Strict line-level** (`--no-wildcards`) | "Does each emitted finding land on the exact file:line the upstream ground truth labels?" — a much harder bar. | **100% on 34/35** benchmarks. **87.9%** on OWASP Benchmark (via OWASP-shape suppressors). **54.8%** on SARD Juliet Java (via cross-file source chaining). **7.0%** on juliet-c-cpp (incidental-CWE precision artifact dominates). |
+| **Strict file-level** (`--no-wildcards`, OWASP-scorecard convention) | "For each test file, does the engine fire iff the file is real=true?" One TP per test that fires; one FP per safe test the engine fires on. | **100% on 30/33** benchmarks. **89.6%** on OWASP Benchmark (via OWASP-shape suppressors). **45.2%** on SARD Juliet Java (via cross-file source chaining + collection-passthrough). **6.6%** on juliet-c-cpp (cpp.js rule set covers 8 of 21 Juliet CWE families — recall gap is engine-bound). |
 
-**Why the gap on the remaining apps?** OWASP Benchmark uses `real=true / real=false` labels that hinge on constant-folded if-branches, inner-class flow, and List/Map index obfuscation that regex+AST engines can't reliably distinguish. SARD Juliet's remaining recall gap is in DataflowThruInnerClass / Vector / Stream variants where the BadSource hides behind multiple call frames; precise AST taint analysis is the next lift. juliet-c-cpp's 7.0% reflects engine emissions on test files whose primary CWE doesn't match what the engine detects.
+**Why the gap on the remaining apps?** OWASP Benchmark uses `real=true / real=false` labels that hinge on constant-folded if-branches, inner-class flow, and List/Map index obfuscation that regex+AST engines can't reliably distinguish. SARD Juliet's remaining recall gap is in DataflowThruInnerClass / Vector / Stream variants where the BadSource hides behind multiple call frames; precise AST taint analysis is the next lift. juliet-c-cpp's gap reflects the cpp.js rule set covering only 8 of the 21 CWE families Juliet exercises (recall-bound; precision is 88.9%).
+
+**Note on prior numbers**: a `matchAny` scoring bug was inflating bench-reported numbers by 1.5–2× on file-level GT (see [`STRICT-F1-BASELINE.md`](scanner/test/benchmark/STRICT-F1-BASELINE.md) for the full methodology correction). The numbers above are the corrected file-level F1 — what an outside auditor expects "F1" to mean.
 
 Reproduce either number:
 

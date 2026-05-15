@@ -427,6 +427,15 @@ function score(actual, expected, vulnFamilyMap, scanRoot, wildcardFamilies) {
     }
   }
   // Second pass: match expected entries normally — O(E + sum-of-basename-buckets)
+  //
+  // matchAny semantics (CORRECTED): "this expected entry credits any number of
+  // matching actuals (so duplicate emissions don't become FPs), but the
+  // expected entry still counts as exactly ONE TP." The previous behavior
+  // pushed one tps per matched actual, silently inflating reported F1 numbers
+  // on file-level GT (OWASP Benchmark, Juliet) by 1.5–2× when the engine
+  // emitted multiple findings per file. The OWASP Benchmark scorecard
+  // convention is per-test (one TP per real=true test that fires) — that's
+  // what we now report.
   for (const e of expected) {
     const tol = typeof e.lineTolerance === 'number' ? e.lineTolerance : LINE_TOLERANCE;
     let matched = false;
@@ -445,11 +454,14 @@ function score(actual, expected, vulnFamilyMap, scanRoot, wildcardFamilies) {
       } else if (Math.abs(aLine - e.line) > tol) continue;
       if (meta.fam !== e.family) continue;
       consumed.add(i);
-      tps.push({ ...e, matchedVuln: meta.vuln });
-      matched = true;
-      // matchAny: one expected entry consumes ALL matching actuals (used for
-      // "the famous vuln-deps" case — package.json carries dozens of CVEs and
-      // we credit the scanner for finding any/all of them).
+      if (!matched) {
+        // First matching actual contributes the single TP for this expected entry.
+        tps.push({ ...e, matchedVuln: meta.vuln });
+        matched = true;
+      }
+      // matchAny: continue consuming additional matching actuals so they
+      // don't become FPs, but DO NOT push additional tps for them. One
+      // expected entry = one TP.
       if (!e.matchAny) break;
     }
     if (!matched && !wildSet.has(e.family)) fns.push(e);

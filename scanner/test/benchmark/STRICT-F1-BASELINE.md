@@ -50,13 +50,39 @@ igoat-swift            laravel-clean        snyk-rust-vulnerable-apps
 - `snyk-rust-vulnerable-apps`: 90.6% → **100%** — same fix; dropped 6
   stale FN entries on Cargo.toml files.
 
+## METHODOLOGY CORRECTION
+
+Prior to this update, the bench's `score()` function pushed one TP per
+**matched actual** when an expected entry had `matchAny: true` — silently
+inflating reported F1 by 1.5–2× on file-level GT (OWASP Benchmark, Juliet
+Java/C/C++) whenever the engine emitted multiple findings on the same
+file. The OWASP Benchmark scorecard convention is per-test (one TP per
+real=true test that fires); this is now what we report.
+
+The fix is one expected entry → at most one TP, regardless of how many
+duplicate emissions land on it. Duplicate emissions still don't become
+FPs (the original `matchAny` intent), but they no longer inflate TP.
+
+**All prior strict-F1 numbers in this document have been corrected. The
+new numbers are file-level OWASP-convention F1 — the defensible outside
+claim.** Apps using line-level GT (juice-shop, gitleaks-fixtures,
+ossf-cve-benchmark, etc.) emit at most one finding per expected entry
+and so were never affected by the inflation.
+
+| App | Was (inflated) | Is (file-level) | Note |
+|---|---:|---:|---|
+| owasp-benchmark   | 90.4% | **89.6%** | -0.8 pp correction |
+| sard-juliet-java  | 56.7% | **45.2%** | -11.5 pp correction (most inflation; 5+ findings/file avg) |
+| juliet-c-cpp      | 13.6% | **6.6%** | -7.0 pp correction |
+| juice-shop / nodegoat / snyk-goof / 27 others | 100% | **100%** | unchanged |
+
 ### Apps where strict F1 is engine-limited (2)
 
 | App | Strict F1 | Per-family bottlenecks | Path forward |
 |---|---:|---|---|
-| owasp-benchmark | **90.4%** (up from 87.9% in 0.35.0, 80.0% baseline) | Tier A sweep added (a) Map-double-get-safe-key suppressor — recognizes the OWASP template `map.put("keyA", lit); map.put("keyB", param); bar = map.get("keyB"); bar = map.get("keyA");` where the second extraction overrides bar with the safe key. Verified across all 1,415 real=true tests: 26 match the shape but ALL 26 are in weak-crypto/weak-rng/hash families unaffected by the bar-using-family-only suppression. (b) trust-boundary added to `mapVulnToFamily` — was previously returning null, so the existing 4 OWASP suppressors couldn't see those findings. Combined effect: -83 FPs, 0 TPs lost. Per-family lifts: sql-injection 85→89%, xss 81→84%, command-injection 71→74%, ldap-injection 76→84%, path-traversal 74→78%, trust-boundary 80→86%. | Remaining 77 FPs are individually-coded patterns. The next 5pp would require either (a) per-template suppressors at ~5-10 FPs eliminated each, or (b) full Java AST integration for per-arg-element classification. The shape-only Tier B item #7 (ProcessBuilder argv-form distinction) was tested and rejected: OWASP labels both safe and unsafe array-literal calls with the same shape — distinguishing requires per-element semantic analysis. The literal-blanking fix in per-arg taint extraction was tested and rejected: removed 26 FPs at the cost of 62 TPs because some real=true tests fire via accidental literal-content matches that the heuristic relies on. |
-| sard-juliet-java | **56.7%** (up from 54.8% in 0.34.12, 35.3% in 0.34.8, 25.6% baseline) | Latest sweep landed Action 4 (collection-passthrough taint) + Action 5 (per-arg-position inter-procedural). New: method-parameter collections (`Vector<String> dataVector`) in Juliet-shape files are now marked as tainted sources, closing variants 72–82 where taint arrives via a cross-file collection parameter. Per-family lifts vs. prior: sql-injection 40→45%, xss 30→35%, ldap-injection 40→46%, path-traversal 67→69%. +297 TPs, zero new FPs. Remaining gap is engine recall on anonymous-inner-class / Stream / lambda variants the regex engine can't model. | Continued AST work via `java-parser` CST: anonymous-inner-class flow tracking, Stream/lambda taint, per-arg taint at sinks (already partial). Tree-sitter Java integration unlocks all of these (multi-week). |
-| juliet-c-cpp | **13.6%** (P: 94.7%, up from 7.0% F1 / 5.0% P) | Latest sweep landed Action 1 (Juliet primary-CWE family suppressor) + Action 2 (crypto-context gating on cpp-rand / cpp-strcpy / cpp-printf-fmt). Precision FPs: weak-rng 64,720 → 0; buffer-overflow 14,054 → 0; format-string 390 → 0; command-injection 66 → 0; mem-unsafe 477 → 0. F1 still bottlenecked on recall — the cpp.js rule set is narrow (8 rules) and Juliet covers 21 CWEs at scale. command-injection/mem-unsafe/weak-crypto families have zero TPs because cpp.js doesn't yet detect Juliet's exact shapes. | Recall lift requires extending cpp.js with rules for: CWE415/416 use-after-free patterns, CWE190 integer-overflow patterns, additional CWE327/328 weak-crypto cipher calls. Roughly 1–2 weeks of focused rule authoring + fixture pairs per family. |
+| owasp-benchmark | **89.6%** (up from ~87% baseline; methodology-corrected from inflated 90.4%) | Tier A sweep landed two clean structural suppressors: (a) Map-double-get-safe-key — recognizes the OWASP template `map.put("keyA", lit); map.put("keyB", param); bar = map.get("keyB"); bar = map.get("keyA");` where the second extraction overrides bar with the safe key. Verified clean against all 1,415 real=true tests. (b) trust-boundary added to `mapVulnToFamily` so the existing 4 OWASP suppressors can see those findings. Per-family: weak-crypto 100%, weak-rng 100%, header-hardening 100%, sql-injection 89%, xss 83%, trust-boundary 86%, command-injection 74%, ldap-injection 84%, xpath-injection 85%, path-traversal 78%. | Remaining 77 FPs and 204 FNs are individually-coded patterns. Investigation (this session) ruled out: shape-only ProcessBuilder argv-form distinction (loses 19 TPs); literal-blanking in per-arg taint (net-neutral: -25 TPs / -25 FPs); multi-match-per-file (recovered some recall but doesn't change file-level F1). To reach 95%+ requires per-template per-pattern suppressors (~5-10 FPs/FNs each, multi-week effort). |
+| sard-juliet-java | **45.2%** (methodology-corrected from inflated 56.7%) | Cross-file source chaining + collection-passthrough already shipped (this session). Remaining gap is engine recall on anonymous-inner-class / Stream / lambda variants the regex engine can't model. | AST work via `java-parser` CST: anonymous-inner-class flow tracking, Stream/lambda taint, per-arg taint at sinks. Tree-sitter Java integration unlocks all of these (multi-week). |
+| juliet-c-cpp | **6.6%** (methodology-corrected from inflated 13.6%; P: 88.9%) | Action 1 (primary-CWE family suppressor) + Action 2 (crypto-context gating) shipped earlier. Precision FPs went from 65k+ (weak-rng) to a few hundred. F1 still bottlenecked on recall — cpp.js has 8 rules but Juliet covers 21 CWE families at scale. | Recall lift requires extending cpp.js with rules for CWE415/416 use-after-free, CWE190 integer-overflow, additional CWE327/328 weak-crypto cipher calls. ~1-2 weeks per family. |
 
 ### juliet-c-cpp un-quarantined
 
