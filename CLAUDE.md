@@ -2,7 +2,7 @@
 
 Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + function-level reachability), secrets, IaC, prompt-injection, MCP/agent-tool audit, auth/authZ deep analysis, attack chains, PoC generation, SBOM/PBOM/AI-BOM, SARIF ingest, compliance attestation (NIST AI 600-1, OWASP ASVS, OWASP LLM Top 10), and more — local-first, no cloud lock-in.
 
-**Version:** 0.34.12  
+**Version:** 0.35.0  
 **License:** PolyForm Internal Use 1.0.0  
 **Author:** Ross Young <ross@clearcapabilities.com> / Clear Capabilities Inc.
 
@@ -19,7 +19,7 @@ Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + f
 | `scanner/src/sast/` | SAST modules: authz, cpp, csharp, go-extended, host-header, java-deserialization, jndi, jwt-exp, llm, llm-owasp, logic, mcp-audit, model-load, pipeline, prompt-template, rust, solidity, xxe, zip-slip |
 | `scanner/src/sca/` | SCA modules: container, dep-confusion, sarif-ingest |
 | `scanner/src/secrets/` | Secrets scanning |
-| `scanner/src/posture/` | Posture modules: aibom, api-inventory, drift, license-policy, material-change, mttr, profile, rule-overrides, rule-packs, sbom, scorecard, streak, suppressions, triage |
+| `scanner/src/posture/` | Posture modules: aibom, api-inventory, blast-radius, custom-rules, deterministic, drift, epss, fix-history, license-policy, material-change, mttr, profile, router, rule-overrides, rule-packs, sbom, scorecard, streak, suppressions, triage |
 | `scanner/src/report/` | HTML/JSON/Markdown/SARIF/JUnit report generation |
 | `scanner/src/integrations/` | Third-party integrations (CI, PR comment, etc.) |
 | `scanner/test/` | Node test runner suite (smoke + unit) |
@@ -112,6 +112,19 @@ Each file exports one or more `scan*()` functions:
 | `streak.js` | Clean-scan streak tracking |
 | `suppressions.js` | Suppression-pragma management |
 | `triage.js` | Finding deduplication and ranking |
+| `epss.js` | EPSS exploit-prediction enrichment (FIRST.org, disk-cached). Bumps severity on percentile ≥ 95% |
+| `blast-radius.js` | Plain-English cost / blast-radius narrative per finding (uses project signals: Stripe, auth, schema, .env) |
+| `custom-rules.js` | YAML pattern-rule DSL (`.agentic-security/rules/*.yml`) + `rule test` harness |
+| `fix-history.js` | Fix preview / apply / undo with backups under `.agentic-security/fix-history/` |
+| `deterministic.js` | `--deterministic` mode + rule-pack lockfile (`rules.lock.json`) |
+| `router.js` | Smart `secure` decision tree — routes vibecoders to the right next action |
+
+## Integrations (scanner/src/integrations/)
+
+| Module | Purpose |
+|--------|---------|
+| `index.js` | Slack / Discord digests, Jira / ServiceNow issue builders, SIEM event, PR-comment renderer |
+| `tickets.js` | Two-way ticket sync (GitHub Issues via `gh`, Linear via GraphQL, Jira via REST). Idempotent state in `.agentic-security/tickets.json` |
 
 ---
 

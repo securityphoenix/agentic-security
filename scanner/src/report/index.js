@@ -47,6 +47,12 @@ export function normalizeFindings(scan){
       toxicityFactors: f.toxicityFactors || null,
       toxicityLabel: f.toxicityLabel || null,
       sources: Array.isArray(f.sources) && f.sources.length ? f.sources : null,
+      epssScore: f.epssScore ?? null,
+      epssPercentile: f.epssPercentile ?? null,
+      epssCve: f.epssCve || null,
+      exploitedNow: f.exploitedNow === true,
+      tags: Array.isArray(f.tags) && f.tags.length ? f.tags : null,
+      blastRadius: f.blastRadius || null,
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -61,6 +67,7 @@ export function normalizeFindings(scan){
       file: s.file, line: s.line, snippet: s.snippet || '',
       masked: s.masked || null,
       fix: s.fix ? { description: s.fix, code: s.code || '' } : null,
+      blastRadius: s.blastRadius || null,
     });
   }
   for (const lv of (scan.logicVulns||[])) {
@@ -74,6 +81,7 @@ export function normalizeFindings(scan){
       stride: lv.stride || null,
       file: lv.file, line: lv.line, snippet: lv.snippet || '',
       fix: lv.fix ? { description: lv.fix, code: lv.code || '' } : null,
+      blastRadius: lv.blastRadius || null,
     });
   }
   for (const sc of (scan.supplyChain||[])) {
@@ -99,6 +107,10 @@ export function normalizeFindings(scan){
       // Feat-9: real-world risk signals
       epssScore: sc.epssScore ?? null,
       epssPercentile: sc.epssPercentile ?? null,
+      epssCve: sc.epssCve || null,
+      exploitedNow: sc.exploitedNow === true,
+      tags: Array.isArray(sc.tags) && sc.tags.length ? sc.tags : null,
+      blastRadius: sc.blastRadius || null,
       cvssVector: sc.cvssVector || null,
       functionReachable: sc.functionReachable || null,
       // 0.10.0: CISA KEV — actively abused in the wild

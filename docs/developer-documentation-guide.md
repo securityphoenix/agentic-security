@@ -7,7 +7,7 @@ NAME
        integrations for the security stack you already run.
 
 VERSION
-       0.34.7
+       0.35.0
 
 SYNOPSIS
        agentic-security [--profile pro] COMMAND [ARGS] [OPTIONS]
@@ -20,6 +20,18 @@ SYNOPSIS
        /show-findings [--all|--kev|--chains|--threat-model]
        /validate-findings <finding-id>
        /explain <finding-id|CWE-N|vuln-name>
+
+       Pro & vibecoder essentials (0.35.0):
+       /secure [path] [--launch]
+       agentic-security fix --finding <id> [--preview|--apply]
+       agentic-security undo [--all|--list]
+       agentic-security tickets sync --provider <github|linear|jira> [--dry-run]
+       agentic-security rules lock
+       agentic-security rule list | rule test <fixture-glob>
+       agentic-security scan --pr [ref]
+       agentic-security scan --deterministic
+       (auto-on) EPSS exploit-prediction enrichment via FIRST.org
+       (auto-on) Blast-radius / cost framing per finding
 
        Auto-update behavior (0.34.2+):
               Every /scan invocation first runs an auto-update check via
@@ -363,6 +375,117 @@ Confirm with:
                 • Shields.io badge Markdown for README
                 • Professional security posture paragraph for investor
                   due-diligence questionnaires or pitch decks
+```
+
+### Pro & vibecoder essentials (added in 0.35.0)
+
+```
+       secure [PATH] [--launch] [--json] [--run]
+              Smart router. Inspects project state and prints the single
+              best next action — no menu, no choice paralysis. Decision
+              tree:
+                no prior scan        → run `scan .`
+                criticals open       → `fix --finding <id> --preview`
+                highs open           → `/show-findings`
+                mediums only         → `/report-card`
+                last scan > 7 days   → re-scan
+                clean                → `/security-badge`
+                --launch + criticals → BLOCK
+                --launch + clean     → `/launch-check`
+              --run auto-executes the recommended `agentic-security ...`
+              command. --json emits the decision as a struct for piping.
+
+       fix --finding <id> --preview | --apply
+              --preview shows a unified diff (3 lines of context) of the
+              proposed change without writing. --apply writes the change
+              and stores the original under .agentic-security/fix-history/
+              with a log entry in fix-history/log.json. Both modes require
+              a mechanical replacement (f.fix.replacement or
+              f.fix.replaceLine) — for free-form fixes use the
+              security-fixer subagent which produces a replacement first.
+
+       undo [--all|--list]
+              Revert the most recent un-reverted fix from history.
+              --all reverts every applied fix in reverse order.
+              --list prints the fix history with applied/reverted state.
+              Atomic per-fix backups; safer than `git stash` for
+              partial-rollback scenarios.
+
+       tickets sync --provider <github|linear|jira> [--severity high]
+                    [--repo OWNER/REPO] [--team-id ID] [--dry-run]
+              Two-way sync between findings and ticket systems:
+                • Creates a ticket for every open finding ≥ severity
+                  that does not already have one tracked in
+                  .agentic-security/tickets.json.
+                • Closes tickets whose findings are no longer present.
+              GitHub uses the gh CLI (no extra auth). Linear needs
+              LINEAR_API_KEY + --team-id. Jira needs JIRA_BASE_URL,
+              JIRA_EMAIL, JIRA_TOKEN, JIRA_PROJECT_KEY env vars.
+              Idempotent: re-running is a no-op once everything matches.
+              tickets list             — print all tracked tickets
+
+       rules lock
+              Compute the current rule-pack content hash (union of every
+              named pack's CWE set) and write rules.lock.json with the
+              scanner version. Required for --deterministic. Re-run
+              after upgrading agentic-security to refresh the lock.
+
+       rule list | rule test <fixture-glob>
+              Custom pattern-rule DSL — Semgrep-lite. Rules live in
+              .agentic-security/rules/*.yml. Schema:
+                id: my-org/no-eval
+                title: "Use of eval() is forbidden"
+                severity: high
+                cwe: CWE-95
+                languages: [javascript, typescript]
+                match:
+                  pattern: "\\beval\\s*\\("
+                  notMatch: "// safe-eval-allowed"
+                  # OR allOf: [regex1, regex2] within `window: 50` lines
+                message: "eval() bypasses static-analysis controls."
+              The `rule test` harness runs every rule against every file
+              in the glob and prints PASS / FAIL (false positive) /
+              FAIL (missed). Files containing 'vulnerable' in the path
+              are expected to fire; 'clean' files are expected not to.
+
+       scan --pr [REF]
+              Diff-aware mode: only scan files changed since REF.
+              Without an explicit ref, auto-detects the PR base from
+              GITHUB_BASE_REF / CI_MERGE_REQUEST_TARGET_BRANCH_NAME /
+              BUILDKITE_PULL_REQUEST_BASE_BRANCH /
+              BITBUCKET_PR_DESTINATION_BRANCH; falls back to origin/main.
+              Uses the existing --changed-since plumbing under the hood.
+
+       scan --deterministic
+              Reproducible mode for audits, baselines, and CI:
+                • Verifies .agentic-security/rules.lock.json matches
+                  the current scanner version + rule-pack hash.
+                • Forces --no-network (no OSV / EPSS network calls).
+                • Stable-sorts every findings array by file → line →
+                  vuln → id.
+                • Zeros out scanId / startedAt / durationMs so the JSON
+                  output is byte-identical for the same input.
+              Exits 4 with a diff if the lockfile doesn't match.
+
+       (auto-on) EPSS exploit-prediction enrichment
+              Every CVE-bearing finding decorated with epssScore +
+              epssPercentile from FIRST.org. Cached under
+              ~/.claude/agentic-security/epss-cache/ for 24h.
+              Findings with percentile ≥ 0.95 get tags: ["exploited-now"]
+              and a one-tier severity bump (medium→high→critical) so
+              they sort to the top. Disable with --no-epss.
+
+       (auto-on) Blast-radius / cost framing
+              Every finding stamped with a blastRadius object:
+                scope: 'paying-users'|'all-users'|'admin-only'|'public'
+                dataAtRisk: ['PII','payment','auth-tokens',...]
+                userCount: <estimated>
+                dollarLow / dollarHigh: cost band (severity-multiplied)
+                narrative: plain-English one-liner for vibecoders /
+                           exec reporting
+              Heuristic-driven from project signals (Stripe usage, auth
+              library, user/PII schema, .env present). No LLM call, no
+              network. Disable with --no-blast-radius.
 ```
 
 ### Real-time bodyguards (added in 0.34.0)
@@ -942,6 +1065,47 @@ State is persisted to `.agentic-security/triage.json`.
            fix: "Remove the x-internal-bypass header check."
 ```
 
+### Pattern-rule DSL — `.agentic-security/rules/*.yml` (added in 0.35.0)
+
+Standalone, Semgrep-lite rules that produce findings directly without dataflow modeling. Each YAML file in `.agentic-security/rules/` defines one or more rules:
+
+```yaml
+       id: my-org/no-eval
+       title: "Use of eval() is forbidden"
+       severity: high
+       cwe: CWE-95
+       languages: [javascript, typescript]   # or [any] / [python] / [go] / ...
+       match:
+         pattern: "\\beval\\s*\\("            # single regex (gm flags)
+         # OR allOf: [regex1, regex2, ...]    # all must match within `window` lines
+         # window: 50                          # default 50 lines
+         # notMatch: "// safe-eval-allowed"   # kill switch
+       message: "eval() bypasses our static-analysis controls."
+       remediation: "Use JSON.parse for data; use a sandboxed VM for code."
+```
+
+Test fixture pairs (`vulnerable/foo.js` + `clean/foo.js`):
+
+```
+       agentic-security rule list
+       agentic-security rule test "test/fixtures/**/*.js"
+```
+
+The harness reports `PASS` when a rule fires on `vulnerable/`, `FAIL (false positive)` when it fires on `clean/`, and `FAIL (missed)` when it doesn't fire on `vulnerable/`.
+
+### Rule-pack lockfile — `.agentic-security/rules.lock.json` (added in 0.35.0)
+
+```
+       agentic-security rules lock
+       # → wrote .agentic-security/rules.lock.json
+       #   scanner: 0.35.0  rulePackHash: 40669df8f5856e18
+
+       agentic-security scan --deterministic
+       # Verifies the lockfile, refuses to run on mismatch.
+```
+
+Required for audit-defensible scans (compliance reports, regression baselines, byte-stable CI artifacts).
+
 ---
 
 ## INTEGRATIONS
@@ -965,6 +1129,17 @@ Configuration in `.agentic-security/integrations.yml` (gitignored).
        SIEM (Splunk / Datadog / Elastic)
               One JSON event per finding, with source_attribution and
               rule_version for correlation.
+
+       Two-way ticket sync (added in 0.35.0)
+              agentic-security tickets sync --provider github|linear|jira
+              Creates issues for new findings, closes them when findings
+              drop. Idempotent state in .agentic-security/tickets.json.
+              GitHub uses the `gh` CLI (no extra auth).
+              Linear needs LINEAR_API_KEY + --team-id.
+              Jira needs JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN,
+              JIRA_PROJECT_KEY.
+              --dry-run plans without writing.
+              `agentic-security tickets list` prints all tracked tickets.
 ```
 
 ---

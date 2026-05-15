@@ -8,7 +8,7 @@
 [![Tests](https://img.shields.io/badge/tests-96%2F96-brightgreen)]()
 [![F1](https://img.shields.io/badge/F1%20benchmark-100%25-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.34.12-blue)]()
+[![Version](https://img.shields.io/badge/version-0.35.0-blue)]()
 
 ---
 
@@ -168,6 +168,31 @@ Runs `/scan --all` then immediately `/fix --all --low` — scanning and fixing e
 | `/agentic-security:fix` | Remediate findings. `--one <id>` patches a single finding (context-aware), `--all` batch-fixes by severity, `--pr` bundles fixes into a pull request. |
 | `/agentic-security:validate-findings` | Build a PoC + regression test that proves a vulnerability before fixing it. Emits `PROBABLE_FP` when no PoC can be constructed. |
 | `/agentic-security:explain` | Explain a finding in plain English — what it means, how an attacker abuses it, worst case, and how to fix it. |
+
+#### Pro & vibecoder essentials (new in 0.35.0)
+
+A single feature drop that closes the biggest gaps for both audiences — pros got a deterministic mode, ticket sync, and a custom-rule DSL; vibecoders got a smart router, fix preview/undo, and plain-English blast-radius framing.
+
+| Command | Description |
+|---|---|
+| `/agentic-security:secure` | Smart router — inspects project state and tells you the single best next action (scan, fix, launch-check, report-card, badge). One command, no menu. Add `--launch` for pre-deploy intent. |
+| `agentic-security fix --finding <id> --preview` | Show a unified diff of a proposed fix without writing anything. `--apply` writes it and stores a backup under `.agentic-security/fix-history/`. |
+| `agentic-security undo [--all\|--list]` | Revert the most recent applied fix from history. Atomic per-fix backups, no `git stash` needed. |
+| `agentic-security tickets sync --provider github\|linear\|jira` | Two-way sync findings ↔ tickets. Auto-creates issues for new findings, auto-closes tickets when findings drop. State persists in `.agentic-security/tickets.json`. Supports `--dry-run`. |
+| `agentic-security rules lock` + `--deterministic` | Pin the active rule-pack hash + scanner version in `rules.lock.json`. `--deterministic` makes scan output byte-stable (zero-time scanId, stable sort, no-network) — required for audit defensibility and CI baselining. |
+| `agentic-security rule list \| test <glob>` | Author custom YAML rules in `.agentic-security/rules/*.yml` (Semgrep-lite syntax: regex / allOf / notMatch / window). The `rule test` harness reports PASS/FAIL on `vulnerable/` + `clean/` fixture pairs. |
+| `agentic-security scan --pr [ref]` | Diff-aware scan: only files changed since the PR base. Auto-detects GitHub / GitLab / Buildkite / Bitbucket env vars; falls back to `origin/main`. |
+| **EPSS enrichment** (auto-on) | Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% are tagged `exploited-now` and bumped one severity tier so they sort to the top. Disable with `--no-epss`. |
+| **Blast-radius framing** (auto-on) | Every finding stamped with a plain-English narrative: who's affected, what data is at risk, and a $-cost estimate based on detected project signals (Stripe, auth library, user schema, secrets present). Vibecoders finally see the stakes; pros get exec-ready dollar figures. Disable with `--no-blast-radius`. |
+
+```bash
+# Standalone (no Claude Code required)
+npx @clearcapabilities/agentic-security-scanner secure .
+npx @clearcapabilities/agentic-security-scanner scan . --pr --deterministic
+npx @clearcapabilities/agentic-security-scanner tickets sync --provider github --dry-run
+```
+
+---
 
 #### LLM red-teaming (new in 0.34.12)
 

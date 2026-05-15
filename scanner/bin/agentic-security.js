@@ -15,6 +15,13 @@ import { loadProfile, saveProfile, detectProfile, renderAttributionLine, ATTRIBU
 import { applySuppressions, addSoftAcceptance, expiredSoftAcceptances } from '../src/posture/suppressions.js';
 import { applyOverrides, validateOverrides } from '../src/posture/rule-overrides.js';
 import { listPacks, loadPack, applyPacks } from '../src/posture/rule-packs.js';
+import { writeLockfile, verifyLockfile, makeDeterministic, isDeterministic } from '../src/posture/deterministic.js';
+import { enrichWithEPSS } from '../src/posture/epss.js';
+import { enrichWithBlastRadius } from '../src/posture/blast-radius.js';
+import { applyCustomRules, runRuleTests, loadCustomRules } from '../src/posture/custom-rules.js';
+import { applyFix, undoLast, undoAll, listHistory, preview as previewDiff } from '../src/posture/fix-history.js';
+import { syncTickets } from '../src/integrations/tickets.js';
+import { decide as decideNextAction, explain as explainDecision } from '../src/posture/router.js';
 import * as triage from '../src/posture/triage.js';
 import { buildSlackDigest, buildDiscordDigest, postWebhook, buildJiraIssue, buildPrComment, buildSiemEvent, loadIntegrationConfig } from '../src/integrations/index.js';
 import fg from 'fast-glob';
@@ -24,11 +31,13 @@ const USAGE = `agentic-security <command> [options]
   🛡  Created by ClearCapabilities.Com  ·  https://clearcapabilities.com
 
 Commands:
+  secure [path] [--launch]     Smart router: tells you the single best next action
   scan [path]                  Full SAST + SCA + Secrets sweep (default: cwd)
   ship                         (internal) Vibecoder verdict — invoked by /scan-all
   ci [path]                    Baseline-aware CI scan: auto-detects PR base ref,
                                writes SARIF + JUnit + JSON, applies --fail-on policy
-  fix --finding <id> [--apply] Apply fix for a single finding
+  fix --finding <id> [--preview|--apply]  Show diff or apply fix for a single finding
+  undo [--all|--list]          Revert the most recent applied fix (or all, or list)
   accept --finding <id>        Soft-suppress a finding for 30 days (vibecoder)
   setup [project-dir]          Install /security-* shortcut commands into a project
   profile set <vibecoder|pro>  Set or change the persona profile
@@ -37,6 +46,8 @@ Commands:
   triage list|assign|trend     Pro: per-finding state, MTTR, assignment
   rules validate               Pro: lint .agentic-security/rules.yml
   packs list                   List available curated rule packs
+  rule list | test <glob>      List/test custom YAML rules in .agentic-security/rules/
+  tickets sync --provider <p>  Two-way sync findings ↔ GitHub Issues / Linear / Jira
   digest --slack <webhook>     Vibecoder: send daily digest to Slack
   version                      Print version
 
@@ -55,6 +66,10 @@ Options:
   --ingest-sarif <glob>        Merge external SARIF into this scan
   --scorecard                  Enrich components with OSSF Scorecard scores
   --no-network                 Skip OSV/registry queries (offline mode)
+  --pr [ref]                   Diff-aware: scan only files changed since ref (auto-detects PR base)
+  --deterministic              Reproducible scan: stable sort, no-network, lockfile-checked
+  --no-epss                    Skip EPSS exploit-prediction enrichment (default: enabled)
+  --no-blast-radius            Skip blast-radius / cost framing (default: enabled)
   --verbose                    Include fix bodies + taxonomy in CLI output
   --output <file>              Write report to file instead of stdout
   --machine-output             Always write .agentic-security/findings.{sarif,json,csv}
@@ -122,8 +137,29 @@ async function cmdScan(args) {
   const noNet = !!args.flags['no-network'];
   if (noNet) process.env.AGENTIC_SECURITY_OFFLINE = '1';
 
+  // Deterministic mode: stable output, no-network, lockfile verification.
+  if (args.flags['deterministic']) {
+    process.env.AGENTIC_SECURITY_DETERMINISTIC = '1';
+    process.env.AGENTIC_SECURITY_OFFLINE = '1';
+    const v = verifyLockfile(targetAbs);
+    if (!v.ok) {
+      process.stderr.write(`[deterministic] lockfile mismatch:\n  - ${v.mismatches.join('\n  - ')}\n`);
+      process.stderr.write(`[deterministic] run \`agentic-security rules lock\` to refresh.\n`);
+      return 4;
+    }
+  }
+
+  // --pr [ref] : friendlier alias for --changed-since that auto-detects the PR
+  // base ref (GitHub/GitLab/Buildkite/Bitbucket env vars) when no value is given.
+  let changedSince = args.flags['changed-since'] || null;
+  if (args.flags['pr']) {
+    const pr = args.flags['pr'];
+    changedSince = (typeof pr === 'string' && pr !== 'true') ? pr : (detectBaseline() || 'origin/main');
+    process.stderr.write(`[pr-mode] scanning files changed since: ${changedSince}\n`);
+  }
+
   const { scan, meta } = await runScan(target, {
-    changedSince: args.flags['changed-since'] || null,
+    changedSince,
     onProgress: (p) => {
       if (process.stderr.isTTY) process.stderr.write(`\r[${p.phase}] ${p.current}/${p.total} ${p.file}     `);
     },
@@ -180,6 +216,32 @@ async function cmdScan(args) {
   const packArg = args.flags.pack;
   const packNames = packArg ? (Array.isArray(packArg) ? packArg : String(packArg).split(',')) : [];
   if (packNames.length) Object.assign(scan, applyPacks(scan, packNames));
+
+  // Custom pattern-rule DSL — load .agentic-security/rules/*.yml and append findings.
+  try {
+    const { fileContents } = await import('../src/runScan.js').then(m => m.readTree(targetAbs));
+    const customFindings = applyCustomRules(targetAbs, fileContents);
+    if (customFindings.length) {
+      scan.findings = [...(scan.findings || []), ...customFindings];
+      if (process.stderr.isTTY) {
+        process.stderr.write(`[custom-rules] +${customFindings.length} finding(s) from ${loadCustomRules(targetAbs).length} rule(s)\n`);
+      }
+    }
+  } catch {}
+
+  // EPSS exploit-prediction enrichment (skipped under --no-network / --deterministic).
+  // Bumps severity on actively-exploited CVEs so they sort to the top.
+  if (!args.flags['no-epss'] && !isDeterministic() && !noNet) {
+    try { await enrichWithEPSS(scan); } catch {}
+  }
+
+  // Blast-radius narrative — purely local, always safe to run.
+  if (!args.flags['no-blast-radius']) {
+    try { enrichWithBlastRadius(scan, targetAbs); } catch {}
+  }
+
+  // Deterministic post-process: stable-sort findings + zero out timing.
+  if (isDeterministic()) makeDeterministic(scan, meta);
 
   // R2: Always emit machine-readable artifacts to .agentic-security/.
   await writeMachineOutput(targetAbs, scan, meta, profile);
@@ -491,7 +553,7 @@ async function cmdOrgScan(args) {
   return 0;
 }
 
-// /rules validate
+// /rules validate | rules lock
 async function cmdRules(args) {
   const target = path.resolve(args._[2] || '.');
   const sub = args._[1];
@@ -502,7 +564,91 @@ async function cmdRules(args) {
     for (const e of r.errors) console.error('  - ' + e);
     return 4;
   }
-  console.error('rules validate'); return 4;
+  if (sub === 'lock') {
+    const { path: fp, lock } = writeLockfile(target);
+    console.log(`✓ wrote ${fp}`);
+    console.log(`  scanner: ${lock.scannerVersion}  rulePackHash: ${lock.rulePackHash}`);
+    return 0;
+  }
+  console.error('rules validate | rules lock'); return 4;
+}
+
+// `agentic-security secure [--launch]` — smart router. One command picks the
+// right next step based on project state.
+async function cmdSecure(args) {
+  const scanRoot = path.resolve(args._[1] || '.');
+  const intent = args.flags.launch ? 'launch' : (args.flags.deploy ? 'deploy' : null);
+  const decision = decideNextAction({ scanRoot, intent });
+  process.stdout.write(explainDecision(decision));
+  if (args.flags.json) process.stdout.write(JSON.stringify(decision, null, 2) + '\n');
+  if (args.flags.run && /^agentic-security /.test(decision.command)) {
+    process.stderr.write(`\n[secure] running: ${decision.command}\n`);
+    const sub = decision.command.replace(/^agentic-security /, '').split(' ');
+    process.argv = [process.argv[0], process.argv[1], ...sub];
+    return main();
+  }
+  return 0;
+}
+
+// `agentic-security tickets sync --provider github|linear|jira [--severity high]`
+async function cmdTickets(args) {
+  const sub = args._[1];
+  const scanRoot = path.resolve(args.flags.root || '.');
+  if (sub === 'sync') {
+    const provider = args.flags.provider;
+    if (!provider) { console.error('--provider github|linear|jira required'); return 4; }
+    const r = await syncTickets({
+      scanRoot,
+      provider,
+      severity: args.flags.severity || 'high',
+      repo: args.flags.repo,
+      teamId: args.flags['team-id'],
+      dryRun: !!args.flags['dry-run'],
+    });
+    if (!r.ok) { console.error(r.error); return 4; }
+    console.log(`✓ tickets sync (${provider}${args.flags['dry-run'] ? ', dry-run' : ''})`);
+    console.log(`  created: ${r.created.length}  closed: ${r.closed.length}  failed: ${r.failed.length}  tracked: ${r.totalTracked}`);
+    for (const c of r.created.slice(0, 10)) console.log(`  + ${c.externalId || '(dry-run)'}  ${c.id}`);
+    for (const c of r.closed.slice(0, 10)) console.log(`  ↩ ${c.externalId || '(dry-run)'}  ${c.id}`);
+    for (const f of r.failed.slice(0, 10)) console.log(`  ✗ ${f.id}  ${f.error}`);
+    return r.failed.length ? 1 : 0;
+  }
+  if (sub === 'list') {
+    const { readState } = await import('../src/integrations/tickets.js');
+    const state = readState(scanRoot);
+    const entries = Object.entries(state);
+    if (!entries.length) { console.log('No tracked tickets.'); return 0; }
+    for (const [id, e] of entries) {
+      console.log(`  ${e.state.padEnd(7)} ${e.provider.padEnd(7)} ${e.externalUrl || e.externalId}  ${id}`);
+    }
+    return 0;
+  }
+  console.error('Usage: agentic-security tickets sync --provider <github|linear|jira> [--repo OWNER/REPO] [--team-id ID] [--severity high|critical] [--dry-run]');
+  return 4;
+}
+
+// `agentic-security rule test <fixture-glob>` — test custom rules against fixtures.
+async function cmdRule(args) {
+  const sub = args._[1];
+  if (sub === 'test') {
+    const glob = args._[2];
+    if (!glob) { console.error('Usage: agentic-security rule test <fixture-glob>'); return 4; }
+    const target = path.resolve(args.flags.root || '.');
+    const r = await runRuleTests(target, glob);
+    return r.ok ? 0 : 4;
+  }
+  if (sub === 'list') {
+    const target = path.resolve(args.flags.root || '.');
+    const rules = loadCustomRules(target);
+    if (!rules.length) {
+      console.log(`No custom rules in ${path.join(target, '.agentic-security/rules/')}.`);
+      return 0;
+    }
+    for (const r of rules) console.log(`  ${r.id}  [${r.severity}]  ${r.title}`);
+    return 0;
+  }
+  console.error('Usage: agentic-security rule test <glob>  |  rule list');
+  return 4;
 }
 
 // packs list — enumerate the curated rule packs available to --pack.
@@ -546,18 +692,87 @@ async function cmdDigest(args) {
 
 async function cmdFix(args) {
   const id = args.flags.finding;
+  const isPreview = !!args.flags.preview;
+  const isApply = !!args.flags.apply;
+  const scanRoot = path.resolve(args.flags.root || '.');
   if (!id) { console.error('--finding <id> required'); return 4; }
-  const lastScanPath = path.resolve('.agentic-security/last-scan.json');
+  const lastScanPath = path.join(scanRoot, '.agentic-security', 'last-scan.json');
   if (!fs.existsSync(lastScanPath)) { console.error('No prior scan found. Run `agentic-security scan` first.'); return 4; }
   const last = JSON.parse(await fsp.readFile(lastScanPath, 'utf8'));
-  const f = (last.findings || []).find(x => x.id === id);
+  const f = (last.findings || []).find(x => x.id === id) || (last.secrets || []).find(x => x.id === id);
   if (!f) { console.error(`Finding ${id} not found in last scan.`); return 4; }
-  console.log(JSON.stringify(f, null, 2));
-  if (f.fix?.code) {
-    console.log('\n--- suggested patch ---\n');
-    console.log(f.fix.code);
+
+  // Default mode: print the canonical template (back-compat — security-fixer subagent applies it).
+  if (!isPreview && !isApply) {
+    console.log(JSON.stringify(f, null, 2));
+    if (f.fix?.code) { console.log('\n--- suggested patch ---\n'); console.log(f.fix.code); }
+    console.log('\nUse --preview to see a diff, or --apply to apply directly.');
+    return 0;
   }
-  console.log('\nv0.1 emits the canonical fix template above. The `security-fixer` Claude subagent applies it to the file.');
+
+  // Both --preview and --apply require an actual replacement to operate on.
+  // For now we accept either f.fix.replacement (full new file content) or
+  // f.fix.replaceLine (single-line replacement). Anything else falls back
+  // to the template output and tells the user to run the security-fixer subagent.
+  const absFile = path.resolve(scanRoot, f.file);
+  if (!fs.existsSync(absFile)) { console.error(`File not found: ${absFile}`); return 4; }
+  const originalContent = await fsp.readFile(absFile, 'utf8');
+  let newContent = null;
+  if (typeof f.fix?.replacement === 'string') newContent = f.fix.replacement;
+  else if (typeof f.fix?.replaceLine === 'string' && f.line) {
+    const lines = originalContent.split('\n');
+    if (lines[f.line - 1] !== undefined) {
+      lines[f.line - 1] = f.fix.replaceLine;
+      newContent = lines.join('\n');
+    }
+  }
+
+  if (newContent === null) {
+    console.error('No mechanical fix is available for this finding. Use the security-fixer subagent (default `fix` mode) and apply with `--apply` after it produces a replacement.');
+    return 4;
+  }
+
+  if (isPreview) {
+    console.log(previewDiff(originalContent, newContent, f.file));
+    console.log('\nRun with --apply to write this change. Use `agentic-security undo` to revert.');
+    return 0;
+  }
+
+  // --apply
+  const entry = await applyFix({
+    scanRoot, file: f.file, originalContent, newContent,
+    findingId: f.id, ruleId: f.cwe || f.title, vuln: f.vuln || f.title,
+  });
+  console.log(`✓ applied fix ${entry.id}  (file: ${entry.file})`);
+  console.log(`  backup: ${entry.backupPath}`);
+  console.log(`  revert with: agentic-security undo`);
+  return 0;
+}
+
+// `agentic-security undo` — revert the most recent fix (or --all).
+async function cmdUndo(args) {
+  const scanRoot = path.resolve(args.flags.root || '.');
+  if (args.flags.list) {
+    const log = listHistory(scanRoot);
+    if (!log.length) { console.log('No fix history.'); return 0; }
+    for (const e of log) {
+      const status = e.reverted ? '↩ reverted' : '✓ applied ';
+      console.log(`  ${status}  ${e.id}  ${e.file}  (${e.vuln || e.findingId})`);
+    }
+    return 0;
+  }
+  if (args.flags.all) {
+    const reverted = await undoAll(scanRoot);
+    if (!reverted.length) { console.log('Nothing to revert.'); return 0; }
+    for (const e of reverted) console.log(`↩ reverted ${e.id}  ${e.file}`);
+    console.log(`Reverted ${reverted.length} fix(es).`);
+    return 0;
+  }
+  const r = await undoLast(scanRoot);
+  if (!r) { console.log('Nothing to revert.'); return 0; }
+  if (r.error) { console.error(r.error); return 4; }
+  console.log(`↩ reverted ${r.id}  ${r.file}`);
+  console.log(`  finding: ${r.vuln || r.findingId}`);
   return 0;
 }
 
@@ -680,15 +895,19 @@ async function main() {
       case 'ship':     process.exit(await cmdShip(args));
       case 'ci':       process.exit(await cmdCi(args));
       case 'fix':      process.exit(await cmdFix(args));
+      case 'undo':     process.exit(await cmdUndo(args));
       case 'accept':   process.exit(await cmdAccept(args));
       case 'profile':  process.exit(await cmdProfile(args));
       case 'triage':   process.exit(await cmdTriage(args));
       case 'org-scan': process.exit(await cmdOrgScan(args));
       case 'rules':    process.exit(await cmdRules(args));
+      case 'rule':     process.exit(await cmdRule(args));
+      case 'tickets':  process.exit(await cmdTickets(args));
+      case 'secure':   process.exit(await cmdSecure(args));
       case 'packs':    process.exit(await cmdPacks(args));
       case 'digest':   process.exit(await cmdDigest(args));
       case 'setup':    process.exit(await cmdSetup(args));
-      case 'version':  console.log('agentic-security 0.18.0  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.35.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'help': case '--help': case '-h': case undefined:
         console.log(USAGE); process.exit(cmd ? 0 : 1);
       default:
