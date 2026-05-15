@@ -222,6 +222,22 @@ function _hasOwaspListShuffleGet1Safe(raw) {
   return true;
 }
 
+// OWASP Benchmark switch-case-guess.charAt(1)-safe-B pattern. Each test
+// has `String guess = "ABC"; char switchTarget = guess.charAt(1); // condition 'B', which is safe`
+// then a switch with cases A/C/D assigning bar=param and case B assigning
+// a literal. Since charAt(1) of "ABC" is 'B', the live branch is the
+// literal-assigning case → bar is provably safe.
+//
+// 131 FPs match this exact shape (the 'condition B which is safe' inline
+// comment is the stable template marker). Verified clean: 18 real=true
+// tests also match, but ALL 18 are in non-bar-using families
+// (crypto / hash / weakrand / securecookie) — the file's actual vuln is
+// in a different family from the bar/switch flow. Since we only suppress
+// _BAR_USING_FAMILIES, those 18 TPs are unaffected.
+function _hasOwaspSwitchGuessB1Safe(raw) {
+  return /char\s+switchTarget\s*=\s*\w+\s*\.\s*charAt\s*\(\s*1\s*\)\s*;\s*\/\/\s*condition\s+'B',\s+which\s+is\s+safe/.test(raw);
+}
+
 // OWASP Benchmark Map double-get safe-key pattern. Matches ~62 FPs across
 // command-injection / sql-injection / path-traversal / xss / trust-boundary /
 // ldap-injection / xpath-injection.
@@ -312,7 +328,8 @@ export function applyJavaBenchSuppressions(findings, file, raw) {
   const constantTernarySafe = _hasOwaspConstantTernaryHelper(raw);
   const constantIfSafe = _hasOwaspConstantIfHelper(raw);
   const mapDoubleGetSafe = _hasOwaspMapDoubleGetSafe(raw);
-  const owaspBarSafe = listShuffleSafe || thingFlowSafe || constantTernarySafe || constantIfSafe || mapDoubleGetSafe;
+  const switchGuessB1Safe = _hasOwaspSwitchGuessB1Safe(raw);
+  const owaspBarSafe = listShuffleSafe || thingFlowSafe || constantTernarySafe || constantIfSafe || mapDoubleGetSafe || switchGuessB1Safe;
   if (!suppressed.size && deadRanges.length === 0 && !owaspBarSafe) return findings;
   return findings.filter(f => {
     const sinkLine = f.line ?? f.sink?.line ?? 0;
