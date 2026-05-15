@@ -157,137 +157,137 @@ Runs `/scan --all` then immediately `/fix --all --low` — scanning and fixing e
 
 ### ⚙️ Developer Mode
 
-> **There's a lot more under the hood.**
-
-#### Core scanning & reporting
-
-| Command | Description |
-|---|---|
-| `/agentic-security:scan` | Run the scanner. Default `--all` gives a one-screen verdict. Focused modes: `--sca`, `--secrets`, `--authz`, `--mcp`, `--pipeline`, `--logic`, `--diff`. |
-| `/agentic-security:show-findings` | Triage FPs then view results. Default `--all` opens an interactive HTML report. Use `--kev` for weaponized CVEs, `--chains` for attack chains, or `--threat-model [--stride\|--llm]`. |
-| `/agentic-security:fix` | Remediate findings. `--one <id>` patches a single finding (context-aware), `--all` batch-fixes by severity, `--pr` bundles fixes into a pull request. |
-| `/agentic-security:validate-findings` | Build a PoC + regression test that proves a vulnerability before fixing it. Emits `PROBABLE_FP` when no PoC can be constructed. |
-| `/agentic-security:explain` | Explain a finding in plain English — what it means, how an attacker abuses it, worst case, and how to fix it. |
-
-#### Pro & vibecoder essentials (new in 0.35.0)
-
-A single feature drop that closes the biggest gaps for both audiences — pros got a deterministic mode, ticket sync, and a custom-rule DSL; vibecoders got a smart router, fix preview/undo, and plain-English blast-radius framing.
-
-| Command | Description |
-|---|---|
-| `/agentic-security:secure` | Smart router — inspects project state and tells you the single best next action (scan, fix, launch-check, report-card, badge). One command, no menu. Add `--launch` for pre-deploy intent. |
-| `agentic-security fix --finding <id> --preview` | Show a unified diff of a proposed fix without writing anything. `--apply` writes it and stores a backup under `.agentic-security/fix-history/`. |
-| `agentic-security undo [--all\|--list]` | Revert the most recent applied fix from history. Atomic per-fix backups, no `git stash` needed. |
-| `agentic-security tickets sync --provider github\|linear\|jira` | Two-way sync findings ↔ tickets. Auto-creates issues for new findings, auto-closes tickets when findings drop. State persists in `.agentic-security/tickets.json`. Supports `--dry-run`. |
-| `agentic-security rules lock` + `--deterministic` | Pin the active rule-pack hash + scanner version in `rules.lock.json`. `--deterministic` makes scan output byte-stable (zero-time scanId, stable sort, no-network) — required for audit defensibility and CI baselining. |
-| `agentic-security rule list \| test <glob>` | Author custom YAML rules in `.agentic-security/rules/*.yml` (Semgrep-lite syntax: regex / allOf / notMatch / window). The `rule test` harness reports PASS/FAIL on `vulnerable/` + `clean/` fixture pairs. |
-| `agentic-security scan --pr [ref]` | Diff-aware scan: only files changed since the PR base. Auto-detects GitHub / GitLab / Buildkite / Bitbucket env vars; falls back to `origin/main`. |
-| **EPSS enrichment** (auto-on) | Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% are tagged `exploited-now` and bumped one severity tier so they sort to the top. Disable with `--no-epss`. |
-| **Blast-radius framing** (auto-on) | Every finding stamped with a plain-English narrative: who's affected, what data is at risk, and a $-cost estimate based on detected project signals (Stripe, auth library, user schema, secrets present). Vibecoders finally see the stakes; pros get exec-ready dollar figures. Disable with `--no-blast-radius`. |
-
-```bash
-# Standalone (no Claude Code required)
-npx @clearcapabilities/agentic-security-scanner secure .
-npx @clearcapabilities/agentic-security-scanner scan . --pr --deterministic
-npx @clearcapabilities/agentic-security-scanner tickets sync --provider github --dry-run
-```
+Beyond the four Easy Mode commands, the toolkit splits into two audiences. Pick the section that matches you.
 
 ---
 
-#### LLM red-teaming (new in 0.34.12)
+### 🎨 For Vibecoders / Builders
+
+You're shipping fast with an AI assistant. You don't have a security team. You want plain English, one-button fixes, and someone yelling at you before you push a `.env` to GitHub.
+
+#### Understand what's wrong (in English)
 
 | Command | Description |
 |---|---|
-| `/agentic-security:llm-redteam` | Send 30+ adversarial prompts across 7 categories (security, privacy, harmful, bias, misinformation, agentic, coding-agent) through your LLM endpoint, with mutations via 7 attack strategies (DAN, base64, ROT13, role-play, authority-claim, hypothetical, multilingual, chained-context). Markdown report with per-plugin verdict. Static `--scan` mode catches missing defenses (eval-on-LLM-output, missing max_tokens, system-prompt injection vectors) without making any LLM calls. |
-| `/agentic-security:jailbreak-detector` | Faster, focused subset — runs the canonical "make this harmful" prompt through each known jailbreak family and reports DEFENDED / JAILBROKEN / PARTIAL per family. |
-| `/agentic-security:llm-eval` | Generate a [promptfoo](https://www.promptfoo.dev)-compatible YAML eval suite that you can commit to your repo as a CI gate. Drop-in for existing promptfoo workflows. |
+| `/agentic-security:secure` | Smart router. Inspects project state and tells you the single best next action — no menu, no choice paralysis. Add `--launch` for pre-deploy intent. |
+| `/agentic-security:explain` | Plain-English explanation of a finding — what it means, how an attacker abuses it, worst case, and the fix. |
+| `/agentic-security:story-explain` | "Meet Mallory. She visits `/api/users`, changes `?id=1` to `?id=2`…" 4-act narrative with attacker, timeline, payloads, and fix line. |
+| `/agentic-security:attack-surface` | 3–5 realistic attack scenarios written like stories. No CVE IDs. |
+| `/agentic-security:risk-in-dollars` | Each finding's best/likely/worst-case $ exposure, sourced from real incident settlements. Cites GDPR / CCPA / HIPAA / NIST AI 600-1 fines. |
+| **Blast-radius narrative** (auto-on) | Every finding stamped with who's affected, what data is at risk, and a $-cost band — inferred from your actual stack signals (Stripe, auth, schema). |
+| `/agentic-security:report-card` | Single A–F letter grade with one concrete next action. |
+| `/agentic-security:tutorial` | First-run walkthrough: picks one real finding from your project, explains it, walks you through fixing it, verifies it. |
 
-#### Vibe-coder essentials (new in 0.32.0)
+#### Fix things, safely
 
 | Command | Description |
 |---|---|
-| `/agentic-security:stack-playbook` | Security checklist tailored to your exact stack — Next.js, Supabase, Stripe, Clerk, OpenAI, Prisma, and 10+ more. Copy-paste ready. |
-| `/agentic-security:harden` | One-command hardening: adds security headers to `next.config.js`, fixes `.gitignore`, creates `SECURITY.md`, adds `npm audit` script. Safe to run on any project. |
-| `/agentic-security:db-audit` | Supabase RLS audit — service-role key exposure, `auth.admin` client-side, `bypassRowLevelSecurity()`, SQL tables without RLS. |
-| `/agentic-security:auth-audit` | Auth provider deep-audit — Clerk public routes, `trustHost`, `allowDangerousEmailAccountLinking`, missing `NEXTAUTH_SECRET`, CSRF disabled. |
-| `/agentic-security:rate-limit-check` | Find auth, AI, payment, and contact endpoints without rate limiting. Includes copy-paste `@upstash/ratelimit` setup. |
+| `/agentic-security:fix --all` | Pick a tier (`--critical` / `--high` / `--medium` / `--low`); the security-fixer agent patches each one, sequential, test-aware, codebase-context-aware. |
+| `agentic-security fix --finding <id> --preview` | Unified-diff preview before any write. `--apply` writes and backs up the original. |
+| `agentic-security undo [--all\|--list]` | Atomic revert for the most recent applied fix. Safer than `git stash` for partial rollbacks. |
+| `/agentic-security:harden` | One-command hardening: security headers, `.gitignore`, `SECURITY.md`, `npm audit` script. Idempotent. |
+| `/agentic-security:rotate-secret` | Detects which provider owns a leaked key, finds every reference, gives platform-specific rotation steps. |
+| `/agentic-security:rotate-key-auto` | Goes further: actually revokes, scrubs the value across files, and pushes the replacement to Vercel/Fly/Railway/Cloudflare env vars via CLI. |
+| `/agentic-security:vault-wizard` | Guided migration from `.env` to Doppler, Infisical, or platform-native secrets. |
+
+#### Hardening for the stack you actually use
+
+| Command | Description |
+|---|---|
+| `/agentic-security:stack-playbook` | Copy-paste-ready security checklist for Next.js, Supabase, Stripe, Clerk, OpenAI, Prisma, and 10+ more — specific to your combination. |
+| `/agentic-security:db-audit` | Supabase RLS audit — service-role exposure, `auth.admin` client-side, missing RLS. |
+| `/agentic-security:auth-audit` | Clerk / NextAuth / Auth0 / Lucia — public-route leaks, `trustHost`, missing `NEXTAUTH_SECRET`, CSRF gaps. |
+| `/agentic-security:rate-limit-check` | Find auth, AI, payment, and contact endpoints missing rate limits. Copy-paste `@upstash/ratelimit` setup included. |
 | `/agentic-security:webhook-audit` | Webhook handlers missing signature verification — Stripe, GitHub, Clerk, Svix, Resend, Twilio. |
-| `/agentic-security:env-check` | Env hygiene: `NEXT_PUBLIC_` secret leaks, `.env.example` with real values, hardcoded fallbacks, `.env` not in `.gitignore`. |
-| `/agentic-security:rotate-secret` | Detect which provider owns a leaked key, find every file referencing it, get platform-specific rotation steps. |
-| `/agentic-security:deploy-check` | Platform-specific infra audit: Vercel headers, Railway health check, Fly.io HTTPS, Netlify headers, Cloudflare compat date. |
-| `/agentic-security:attack-surface` | Plain-English threat narrative — 3–5 realistic attack scenarios, not CVE IDs. Written for builders, not security engineers. |
-| `/agentic-security:prompt-firewall` | LLM app security audit: user input in system prompts, missing `max_tokens`, LLM output→SQL (second-order injection), no output schema validation. |
-| `/agentic-security:csp-cors` | Generate exact Content-Security-Policy and CORS config for your stack — reads your actual dependencies and domains. |
-| `/agentic-security:security-tests` | Generate failing security regression tests (Jest/Vitest/pytest) and passing fix-validation tests for each finding. |
-| `/agentic-security:ci-gate` | Generate `.github/workflows/security.yml` — scans every PR, uploads SARIF, posts PR comments, fails build on critical/high. |
-| `/agentic-security:cve-alerts` | Set up daily CVE monitoring + Slack/Discord alerts when new vulnerabilities drop for your dependencies. |
-| `/agentic-security:vault-wizard` | Guided migration from `.env` files to Doppler, Infisical, or platform-native secrets management. |
-| `/agentic-security:security-trend` | Rolling trend line: findings fixed vs. introduced across scans, sparkline chart, regression detection. |
-| `/agentic-security:security-badge` | Shields.io badge for your README and an investor-ready security posture paragraph for due-diligence docs. |
+| `/agentic-security:env-check` | `NEXT_PUBLIC_` leaks, `.env.example` with real values, hardcoded fallbacks, `.env` not gitignored. |
+| `/agentic-security:csp-cors` | Generates exact CSP + CORS headers for your stack from your actual dependency list. |
+| `/agentic-security:prompt-firewall` | LLM app gaps: user input in system prompts, missing `max_tokens`, LLM-output→SQL, no output validation. |
+| `/agentic-security:llm-cost-ceiling` | Auto-patches missing `max_tokens`; generates rate-limit middleware + daily $-spend tracker that throws when capped. |
+| `/agentic-security:deploy-check` | Vercel / Railway / Fly / Netlify / Cloudflare Workers — security headers, HTTPS enforcement, preview-deployment leaks. |
+| `/agentic-security:launch-check` | The 10 things builders typically miss before going live. |
 
-#### Real-time bodyguards (new in 0.34.0)
+#### Real-time bodyguards
 
-Active protection at the moment code is written or commands are run. Designed for builders shipping with AI assistants. Configure once; runs forever.
+Set once. Run forever. Active protection at the moment code is written or commands are run.
 
 | Command | Description |
 |---|---|
-| `/agentic-security:ai-bodyguard` | PreToolUse hook that intercepts insecure AI-generated code BEFORE it hits disk. Catches SQLi-via-concatenation, `NEXT_PUBLIC_` secrets, hardcoded API keys, `eval` on user input, `jwt.decode()` without verify, Supabase `service_role` on the client, LLM calls without `max_tokens`, CORS `*` + credentials. Modes: `off` / `warn` / `block`. |
-| `/agentic-security:destructive-guard` | PreToolUse hook on `Bash` that blocks foot-guns: `rm -rf` on parent dirs, `DROP TABLE`, `supabase db reset`, `git push --force` to main, `curl \| bash`, `aws s3 rm --recursive`, `docker system prune -a`, `chmod 777`, and 5+ more. Each refusal includes a plain-English why + the safer alternative. |
-| `/agentic-security:predeploy-gate` | Blocks production deploys (`vercel --prod`, `fly deploy`, `wrangler publish`, `netlify deploy --prod`, `railway up`) when critical findings or KEV-listed dependencies are present. Two layers — Claude-Code Bash hook AND a sourced shell wrapper for your terminal. |
+| `/agentic-security:ai-bodyguard` | PreToolUse hook that intercepts insecure AI-generated code BEFORE it hits disk. SQLi-via-concat, hardcoded API keys, `eval` on user input, `jwt.decode()` without verify, service-role on the client, LLM calls without `max_tokens`. Modes: `off` / `warn` / `block`. |
+| `/agentic-security:destructive-guard` | PreToolUse hook on `Bash` blocking foot-guns: `rm -rf` on parents, `DROP TABLE`, `git push --force` to main, `curl \| bash`, `chmod 777`, and 8+ more. Plain-English why + safer alternative on every refusal. |
+| `/agentic-security:predeploy-gate` | Blocks production deploys when critical findings or KEV-listed deps are present. Bash hook + sourced shell wrapper. |
+| `/agentic-security:cve-alerts` | Daily CVE push to Slack/Discord when new vulnerabilities drop for your dependencies. |
+| `/agentic-security:daily-checkin` | Daily digest of what changed since yesterday — new, resolved, KEV alerts. Slack / Discord / generic webhook. |
 
-#### Active rotation & cost control (new in 0.34.0)
-
-| Command | Description |
-|---|---|
-| `/agentic-security:rotate-key-auto` | ACTIVELY rotates a leaked credential end-to-end. Detects provider (OpenAI / Anthropic / Stripe / AWS / GitHub / Supabase service-role / Slack / Google), prints exact revoke commands, scrubs the value across every file (with backups), and pushes the replacement to Vercel/Fly/Railway/Cloudflare/Netlify env vars via their CLI. Goes beyond `/rotate-secret` which guides — this one does the work. |
-| `/agentic-security:llm-cost-ceiling` | Audits every Anthropic / OpenAI call site in your code. Auto-patches missing `max_tokens`. Generates rate-limit middleware tailored to your framework (Next.js App Router / Express / FastAPI). Generates a daily $-spend tracker that throws when the cap is hit. Protection against the #1 LLM-app failure mode: prompt-injection on an uncapped endpoint draining thousands overnight. |
-
-#### Translate the jargon (new in 0.34.0)
+#### Things to hand a customer or investor
 
 | Command | Description |
 |---|---|
-| `/agentic-security:risk-in-dollars` | Translates each finding's CWE into best/likely/worst-case $ exposure sourced from public incident settlements. Cites the specific regulatory framework whose fines apply (GDPR Art. 33, CCPA, HIPAA, NIST AI 600-1). Sort by worst-case to prioritize what to fix first. |
-| `/agentic-security:story-explain` | Narrative-form explanation: "Meet Mallory. She visits your `/api/users` page, changes `?id=1` to `?id=2`, and now she's reading your other users' data." 4-act story with named attacker, minute-by-minute timeline, concrete payloads, and the literal fix line. |
-| `/agentic-security:daily-checkin` | Daily security digest posted to Slack / Discord / a generic webhook. Shows what changed since yesterday — new findings, resolved findings, KEV alerts — not just totals. Async security awareness without opening a dashboard. |
+| `/agentic-security:security-badge` | Shields.io badge for your README + due-diligence-ready security posture paragraph. |
+| `/agentic-security:security-onepager` | Customer-facing "How we keep your data safe" page generated from your real posture. PDF-ready. |
+| `/agentic-security:privacy-docs` | Detects every third-party data processor (Stripe, Supabase, Clerk, Sentry, OpenAI, …) and generates a tailored `PRIVACY.md` + cookie-consent component. Jurisdiction-aware. |
+| `/agentic-security:trust-page` | Writes `/.well-known/security.txt` (RFC 9116) + a `/security` page with your live posture. Framework-aware. |
+| `/agentic-security:disaster-playbook` | Stack-specific `DISASTER.md` with EXACT commands you'll need if you get hacked tomorrow. Bookmark it BEFORE the incident. |
+| `/agentic-security:social-media` | Copy-paste-ready posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress. |
 
-#### Customer-facing artifacts (new in 0.34.0)
+---
 
-When an enterprise prospect asks "are you secure?", these are what you hand them.
+### 🔧 For Security Pros / Engineers
 
-| Command | Description |
-|---|---|
-| `/agentic-security:security-onepager` | Generates a customer-facing "How we keep your data safe" markdown from your REAL scan posture and detected stack. Live traffic-light state, clean-scan streak, alignment with OWASP ASVS / LLM Top 10 / NIST AI 600-1. PDF-ready via `pandoc`. |
-| `/agentic-security:privacy-docs` | Detects every third-party data processor (Stripe, Supabase, Clerk, Sentry, PostHog, GA4, OpenAI, Anthropic, Resend, ...) and generates a tailored `PRIVACY.md` naming each with the exact data they receive + their DPA + sub-processor URLs. Plus optional React cookie-consent component matched to detected analytics providers. Jurisdiction-aware (EU / US-CA / UK / OTHER). |
-| `/agentic-security:trust-page` | Writes `/.well-known/security.txt` (RFC 9116, 1-year expiry) and a `/security` page that displays your live posture. Framework-aware: Next.js App Router, Pages Router, or vanilla HTML. Buyers and infosec teams look for both — most vibe-coded apps have neither. |
+You triage findings for a living. You need depth, customization, integration into your existing workflow, and audit-defensible artifacts.
 
-#### Resilience & onboarding (new in 0.34.0)
-
-| Command | Description |
-|---|---|
-| `/agentic-security:disaster-playbook` | Generates `DISASTER.md` — a stack-specific incident response runbook with the EXACT commands and URLs you'll need if you get hacked tomorrow. Supabase RLS reset queries, Stripe key roll commands, Vercel rollback steps, AWS IAM-key disable, npm supply-chain triage. Bookmark it BEFORE the incident. |
-| `/agentic-security:tutorial` | First-run walkthrough that picks ONE real finding from your project, explains it in plain English, walks you through fixing it with consent at every step, then verifies the fix actually worked. The antidote to "I just installed this and don't know what to do." |
-
-#### Dependency & supply chain
+#### Deep scanning, validation, and reporting
 
 | Command | Description |
 |---|---|
-| `/agentic-security:trim-dependencies` | Find and remove packages installed but never imported — reduces attack surface and bloat. |
+| `/agentic-security:scan` | Full SAST + SCA + secrets sweep. Focused modes: `--sca`, `--secrets`, `--authz`, `--mcp`, `--pipeline`, `--logic`, `--diff`. SARIF + JSON + CSV written every scan. |
+| `agentic-security scan --pr [ref]` | Diff-aware: only scan files changed since the PR base. Auto-detects GitHub / GitLab / Buildkite / Bitbucket env vars. |
+| `agentic-security scan --deterministic` | Reproducible mode: stable-sorts findings, zeros timing/scanId, forces `--no-network`, verifies `rules.lock.json`. Required for byte-stable CI baselines. |
+| `agentic-security rules lock` | Pin the active rule-pack hash + scanner version in `.agentic-security/rules.lock.json`. |
+| `/agentic-security:show-findings` | Triage UI. `--all` opens an interactive HTML report. `--kev` filters to weaponized CVEs, `--chains` shows attack chains, `--threat-model [--stride\|--llm]` builds a model. |
+| `/agentic-security:validate-findings` | Build a PoC + regression test that proves a vulnerability before fixing. Emits `PROBABLE_FP` when no PoC can be constructed. |
+| **EPSS enrichment** (auto-on) | Every CVE finding decorated with EPSS score + percentile (FIRST.org). Percentile ≥ 95% gets `exploited-now` tag and one-tier severity bump. Disable with `--no-epss`. |
+
+#### Customization and rule authoring
+
+| Command | Description |
+|---|---|
+| `agentic-security rule list \| test <glob>` | Author custom YAML rules in `.agentic-security/rules/*.yml` (Semgrep-lite: regex / allOf / notMatch / window). The `rule test` harness reports PASS / FAIL on `vulnerable/` + `clean/` fixture pairs. |
+| `agentic-security rules validate` | Lint `.agentic-security/rules.yml` for schema errors, invalid regex, severity overrides, disabled rules. |
+| `agentic-security packs list` | Curated rule packs: `owasp-top-10`, `cwe-top-25`, `llm-security`, `supply-chain`. Activate with `--pack`. |
+
+#### Integrations and workflow
+
+| Command | Description |
+|---|---|
+| `agentic-security tickets sync --provider github\|linear\|jira` | Two-way sync findings ↔ tickets. Creates issues for new findings, closes tickets when findings drop. State in `.agentic-security/tickets.json`. Supports `--dry-run`. |
+| `/agentic-security:fix --pr` | Bundle fixes into a feature branch and open a PR. Default dry-run; `--apply` to commit. Skips tests-failing fixes; never amends or force-pushes. |
+| `/agentic-security:ci-gate` | Generates `.github/workflows/security.yml` — runs on every PR, uploads SARIF to GitHub Security tab, posts PR comments, fails on critical/high. |
+| `agentic-security org-scan --repos <list>` | Fleet scan across N repos with bounded concurrency. Per-repo + rolled-up JSON output. |
+| `agentic-security triage list \| assign \| transition \| trend` | Per-finding state machine with MTTR + opened/closed deltas. Persists to `.agentic-security/triage.json`. |
+| `/agentic-security:security-trend` | Rolling trend line: fixed vs. introduced delta across scans, sparkline, regression detection. |
+
+#### LLM red-teaming
+
+| Command | Description |
+|---|---|
+| `/agentic-security:llm-redteam` | Send 30+ adversarial prompts (security, privacy, harmful, bias, misinformation, agentic, coding-agent) through your LLM endpoint with 7 attack-strategy mutations (DAN, base64, ROT13, role-play, authority, hypothetical, multilingual, chained-context). Static `--scan` mode catches missing defenses without making any LLM calls. |
+| `/agentic-security:jailbreak-detector` | Faster focused subset — runs the canonical "make this harmful" prompt through each known jailbreak family. Reports DEFENDED / JAILBROKEN / PARTIAL per family. |
+| `/agentic-security:llm-eval` | Generate a [promptfoo](https://www.promptfoo.dev)-compatible YAML eval suite committable to your repo as a CI gate. |
+
+#### Dependency, supply chain, and posture
+
+| Command | Description |
+|---|---|
+| `/agentic-security:posture-management` | SBOM, AI-BOM, API inventory, license policy, drift, MTTR / SLA tracking. |
+| `/agentic-security:compliance-report` | Auditor-ready attestation for NIST AI 600-1, OWASP ASVS, or OWASP LLM Top 10 (2025). |
+| `/agentic-security:trim-dependencies` | Find and remove packages installed but never imported. |
 | `/agentic-security:dep-freshness` | Score how stale your direct dependencies are across all ecosystems. |
 | `/agentic-security:dep-pinning` | Audit manifests for loose version ranges that allow silent supply-chain injection. |
-| `/agentic-security:dep-alternatives` | Find lighter-weight, more actively maintained alternatives to heavy or high-risk dependencies. |
-| `/agentic-security:install-script-audit` | Audit every npm package for postinstall/preinstall scripts — the primary supply-chain attack vector. |
-| `/agentic-security:vendor-audit` | Find copy-pasted third-party code vendored directly into the repo — invisible to dependency scanners. |
-
-#### Posture & compliance
-
-| Command | Description |
-|---|---|
-| `/agentic-security:posture-management` | SBOM, AI-BOM, API inventory, license policy, drift analysis, and SLA tracking. |
-| `/agentic-security:compliance-report` | Auditor-ready attestation for NIST AI 600-1, OWASP ASVS, or OWASP LLM Top 10 (2025). |
-| `/agentic-security:launch-check` | Pre-deploy checklist of the 10 things beginners typically miss before going live. |
-| `/agentic-security:report-card` | Single letter-grade (A–F) snapshot with one concrete next action. |
-| `/agentic-security:status` | One-screen plugin & project health snapshot — version, last scan time, finding counts, cache size, hook activation. |
-| `/agentic-security:social-media` | Generate copy-paste-ready posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress. |
+| `/agentic-security:dep-alternatives` | Lighter-weight, more actively maintained alternatives to heavy or high-risk dependencies. |
+| `/agentic-security:install-script-audit` | Every npm package's postinstall/preinstall scripts — the primary supply-chain attack vector. |
+| `/agentic-security:vendor-audit` | Copy-pasted third-party code vendored directly into the repo — invisible to dependency scanners. |
+| `/agentic-security:security-tests` | Generate failing security regression tests + passing fix-validation tests for each finding (Jest / Vitest / pytest). |
+| `/agentic-security:status` | One-screen plugin & project health snapshot — version, last scan, finding counts, cache size, hook activation. |
 | `/agentic-security:help` | Full command catalog with one-line descriptions and example invocations. |
 
 To learn more read the **[Developer Documentation](https://github.com/Clear-Capabilities/agentic-security/blob/main/docs/developer-documentation-guide.md)**.
@@ -303,7 +303,7 @@ The scanner is evaluated against the OWASP Benchmark (2,740 Java test cases), 33
 | Scoring mode | What it measures | Score |
 |---|---|---|
 | **Wildcard-relaxed** (default) | "Does the scanner find at least one finding in each vulnerability family this app contains?" — i.e. family-level coverage. This is the mode most published security tool benchmarks use. | **100% on 35/35 benchmarks** |
-| **Strict line-level** (`--no-wildcards`) | "Does each emitted finding land on the exact file:line the upstream ground truth labels?" — a much harder bar. | **100% on 34/35** benchmarks after the 0.34.12 sweep. **87.9%** on OWASP Benchmark (up from 79.7% via OWASP-shape suppressors). **54.8%** on SARD Juliet Java (up from 25.6% baseline via cross-file source chaining). **7.0%** on juliet-c-cpp (incidental-CWE precision artifact dominates). |
+| **Strict line-level** (`--no-wildcards`) | "Does each emitted finding land on the exact file:line the upstream ground truth labels?" — a much harder bar. | **100% on 34/35** benchmarks. **87.9%** on OWASP Benchmark (via OWASP-shape suppressors). **54.8%** on SARD Juliet Java (via cross-file source chaining). **7.0%** on juliet-c-cpp (incidental-CWE precision artifact dominates). |
 
 Why the gap on the remaining 3? OWASP Benchmark uses `real=true / real=false` labels that hinge on constant-folded if-branches, inner-class flow, and List/Map index obfuscation that regex+AST engines can't reliably distinguish — would need full collection-semantics modeling. SARD Juliet's remaining recall gap (sql-injection at 26%, xss at 18%) is in DataflowThruInnerClass / Vector / Stream variants where the BadSource hides behind multiple call frames; precise AST taint analysis is the next lift. juliet-c-cpp's 7.0% reflects engine emissions on test files whose primary CWE doesn't match what the engine detects (e.g. `rand()` fires on every PRNG site even in non-crypto tests).
 
