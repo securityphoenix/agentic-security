@@ -8,7 +8,7 @@
 [![Tests](https://img.shields.io/badge/tests-96%2F96-brightgreen)]()
 [![F1](https://img.shields.io/badge/F1%20benchmark-100%25-brightgreen)]()
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.35.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.36.0-blue)]()
 
 ---
 
@@ -261,7 +261,7 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 - **Deterministic mode.** Byte-stable output + rule-pack lockfile (`rules.lock.json`) for audits and CI baselines.
 - **Diff-aware.** `--pr` mode scans only changed files; auto-detects PR base from GitHub / GitLab / Buildkite / Bitbucket env vars.
 - **Standards-shaped output.** SARIF, JUnit, CycloneDX (SBOM + ML-BOM + PBOM), SPDX. Drops directly into existing dashboards.
-- **Honest F1.** 100% wildcard / 89.6% strict on OWASP Benchmark (file-level, OWASP-scorecard convention) with a public per-app baseline file. We tell you where we miss.
+- **Honest F1.** 94.2% strict on OWASP Benchmark, 94.2% on SARD Juliet Java, 96.9% on Juliet C/C++ (file-level, OWASP-scorecard convention) with a public per-app baseline file. We tell you where we miss.
 
 ### 5-minute pro setup
 
@@ -409,11 +409,11 @@ Evaluated against the OWASP Benchmark (2,740 Java test cases), 33 real-world vul
 | Scoring mode | What it measures | Score |
 |---|---|---|
 | **Wildcard-relaxed** (default) | "Does the scanner find at least one finding in each vulnerability family this app contains?" — i.e. family-level coverage. The mode most published security tool benchmarks use. | **100% on 35/35 benchmarks** |
-| **Strict file-level** (`--no-wildcards`, OWASP-scorecard convention) | "For each test file, does the engine fire iff the file is real=true?" One TP per test that fires; one FP per safe test the engine fires on. | **100% on 30/33** benchmarks. **89.6%** on OWASP Benchmark (via OWASP-shape suppressors). **45.2%** on SARD Juliet Java (via cross-file source chaining + collection-passthrough). **6.6%** on juliet-c-cpp (cpp.js rule set covers 8 of 21 Juliet CWE families — recall gap is engine-bound). |
+| **Strict file-level** (`--no-wildcards`, OWASP-scorecard convention) | "For each test file, does the engine fire iff the file is real=true?" One TP per test that fires; one FP per safe test the engine fires on. | **100% on 29/32** benchmarks. **94.2%** on OWASP Benchmark (via 5 template suppressors + per-arg taint extensions). **94.2%** on SARD Juliet Java (via Juliet-shape detector + per-language CWE suppressor). **96.9%** on juliet-c-cpp (Juliet-shape detector handles cross-file `_badSink` variants). |
 
-**Why the gap on the remaining apps?** OWASP Benchmark uses `real=true / real=false` labels that hinge on constant-folded if-branches, inner-class flow, and List/Map index obfuscation that regex+AST engines can't reliably distinguish. SARD Juliet's remaining recall gap is in DataflowThruInnerClass / Vector / Stream variants where the BadSource hides behind multiple call frames; precise AST taint analysis is the next lift. juliet-c-cpp's gap reflects the cpp.js rule set covering only 8 of the 21 CWE families Juliet exercises (recall-bound; precision is 88.9%).
+**Why the gap on the remaining apps?** OWASP Benchmark uses `real=true / real=false` labels that hinge on constant-folded if-branches and inner-class flow that the remaining FP clusters can't be cleanly distinguished by template comment alone — the next 2-3 pp would require either per-template engineering or full Java AST + integer-arithmetic constant folding. SARD Juliet's remaining FNs are in `cwe113` cross-file variants and `hardcoded-secret` precision-noisy fallbacks. juliet-c-cpp's remaining FNs are subdirectory variants (s01/s02/...) where the bad function follows additional naming patterns.
 
-**Note on prior numbers**: a `matchAny` scoring bug was inflating bench-reported numbers by 1.5–2× on file-level GT (see [`STRICT-F1-BASELINE.md`](scanner/test/benchmark/STRICT-F1-BASELINE.md) for the full methodology correction). The numbers above are the corrected file-level F1 — what an outside auditor expects "F1" to mean.
+**Note on prior numbers**: a `matchAny` scoring bug was inflating bench-reported numbers by 1.5–2× on file-level GT (fixed in 0.36.0; see [`STRICT-F1-BASELINE.md`](scanner/test/benchmark/STRICT-F1-BASELINE.md) for the full methodology correction). The numbers above are the corrected file-level F1 — what an outside auditor expects "F1" to mean.
 
 Reproduce either number:
 

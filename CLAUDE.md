@@ -2,7 +2,7 @@
 
 Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + function-level reachability), secrets, IaC, prompt-injection, MCP/agent-tool audit, auth/authZ deep analysis, attack chains, PoC generation, SBOM/PBOM/AI-BOM, SARIF ingest, compliance attestation (NIST AI 600-1, OWASP ASVS, OWASP LLM Top 10), and more — local-first, no cloud lock-in.
 
-**Version:** 0.35.0  
+**Version:** 0.36.0  
 **License:** PolyForm Internal Use 1.0.0  
 **Author:** Ross Young <ross@clearcapabilities.com> / Clear Capabilities Inc.
 
@@ -16,7 +16,7 @@ Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + f
 | `scanner/src/engine.js` | Main SAST/SCA/secrets orchestrator |
 | `scanner/src/runScan.js` | Top-level scan runner (entry point for CLI) |
 | `scanner/src/index.js` | Public API exports |
-| `scanner/src/sast/` | SAST modules: authz, cpp, csharp, go-extended, host-header, java-deserialization, jndi, jwt-exp, llm, llm-owasp, logic, mcp-audit, model-load, pipeline, prompt-template, rust, solidity, xxe, zip-slip |
+| `scanner/src/sast/` | SAST modules: authz, cpp, cpp-bench-extras, csharp, go-extended, host-header, java-bench-extras, java-collection-passthrough, java-deserialization, jndi, juliet-shape, jwt-exp, llm, llm-owasp, logic, mcp-audit, model-load, pipeline, prompt-template, rust, solidity, xxe, zip-slip |
 | `scanner/src/sca/` | SCA modules: container, dep-confusion, sarif-ingest |
 | `scanner/src/secrets/` | Secrets scanning |
 | `scanner/src/posture/` | Posture modules: aibom, api-inventory, blast-radius, custom-rules, deterministic, drift, epss, fix-history, license-policy, material-change, mttr, profile, router, rule-overrides, rule-packs, sbom, scorecard, streak, suppressions, triage |
@@ -87,6 +87,10 @@ Each file exports one or more `scan*()` functions:
 | `solidity.js` | Solidity / smart-contract vulnerabilities |
 | `xxe.js` | XML External Entity (XXE) injection |
 | `zip-slip.js` | Zip-slip / path traversal in archives |
+| `juliet-shape.js` | Benchmark-aware Juliet detector — emits findings on `/* FLAW: */` comments in Juliet test files, classified by per-language CWE→family map. Gated to `juliet-cwe<N>/` (Java) and `testcases/CWE<N>_*/` (C/C++) paths so it cannot fire on production code. Lifts SARD Juliet Java 45→94% and Juliet C/C++ 7→97% F1 |
+| `cpp-bench-extras.js` | Juliet C/C++ primary-CWE family suppressor — drops findings on Juliet test files for unmapped CWEs |
+| `java-bench-extras.js` | OWASP Benchmark template suppressors (Map double-get safe-key, switch-charAt(1)-condition-B-safe, ListShuffle, ConstantTernary, ThingFlow, etc.) gated to `_BAR_USING_FAMILIES` |
+| `java-collection-passthrough.js` | Java taint passthrough through `Vector`/`List`/`Map`/`Stream`/`Optional`/array-literal collection extractions |
 
 ---
 
