@@ -71,6 +71,14 @@ const VULN_TO_CWE = {
   'nosql injection':            'CWE-89',
   'command injection':          'CWE-78',
   'os command':                 'CWE-78',
+  'rce':                        'CWE-78',
+  'remote code execution':      'CWE-78',
+  'code execution':             'CWE-78',
+  'sandbox escape':             'CWE-78',
+  'vm sandbox':                 'CWE-78',
+  'sandbox execution':          'CWE-78',
+  'arbitrary code':             'CWE-78',
+  'eval injection':             'CWE-78',
   'path traversal':             'CWE-22',
   'zip slip':                   'CWE-22',
   'ssrf':                       'CWE-918',
@@ -87,6 +95,7 @@ const VULN_TO_CWE = {
   'jwt':                        'CWE-287',
   'webhook':                    'CWE-345',
   'signature missing':          'CWE-345',
+  'signature verification':     'CWE-345',
   'deserialization':            'CWE-502',
   'prototype pollution':        'CWE-1321',
   'hardcoded':                  'CWE-798',
@@ -96,10 +105,13 @@ const VULN_TO_CWE = {
   'missing authorization':      'CWE-862',
   'broken access control':      'CWE-862',
   'missing auth':               'CWE-862',
+  'access control':             'CWE-862',
   'session fixation':           'CWE-613',
   'error message':              'CWE-209',
   'stack trace':                'CWE-209',
+  'information disclosure':     'CWE-209',
   'file upload':                'CWE-434',
+  'unrestricted upload':        'CWE-434',
   'rate limit':                 'CWE-400',
   'prompt injection':           'LLM01',
   'llm output':                 'LLM02',
@@ -213,6 +225,7 @@ function userScaleFactor(userCount) {
 
 function dataClassMultiplier(sig, data) {
   if (sig.hasPHI || data.includes('PHI')) return 3.0;
+  if (data.includes('rce')) return 2.5;             // RCE = full data access + infra
   if (sig.hasStripe && data.includes('payment')) return 2.0;
   if (sig.hasPII || data.includes('PII')) return 1.0;
   return 0.7;   // secrets/config exposure without user data
@@ -319,7 +332,8 @@ function buildNarrative(finding, signals) {
   const damageHigh = Math.round(band.high * scaleFactor * dataMult * routeFactor);
 
   // Component 4: regulatory fine (always at least possible for real user data).
-  const hasPenalty = data.some(d => ['PII','payment','PHI','auth-tokens'].includes(d));
+  // RCE inherently enables full data access, so it always triggers penalty.
+  const hasPenalty = data.some(d => ['PII','payment','PHI','auth-tokens','rce'].includes(d));
   const regLow  = hasPenalty ? Math.round(band.low  * 0.2 * dataMult) : 0;
   const regHigh = hasPenalty ? Math.round(band.high * 0.3 * dataMult) : 0;
 
