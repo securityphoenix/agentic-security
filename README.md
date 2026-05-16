@@ -284,7 +284,7 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 
 ### What sets it apart
 
-- **Local-first.** No telemetry, no SaaS lock-in. Runs in air-gapped CI.
+- **Local-first.** No telemetry, no SaaS lock-in.
 - **Function-level reachability.** Drops SCA findings whose vulnerable function isn't reachable from any route — kills your noisiest bucket.
 - **EPSS-aware prioritization.** Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% get tagged `exploited-now` and bumped one severity tier so they sort to the top. KEV layered on top.
 - **Custom rule DSL.** Semgrep-lite YAML rules in `.agentic-security/rules/*.yml`. `rule test` harness over `vulnerable/` + `clean/` fixtures.
