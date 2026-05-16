@@ -474,8 +474,4 @@ Full legal terms in [LICENSE](./LICENSE). The short version: don't resell, don't
 
 ---
 
-<p align="center">
-  <img src="docs/brand/patch-monogram.svg" width="48" alt="Patch monogram">
-</p>
-
-> Built with care by **[Clear Capabilities](https://www.clearcapabilities.com/)**. Mascot brand canon: [`docs/brand/patch-mascot.html`](docs/brand/patch-mascot.html). Found a bug, have a feature idea, want to talk? [ross@clearcapabilities.com](mailto:ross@clearcapabilities.com)
+> Built with care by **[Clear Capabilities](https://www.clearcapabilities.com/)**. Found a bug, have a feature idea, want to talk? [ross@clearcapabilities.com](mailto:ross@clearcapabilities.com)
