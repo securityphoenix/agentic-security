@@ -8,7 +8,7 @@
 
 The 30-second tour for engineers:
 
-- **One ESM bundle.** `dist/agentic-security.mjs` is a 2.6 MB single-file CLI. Pure Node ≥ 20, no native deps, no daemon, no cloud. Pipes directly into shell, CI, IDE, or any wrapper.
+- **One ESM bundle.** `dist/agentic-security.mjs` is a 2.6 MB single-file CLI. Pure Node ≥ 20, no native deps, no daemon. Pipes directly into shell, CI, IDE, or any wrapper.
 - **One state directory.** Every artifact lives under `.agentic-security/` in your repo: `last-scan.json`, `findings.{json,sarif,csv,junit.xml}`, `triage.json`, `tickets.json`, `fix-history/`, `rules.lock.json`, `scan-history.json`, integrations config. Easy to gitignore, easy to inspect, easy to ship.
 - **Four output personas.** Vibecoder (one-screen verdict + plain English) / Pro (full taxonomy, CSV+SARIF, audit suppressions) / CI (SARIF+JUnit+JSON+exit code per `--fail-on`) / machine (JSON pipe).
 - **Designed to be extended.** Custom rule DSL (Semgrep-lite), per-project rule overrides, rule packs, SARIF ingest from external tools, two-way ticket sync, deterministic mode + lockfile.
@@ -19,8 +19,8 @@ If you want to skip ahead: [QUICKSTART](#quickstart) · [ARCHITECTURE](#architec
 
 ```
 NAME
-       agentic-security — local-first SAST + SCA + secrets + IaC + LLMSecOps
-       scanner with audit-grade suppressions, machine-readable output, and
+       agentic-security — SAST + SCA + secrets + IaC + LLMSecOps scanner
+       with audit-grade suppressions, machine-readable output, and
        integrations for the security stack you already run.
 
 VERSION
@@ -124,10 +124,10 @@ SYNOPSIS
 DESCRIPTION
        agentic-security is a Claude Code plugin and standalone CLI for catching
        the security defects that AI-assisted development introduces and the
-       traditional ones the AI inherits from training data. It runs locally
-       (no cloud, no signup), emits SARIF + JSON + CSV every scan, and
-       supports the workflow security engineers actually use: triage state,
-       audit-grade suppressions, org-wide fleet scans, and custom rules.
+       traditional ones the AI inherits from training data. It emits SARIF +
+       JSON + CSV every scan, and supports the workflow security engineers
+       actually use: triage state, audit-grade suppressions, org-wide fleet
+       scans, and custom rules.
 
        F1 benchmark: 100% precision and recall on 33/33 real-world and
        adversarial benchmarks (OWASP Benchmark, NodeGoat, Juice Shop, DVWA,

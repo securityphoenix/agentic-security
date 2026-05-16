@@ -22,11 +22,11 @@ You don't know that yet. **Neither does your AI.**
 
 `agentic-security` is the safety net you bolt onto your AI workflow:
 
-- **Find it.** SAST + SCA + secrets + IaC + LLM safety, in one local command.
+- **Find it.** SAST + SCA + secrets + IaC + LLM safety, in one command.
 - **Understand it.** Plain-English narrative + cost-of-exploit framing — not CVE jargon.
 - **Fix it.** Preview every patch, apply with one command, undo if it breaks anything.
 
-Nothing leaves your laptop. The only thing you give up is the false belief that your AI knew what it was doing.
+The only thing you give up is the false belief that your AI knew what it was doing.
 
 ---
 
@@ -46,7 +46,7 @@ In your **terminal**, anywhere (no Claude Code required):
 npx @clearcapabilities/agentic-security-scanner secure .
 ```
 
-Same engine. No accounts. No telemetry. Works offline after first run.
+Same engine. No accounts.
 
 ---
 
@@ -284,7 +284,6 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 
 ### What sets it apart
 
-- **Local-first.** No telemetry, no SaaS lock-in.
 - **Function-level reachability.** Drops SCA findings whose vulnerable function isn't reachable from any route — kills your noisiest bucket.
 - **EPSS-aware prioritization.** Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% get tagged `exploited-now` and bumped one severity tier so they sort to the top. KEV layered on top.
 - **Custom rule DSL.** Semgrep-lite YAML rules in `.agentic-security/rules/*.yml`. `rule test` harness over `vulnerable/` + `clean/` fixtures.
@@ -427,16 +426,6 @@ We try to be honest about the boundaries.
 - **Not a replacement for a pentester.** Static analysis catches patterns; humans catch business-logic flaws. The `security-logic-reviewer` subagent and `/validate-findings` close part of the gap, not all of it.
 - **Not magic.** It can miss novel vulnerabilities, especially anything that requires understanding intent.
 - **Not free for resale.** PolyForm Internal Use license. Use it on your own code, ship it inside your own products. Don't repackage it as a competing scanner.
-
----
-
-## Privacy and data
-
-Everything runs locally. Nothing about your code, findings, or project structure leaves your machine — ever — by default.
-
-The only network calls the scanner makes are to public CVE / EPSS data sources (OSV.dev, FIRST.org EPSS API, CISA KEV catalog), and they're all disk-cached under `~/.claude/agentic-security/`. Pass `--no-network` (or use `--deterministic`) to disable them entirely; everything else still works against the cache.
-
-No accounts. No API keys to provision. No telemetry. No "anonymous usage stats."
 
 ---
 
