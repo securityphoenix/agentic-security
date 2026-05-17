@@ -37,6 +37,10 @@
     "@types/node": "^20.0.0",
     "@vercel/ncc": "^0.38.3"
   },
+  "overrides": {
+    "lodash": "^4.18.1",
+    "lodash-es": "^4.18.1"
+  },
   "scripts": {
     "build": "ncc build bin/agentic-security.js -o dist --minify && mv dist/index.js dist/agentic-security.mjs && rm -f dist/package.json && chmod +x dist/agentic-security.mjs && node -e \"const fs=require('fs');const p='dist/agentic-security.mjs';const c=fs.readFileSync(p,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(p,'#!/usr/bin/env node\\n'+c);\"",
     "prepublishOnly": "npm run build",
