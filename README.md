@@ -88,7 +88,7 @@ That's the default. No CVE numbers. No CWE jargon. The stakes, the cost, the fix
 
 When the verdict flips green, you get the **approve** face. When it doesn't, you get **alert**.
 
-The mascot ([Patch](docs/brand/patch-mascot.html)) reacts to whatever your scan actually said.
+The mascot (Patch) reacts to whatever your scan actually said.
 
 <p align="center">
   <img src="docs/brand/patch-alert.svg" width="120" alt="Patch · ALERT">
