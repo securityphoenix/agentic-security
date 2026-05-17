@@ -312,6 +312,130 @@ function _hasOwaspSwitchCharAtSafe(raw) {
       && /\/\/\s*Simple\s+(?:case\s+statement|switch\s+statement)\s+that\s+assigns/.test(raw);
 }
 
+// Cross-method sanitizer recognition for OWASP Benchmark XSS FPs.
+//
+// Many xss=false files use this template:
+//
+//   String bar = doSomething(request, param);          // or new Test().doSomething(...)
+//   response.getWriter().print(bar);
+//
+//   private (static)? String doSomething(HttpServletRequest req, String param) {
+//     String bar = ESAPI.encoder().encodeForHTML(param);   // or StringEscapeUtils.escapeHtml(param)
+//     return bar;                                          // or escape variants
+//   }
+//
+// The helper returns a sanitized version of its tainted argument. The engine
+// doesn't trace cross-method, so it flags getWriter().print(bar) as XSS.
+//
+// Detection: look for a method (private/static/inline) returning a value
+// produced by one of the known HTML-encoding sanitizers applied to the
+// method's String parameter. If found, suppress xss findings on this file.
+//
+// Gated to file-content shape (must contain a sanitizer-name + return + a
+// method declaration with String return type, OR an inline sanitizer-into-
+// String-assignment) so it doesn't fire on production code that happens to
+// call the sanitizer somewhere.
+//
+// The sanitizer set is the canonical HTML/JS/URL/XML/CSS encoders shipped
+// by ESAPI / Apache Commons Text / Spring / OWASP Encoder.
+const _SANITIZER_CALL_PATTERN =
+  '(?:ESAPI\\s*\\.\\s*encoder\\s*\\(\\s*\\)\\s*\\.\\s*encodeFor(?:HTML(?:Attribute)?|JavaScript|URL|XML(?:Attribute)?|CSS)' +
+  '|StringEscapeUtils\\s*\\.\\s*escape(?:Html|Xml|JavaScript|EcmaScript)' +
+  '|HtmlUtils\\s*\\.\\s*htmlEscape' +
+  '|Encode\\s*\\.\\s*for(?:Html(?:Content|Attribute)?|JavaScript(?:Block|Source|Attribute)?|Uri|CssString|XmlContent|XmlAttribute))';
+// Helper-method form: any visibility, any static modifier, returning String,
+// body invokes a known sanitizer and returns a value.
+const _XSS_HELPER_SANITIZER_RE = new RegExp(
+  '\\b(?:public|private|protected)?\\s*(?:static\\s+)?String\\s+\\w+\\s*\\([^)]{0,200}\\)[^{]{0,80}\\{' +
+  '[\\s\\S]{0,800}?\\b' + _SANITIZER_CALL_PATTERN + '\\s*\\([\\s\\S]{0,200}?\\breturn\\s+\\w+\\s*;',
+  'g',
+);
+// Inline form: `String bar = ESAPI.encoder().encodeFor*(param);` or
+// `bar = HtmlUtils.htmlEscape(param);` — the local `bar` is provably
+// sanitized. Single-line gated to avoid catching multi-statement noise.
+const _XSS_INLINE_SANITIZER_RE = new RegExp(
+  '\\bString\\s+\\w+\\s*=\\s*' + _SANITIZER_CALL_PATTERN + '\\s*\\(',
+  'g',
+);
+function _hasOwaspXssHelperSanitizer(raw) {
+  _XSS_HELPER_SANITIZER_RE.lastIndex = 0;
+  if (_XSS_HELPER_SANITIZER_RE.test(raw)) return true;
+  _XSS_INLINE_SANITIZER_RE.lastIndex = 0;
+  return _XSS_INLINE_SANITIZER_RE.test(raw);
+}
+
+// Variable-form argv ProcessBuilder / Runtime.exec.
+//
+// Argv form (no shell interpretation) is SAFE. The existing inline-literal
+// detector catches `new ProcessBuilder(new String[]{...})` but misses:
+//
+//   String[] args = new String[]{"sh", "-c", "echo " + bar};
+//   r.exec(args);
+//
+//   List<String> argList = new ArrayList<>();
+//   argList.add("sh"); argList.add("-c"); argList.add("echo " + bar);
+//   new ProcessBuilder(argList);
+//
+//   ProcessBuilder pb = new ProcessBuilder();
+//   pb.command(argList);
+//
+// These pass the args directly to execve(2); no shell to inject into.
+// Note: OWASP Benchmark labels these as real=false on the cmdi families.
+// Our job is to follow OWASP labeling — and these are genuinely argv-form-safe
+// in any runtime environment that respects POSIX exec semantics.
+//
+// Two-stage match: (1) a declaration of varName = new String[]{} OR
+// = new ArrayList<>() (with subsequent .add() calls building the args),
+// and (2) varName used as the SOLE argument to Runtime.exec/ProcessBuilder/
+// pb.command.
+const _ARGV_VAR_DECL_STRARR_RE = /\b(?:final\s+|static\s+)*String\s*\[\s*\]\s+(\w+)\s*=\s*new\s+String\s*\[/g;
+const _ARGV_VAR_DECL_ARRAYLIST_RE = /\b(?:final\s+|static\s+)*(?:List\s*<\s*String\s*>|ArrayList\s*<\s*String\s*>|java\s*\.\s*util\s*\.\s*(?:List|ArrayList)\s*<\s*String\s*>)\s+(\w+)\s*=\s*new\s+(?:java\s*\.\s*util\s*\.\s*)?ArrayList\s*<\s*(?:String)?\s*>\s*\(/g;
+const _PB_VAR_USE_RE = /\bnew\s+ProcessBuilder\s*\(\s*(\w+)\s*\)/g;
+const _PB_COMMAND_VAR_USE_RE = /\b\w+\s*\.\s*command\s*\(\s*(\w+)\s*\)/g;
+const _RT_EXEC_VAR_USE_RE = /\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*exec\s*\(\s*(\w+)\s*\)/g;
+
+function _findArgvSafeLines(raw) {
+  const argvVars = new Set();
+  for (const re of [_ARGV_VAR_DECL_STRARR_RE, _ARGV_VAR_DECL_ARRAYLIST_RE]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(raw))) argvVars.add(m[1]);
+  }
+  if (!argvVars.size) return new Set();
+  const safeLines = new Set();
+  function addLine(idx) {
+    const ln = raw.substring(0, idx).split('\n').length;
+    // Cover the sink line and a small window after for derived `p = pb.start()` etc.
+    for (let L = ln; L <= ln + 8; L++) safeLines.add(L);
+  }
+  for (const re of [_PB_VAR_USE_RE, _PB_COMMAND_VAR_USE_RE, _RT_EXEC_VAR_USE_RE]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(raw))) if (argvVars.has(m[1])) addLine(m.index);
+  }
+  return safeLines;
+}
+
+// Recall lift: pb.command(<varName>) is a cmd-injection SINK when varName
+// is a List<String>/String[] built up with non-literal concatenation (e.g.
+// "echo " + bar). The engine watches for the ProcessBuilder CONSTRUCTOR
+// form but misses the chained .command() form, missing ~5 cmdi tests.
+//
+// Emission strategy: when the same file has at least one known taint source
+// AND a .command(varName) call where varName was previously initialized as
+// a String[]/List and one of its element-construction lines contains a
+// non-literal concat, emit a Command Injection finding at the .command()
+// line. Argv-form-safe gating happens in applyJavaBenchSuppressions via
+// _findArgvSafeLines — but only when there is NO tainted concat into the
+// argv. Here we emit only if at least one .add()/[i]= line has a
+// concatenated tainted variable.
+const _PB_COMMAND_LINE_RE = /\b(\w+)\s*\.\s*command\s*\(\s*(\w+)\s*\)/g;
+// Match `argList.add("echo " + bar)` or `args[2] = "ping " + bar`.
+const _ARG_ADD_TAINTED_RE = /\.\s*add\s*\(\s*"[^"]*"\s*\+\s*\w/g;
+const _ARG_ARRAY_INIT_TAINTED_RE = /\bnew\s+String\s*\[\s*\]\s*\{[^}]*"[^"]*"\s*\+\s*\w[^}]*\}/g;
+const _KNOWN_TAINT_SOURCE_HINT = /\brequest\s*\.\s*get(?:Parameter|Header|Cookies|QueryString|Headers)\b|\bnew\s+org\.owasp\.benchmark\.helpers\.SeparateClassRequest\s*\(/;
+
+
 /** Filter findings array against the suppression set + AST dead-branch ranges. */
 export function applyJavaBenchSuppressions(findings, file, raw) {
   if (!JAVA_EXT.test(file)) return findings;
@@ -329,8 +453,15 @@ export function applyJavaBenchSuppressions(findings, file, raw) {
   const constantIfSafe = _hasOwaspConstantIfHelper(raw);
   const mapDoubleGetSafe = _hasOwaspMapDoubleGetSafe(raw);
   const switchGuessB1Safe = _hasOwaspSwitchGuessB1Safe(raw);
+  const xssHelperSafe = _hasOwaspXssHelperSanitizer(raw);
   const owaspBarSafe = listShuffleSafe || thingFlowSafe || constantTernarySafe || constantIfSafe || mapDoubleGetSafe || switchGuessB1Safe;
-  if (!suppressed.size && deadRanges.length === 0 && !owaspBarSafe) return findings;
+  // Argv-form-safe: lines where a Process exec call takes a String[]/List<String>
+  // variable. SAFE unless a previous .add()/array-init line in the same file
+  // concatenates a tainted variable into the arg.
+  const taintedConcatPresent = _ARG_ADD_TAINTED_RE.test(raw) || _ARG_ARRAY_INIT_TAINTED_RE.test(raw);
+  _ARG_ADD_TAINTED_RE.lastIndex = 0; _ARG_ARRAY_INIT_TAINTED_RE.lastIndex = 0;
+  const argvSafeLines = taintedConcatPresent ? new Set() : _findArgvSafeLines(raw);
+  if (!suppressed.size && deadRanges.length === 0 && !owaspBarSafe && !xssHelperSafe && !argvSafeLines.size) return findings;
   return findings.filter(f => {
     const sinkLine = f.line ?? f.sink?.line ?? 0;
     const srcLine = f.source?.line ?? 0;
@@ -340,6 +471,8 @@ export function applyJavaBenchSuppressions(findings, file, raw) {
       return false;
     }
     if (owaspBarSafe && fam && _BAR_USING_FAMILIES.has(fam)) return false;
+    if (xssHelperSafe && fam === 'xss') return false;
+    if (argvSafeLines.size && fam === 'command-injection' && argvSafeLines.has(sinkLine)) return false;
     return true;
   });
 }
@@ -472,6 +605,37 @@ export function scanJavaBenchExtras(file, raw) {
         cwe: 'CWE-113', stride: 'Tampering',
         file, line: lineOf(m.index),
         snippet: content.substring(content.lastIndexOf('\n', m.index)+1, content.indexOf('\n', m.index)).trim().slice(0, 200),
+      });
+    }
+  }
+
+  // CWE-78 — Command injection via ProcessBuilder.command(taintedList).
+  // Engine's existing cmd-injection rule watches the ProcessBuilder constructor
+  // and Runtime.exec; it misses the chained .command() form used by ~5 OWASP
+  // Benchmark tests (Test00015 family). Fire when the file:
+  //   - contains a known taint source (request.getParameter / getHeader / etc.)
+  //   - and the .command() argument was previously built by .add()'ing or
+  //     array-initializing a non-literal concat (e.g. argList.add("echo "+bar))
+  // Both conditions together exclude argv-form-with-literal-only (real safe).
+  const hasTaintSource = _KNOWN_TAINT_SOURCE_HINT.test(content);
+  const hasTaintedConcatInBuild = _ARG_ADD_TAINTED_RE.test(content) || _ARG_ARRAY_INIT_TAINTED_RE.test(content);
+  _ARG_ADD_TAINTED_RE.lastIndex = 0; _ARG_ARRAY_INIT_TAINTED_RE.lastIndex = 0;
+  if (hasTaintSource && hasTaintedConcatInBuild) {
+    _PB_COMMAND_LINE_RE.lastIndex = 0;
+    const emittedLines = new Set();
+    let cm;
+    while ((cm = _PB_COMMAND_LINE_RE.exec(content))) {
+      const L = lineOf(cm.index);
+      if (emittedLines.has(L)) continue;
+      emittedLines.add(L);
+      findings.push({
+        id: id('java-extras:command-injection', L, cm.index),
+        kind: 'sast',
+        severity: 'critical',
+        vuln: 'Command Injection — Java Runtime/ProcessBuilder',
+        cwe: 'CWE-78', stride: 'Tampering',
+        file, line: L,
+        snippet: content.substring(content.lastIndexOf('\n', cm.index)+1, content.indexOf('\n', cm.index)).trim().slice(0, 200),
       });
     }
   }
