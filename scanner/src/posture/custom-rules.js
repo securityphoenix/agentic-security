@@ -66,8 +66,14 @@ export function loadCustomRules(scanRoot) {
     // Signature verification (PRD FR-DSL-2). Default: refuse unsigned rules
     // unless AGENTIC_SECURITY_ALLOW_UNSIGNED_PACKS=1.
     let unsignedAllowed = false;
+    let passThroughSigning = false;
     const r = verifyRulePack(fp, trustedKeys);
-    if (!r.ok) {
+    if (r.ok && r.passThrough) {
+      // Pass-through mode (premortem 3R-4): empty bundled trust root, no
+      // project keys configured. Rule is accepted but tagged so SARIF can
+      // surface the audit gap.
+      passThroughSigning = true;
+    } else if (!r.ok) {
       if (r.reason === 'unsigned' && r.allowUnsigned) {
         console.error(`agentic-security: WARNING — loading UNSIGNED rule pack ${path.basename(fp)} (AGENTIC_SECURITY_ALLOW_UNSIGNED_PACKS=1). Findings will be tagged _unsigned:true.`);
         unsignedAllowed = true;
@@ -94,6 +100,7 @@ export function loadCustomRules(scanRoot) {
       const norm = normalizeRule(r, fp);
       if (norm) {
         if (unsignedAllowed) norm._unsigned = true;
+        if (passThroughSigning) norm._passThroughSigning = true;
         out.push(norm);
       }
     }
@@ -254,6 +261,8 @@ function toFinding(rule, file, m) {
     // Premortem 2R3.4 / 2R-8: carry the rule's unsigned tag onto the finding
     // so SARIF emit / report renderers can show provenance.
     ...(rule._unsigned ? { _unsigned: true } : {}),
+    // Premortem 3R-4: same channel for pass-through signing.
+    ...(rule._passThroughSigning ? { _passThroughSigning: true } : {}),
   };
 }
 
@@ -266,7 +275,22 @@ export function applyCustomRules(scanRoot, fileContents) {
   if (!rules.length) return [];
   const out = [];
   const shadow = [];
+  // Premortem 3R-8: a global per-scan deadline at the top of the outer for.
+  // Each rule's regex carries a 200ms per-regex budget (runRule), but in the
+  // worst case (100 files × N rules × 200ms ReDoS), the wall time blows up.
+  // Cap the total at 30s by default, configurable via env. Surfaces an audit
+  // line when exhausted so an operator can spot the runaway rule.
+  const startedAt = Date.now();
+  const globalDeadlineMs = parseInt(process.env.AGENTIC_SECURITY_CUSTOM_RULES_BUDGET_MS || '30000', 10);
+  let exhausted = false;
   for (const [file, content] of Object.entries(fileContents)) {
+    if (Date.now() - startedAt > globalDeadlineMs) {
+      if (!exhausted) {
+        console.error(`agentic-security: custom-rules global deadline (${globalDeadlineMs}ms) exhausted — skipping remaining files. Investigate slow rules or raise AGENTIC_SECURITY_CUSTOM_RULES_BUDGET_MS.`);
+        exhausted = true;
+      }
+      break;
+    }
     if (!content || content.length > 500_000) continue;
     for (const r of rules) {
       const found = runRule(r, file, content);

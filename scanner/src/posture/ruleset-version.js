@@ -23,9 +23,11 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { SCANNER_VERSION } from './version.js';
 
-// Bump on every release; tied to package.json version.
-export const CURRENT_RULESET_VERSION = '0.45.0';
+// Tied to scanner/package.json via posture/version.js — they cannot diverge
+// (premortem 3R1.3).
+export const CURRENT_RULESET_VERSION = SCANNER_VERSION;
 
 const FILE = '.agentic-security/ruleset-version.json';
 

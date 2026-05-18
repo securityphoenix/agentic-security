@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.47.0 — third-round premortem remediation
+
+Third adversarial premortem identified 17 findings against the v0.46.0
+remediation. All 17 are now closed. Highlights:
+
+- **3R-1: integration test for dead exports** — new `test/no-dead-modules.test.js`
+  walks `scanner/src/{posture,llm-validator,dataflow,lsp,ir,mcp}` and asserts
+  every exported symbol has at least one external call site (`.js` files and
+  `commands/*.md`). Allowlist for legitimate library-style exports. Closes the
+  recurring "wired in code review, dead in code" failure mode.
+
+- **3R-2 / 3R-3: single-sourced version** — `scanner/src/posture/version.js`
+  reads `scanner/package.json#version` at module load; SARIF `tool.driver.version`
+  and `CURRENT_RULESET_VERSION` now derive from it instead of independently
+  hardcoded constants that diverged on every release.
+
+- **3R-4: signing graceful degradation** — `rule-pack-signing.js` operates in a
+  pass-through mode when both bundled and project keys are absent. One audit
+  warning per session; findings carry `_passThroughSigning:true`. Set
+  `AGENTIC_SECURITY_STRICT_SIGNING=1` to disable pass-through.
+
+- **3R-5: CLI keygen safety rails** — `agentic-security-rule keygen` refuses
+  `--out` paths under `.agentic-security/`; warns on non-TTY stdout without
+  `--out`; writes private-key files mode 0600. `--i-understand-private-keys`
+  to override.
+
+- **3R-6: provenance surfaced in reports** — `normalizeFindings` carries
+  `_unsigned` and `_passThroughSigning` through; SARIF `result.properties`
+  emits `unsigned:true` / `passThroughSigning:true`; SARIF
+  `invocations[].properties` now includes `rulesetVersion`, `rulesetVersionSource`,
+  and `rulesetVersionMismatch` for trend attribution.
+
+- **3R-7: requiresReAudit is now load-bearing** — `bench-realworld.js` reads
+  curated expected JSONs' `requiresReAudit:true`, emits a stderr warning per
+  affected corpus, and tags the corpus result with
+  `requiresReAudit:true` so consumers know its F1 is informational.
+
+- **3R-8: global deadline for custom rules** — `applyCustomRules()` now caps
+  the total scan time across all files and all rules at 30s (overridable via
+  `AGENTIC_SECURITY_CUSTOM_RULES_BUDGET_MS`), guarding against ReDoS sprees
+  across many files even when each individual regex respects its 200ms budget.
+
+- **3R-9: LSP dep-cache invalidation on manifest save** — saving any
+  `package.json`/`pyproject.toml`/`Cargo.toml`/etc. now invalidates the cached
+  dep snapshot before re-scanning, so freshly added vulnerable packages and
+  removed ones reflect immediately in editor diagnostics.
+
+- **3R-10: catalog OFFICIAL_ONLY is per-match** — `AGENTIC_SECURITY_CATALOG_OFFICIAL_ONLY=1`
+  is now read per source/sink match instead of once at module load, so CI lanes
+  that toggle strict mode just before invocation are actually honored.
+
+- **3R-11: validator preflight handles SCA locators** — findings with
+  `parser:'SCA'` or `pkg`/`component`/`purl` set are tagged
+  `validator_verdict:'not-applicable'` rather than `'unvalidated'`, which
+  was misleading for findings that an LLM cannot meaningfully judge.
+
+- **3R-12: applyFix recover() cross-checks against last-scan.json** — the
+  fix-history log entry records the matching finding's stableId at apply
+  time; `recover()` after a crash now tags promoted entries as
+  `applied-stale` when the finding has vanished from last-scan.json.
+
+- **3R-13: file lock around log writes** — concurrent `applyFix`, `recover`,
+  and `undo` invocations no longer race the `log.json` write; serialization
+  via `log.lock` with 30s stale-lock reaping and 5s contention timeout.
+
+- **3R-14: validator-cache GC subcommand** — `agentic-security validator-cache
+  stats|gc [--older-than N] [--dry-run]` prunes `.agentic-security/llm-cache/`
+  by age and prompt-version mismatch.
+
+- **3R-15: tier cutoffs stable under 2-decimal rounding** — confidence tier
+  (`high|medium|low|very-low`) is now derived from the 2-decimal display value,
+  so a finding reported as "0.75" never lands in two tiers depending on the
+  viewer's rounding.
+
+- **3R-16: CHANGELOG ships with npm package** — `prepublishOnly` copies
+  CHANGELOG.md into `scanner/`; added to `package.json#files`. The repo-root
+  copy remains canonical; the in-package copy is gitignored.
+
+- **3R-17: fix-history log compaction** — `agentic-security undo --compact
+  [--retain-days N] [--prune-backups]` archives terminal entries (reverted,
+  failed, applied-stale) older than the retention window into
+  `log-archive-YYYY-MM.json`, optionally pruning their `.bak` files.
+
+### Honesty correction
+
+No claims in this release exceeded what shipped. v0.47.0 closes the 17
+third-round premortem findings against v0.46.0 cleanly; the round-4 premortem
+will surely find more, and that is fine.
+
 ## 0.46.0 — second-round premortem remediation + honesty correction
 
 ### Honesty correction for v0.45.0

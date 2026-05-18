@@ -286,6 +286,23 @@ export async function validateOne(finding, fileContents, scanRoot) {
   // Pre-flight: refuse to validate location-less findings. Without a precise
   // file:line, the response cross-check degenerates and the validator can be
   // spoofed by trivially-true echoes.
+  //
+  // Premortem 3R-11: SCA findings legitimately have line=0 (they're attached
+  // to a manifest file as a package locator, not to a specific code site).
+  // Marking them 'unvalidated' was misleading — an LLM couldn't meaningfully
+  // judge "package X has CVE Y" from a code excerpt anyway. Tag them with a
+  // dedicated 'not-applicable' state so reports don't lump them in with
+  // unverified findings.
+  const isSca = finding.parser === 'SCA' ||
+                finding.kind === 'sca' ||
+                typeof finding.pkg === 'string' ||
+                typeof finding.component === 'string' ||
+                typeof finding.purl === 'string';
+  if (isSca) {
+    finding.validator_verdict = 'not-applicable';
+    finding._validatorError = 'sca-locator-not-line-based';
+    return { verdict: 'not-applicable', error: 'sca-locator-not-line-based' };
+  }
   if (typeof finding.file !== 'string' || finding.file.length === 0 ||
       typeof finding.line !== 'number' || finding.line <= 0) {
     finding.validator_verdict = 'unvalidated';
@@ -401,6 +418,8 @@ export function applyValidatorVerdicts(findings) {
     if (f.validator_verdict === 'accept' && typeof f.llm_confidence === 'number') {
       f.confidence = Math.max(f.confidence || 0, Math.min(1, f.llm_confidence + 0.05));
     }
+    // 'not-applicable' (SCA, premortem 3R-11) and 'escalate' / 'unvalidated'
+    // all keep the finding as-is.
     kept.push(f);
   }
   return { kept, dropped };

@@ -52,9 +52,14 @@ export function annotateConfidence(findings) {
     }
     conf = Math.max(0, Math.min(1, conf));
     f.confidence = Math.round(conf * 1000) / 1000;
-    if (f.confidence >= 0.75) f.confidenceTier = 'high';
-    else if (f.confidence >= 0.50) f.confidenceTier = 'medium';
-    else if (f.confidence >= 0.25) f.confidenceTier = 'low';
+    // Premortem 3R-15: derive tier from the 2-decimal display value so a
+    // finding reported as "0.75" never lands in two tiers depending on the
+    // viewer's rounding. Add a +0.005 epsilon to anchor cutoffs to the
+    // displayed rounded value (3-decimal raw 0.745 → 2-decimal 0.75 → high).
+    const display = Math.round(f.confidence * 100) / 100;
+    if (display >= 0.75) f.confidenceTier = 'high';
+    else if (display >= 0.50) f.confidenceTier = 'medium';
+    else if (display >= 0.25) f.confidenceTier = 'low';
     else f.confidenceTier = 'very-low';
   }
 }

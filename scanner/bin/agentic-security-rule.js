@@ -12,9 +12,11 @@
 //
 // First-time setup walkthrough:
 //
-//   1) Generate a key pair:
-//        agentic-security-rule keygen > .agentic-security/MY_KEY.json
-//        (review the file. KEEP the private key SECRET — do not commit it.)
+//   1) Generate a key pair OUTSIDE the project tree:
+//        mkdir -p ~/.config/agentic-security/keys
+//        agentic-security-rule keygen --out ~/.config/agentic-security/keys/MY_KEY.json
+//      (the file is written 0600. KEEP the private key SECRET — do not commit it,
+//       do not put it in a cloud-synced directory.)
 //
 //   2) Add the public key to .agentic-security/trusted-keys.json:
 //        {
@@ -58,6 +60,38 @@ function pickArg(flag) {
 }
 
 if (cmd === 'keygen') {
+  // Premortem 3R3.2 / 3R-5: keygen output contains a PRIVATE KEY. Three
+  // safety rails:
+  //   1. If --out <path> is supplied AND the path resolves under the project's
+  //      .agentic-security/ directory, REFUSE. That directory tends to be
+  //      cloud-synced / git-checked / editor-recent. The right place for
+  //      private keys is outside source control.
+  //   2. If stdout is not a TTY (redirected to a file or pipe) AND no --out
+  //      was specified, WARN that the operator is about to write a private
+  //      key somewhere we can't see; suggest --out so we can validate.
+  //   3. Operators who really mean it can pass --i-understand-private-keys
+  //      to silence the warnings.
+  const outArg = pickArg('--out');
+  const understandFlag = args.includes('--i-understand-private-keys');
+  if (outArg) {
+    const projectAgenticDir = path.resolve(process.cwd(), '.agentic-security') + path.sep;
+    const absOut = path.resolve(outArg);
+    if (absOut.startsWith(projectAgenticDir)) {
+      die(
+        `Refusing to write a private key into ${absOut}.\n` +
+        `  .agentic-security/ is typically git-tracked, cloud-synced, or editor-indexed.\n` +
+        `  Choose a location OUTSIDE the project tree (e.g. ~/.config/agentic-security/keys/).\n` +
+        `  Override with --i-understand-private-keys if you really mean it.`,
+        2);
+    }
+  } else if (!process.stdout.isTTY && !understandFlag) {
+    process.stderr.write(
+      'agentic-security-rule: WARNING — stdout is being redirected, but no --out was specified.\n' +
+      '  This command emits a PRIVATE KEY. We cannot validate where it ends up.\n' +
+      '  Re-run with --out <path-outside-project> so we can check the destination,\n' +
+      '  or with --i-understand-private-keys to silence this warning.\n');
+    process.exit(3);
+  }
   const kp = keygen();
   const out = {
     note: 'STORE THE privateKey SECURELY. Do not commit it to source control. Anyone with this key can sign rules that execute in your CI.',
@@ -67,9 +101,14 @@ if (cmd === 'keygen') {
     publicKey:  kp.publicKey,
     privateKey: kp.privateKey,
   };
-  process.stdout.write(JSON.stringify(out, null, 2) + '\n');
-  process.stderr.write('\nagentic-security-rule: keypair generated.\n');
-  process.stderr.write('  · Add publicKey to .agentic-security/trusted-keys.json\n');
+  const payload = JSON.stringify(out, null, 2) + '\n';
+  if (outArg) {
+    fs.writeFileSync(outArg, payload, { mode: 0o600 });
+    process.stderr.write(`\nagentic-security-rule: keypair written to ${outArg} (mode 0600).\n`);
+  } else {
+    process.stdout.write(payload);
+  }
+  process.stderr.write('  · Add publicKey to .agentic-security/trusted-keys.json (this IS git-trackable)\n');
   process.stderr.write('  · Store privateKey in a password manager / KMS\n');
   process.stderr.write('  · Set AGENTIC_SECURITY_ALLOW_PROJECT_KEYS=1 so the scanner trusts project-local keys\n');
   process.exit(0);

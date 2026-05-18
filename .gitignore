@@ -18,6 +18,10 @@ scanner/dist/
 # Keyed by {app}-{sha} so updating the manifest invalidates only that entry.
 scanner/test/benchmark/realworld/.bench-cache/
 
+# CHANGELOG.md is copied into scanner/ at npm publish (prepublishOnly) so it
+# ships in the package; the canonical copy lives at the repo root.
+scanner/CHANGELOG.md
+
 # OWASP LLM Top 10 goat benchmark — external repos cloned on demand.
 scanner/test/benchmark/llm-goats/.cache/
 

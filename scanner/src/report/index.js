@@ -2,6 +2,7 @@
 import * as crypto from 'node:crypto';
 import { _isCustomSuppressed } from '../engine.js';
 import { alertFace, approveFace } from './mascot.js';
+import { SCANNER_VERSION } from '../posture/version.js';
 
 const SEV_RANK = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 const SEV_TO_SARIF = { critical: 'error', high: 'error', medium: 'warning', low: 'note', info: 'none' };
@@ -67,6 +68,12 @@ export function normalizeFindings(scan){
       unvalidated: f.unvalidated === true,
       cross_language: f.cross_language === true,
       family: f.family || null,
+      // Premortem 3R-6: audit-provenance fields. Until now these lived on
+      // the finding but `normalizeFindings` dropped them — leaving SARIF /
+      // JSON consumers blind to whether a finding came from an unsigned
+      // rule pack or in pass-through signing mode.
+      _unsigned: f._unsigned === true,
+      _passThroughSigning: f._passThroughSigning === true,
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -348,11 +355,22 @@ export function toSARIF(scan, meta={}){
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     version: '2.1.0',
     runs: [{
-      tool: { driver: { name: 'agentic-security', version: '0.1.0', informationUri: 'https://github.com/Clear-Capabilities/agentic-security', rules: [...ruleMap.values()], notifications: SARIF_NOTIFICATIONS }},
-      invocations: [{ executionSuccessful: true, toolExecutionNotifications: SARIF_NOTIFICATIONS.map(n => ({
-        descriptor: { id: n.id }, level: 'note',
-        message: { text: n.fullDescription.text.slice(0, 1000) },
-      }))}],
+      tool: { driver: { name: 'agentic-security', version: SCANNER_VERSION, informationUri: 'https://github.com/Clear-Capabilities/agentic-security', rules: [...ruleMap.values()], notifications: SARIF_NOTIFICATIONS }},
+      invocations: [{
+        executionSuccessful: true,
+        toolExecutionNotifications: SARIF_NOTIFICATIONS.map(n => ({
+          descriptor: { id: n.id }, level: 'note',
+          message: { text: n.fullDescription.text.slice(0, 1000) },
+        })),
+        // Premortem 3R-6: surface the ruleset-version stamp at SARIF level so
+        // /security-trend regression analysis can attribute deltas to rule
+        // changes vs. code changes.
+        properties: {
+          ...(scan && scan._rulesetVersion ? { rulesetVersion: scan._rulesetVersion } : {}),
+          ...(scan && scan._rulesetVersionSource ? { rulesetVersionSource: scan._rulesetVersionSource } : {}),
+          ...(scan && scan._rulesetVersionMismatch ? { rulesetVersionMismatch: scan._rulesetVersionMismatch } : {}),
+        },
+      }],
       results: findings.map(f => ({
         ruleId: f.vuln ? f.vuln.replace(/[^a-zA-Z0-9]/g, '_') : 'unknown',
         level: SEV_TO_SARIF[f.severity] || 'warning',
@@ -380,6 +398,10 @@ export function toSARIF(scan, meta={}){
           ...(f.unvalidated ? { unvalidated: true } : {}),
           ...(f.cross_language ? { crossLanguage: true } : {}),
           ...(f.family ? { family: f.family } : {}),
+          // Premortem 3R-6: audit-provenance flags surface in SARIF so
+          // downstream consumers can filter / annotate.
+          ...(f._unsigned ? { unsigned: true } : {}),
+          ...(f._passThroughSigning ? { passThroughSigning: true } : {}),
         },
       })),
     }],

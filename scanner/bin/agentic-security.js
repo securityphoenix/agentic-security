@@ -20,7 +20,7 @@ import { writeLockfile, verifyLockfile, makeDeterministic, isDeterministic } fro
 import { enrichWithEPSS } from '../src/posture/epss.js';
 import { enrichWithBlastRadius } from '../src/posture/blast-radius.js';
 import { applyCustomRules, runRuleTests, loadCustomRules } from '../src/posture/custom-rules.js';
-import { applyFix, undoLast, undoAll, listHistory, preview as previewDiff } from '../src/posture/fix-history.js';
+import { applyFix, undoLast, undoAll, listHistory, preview as previewDiff, compactLog } from '../src/posture/fix-history.js';
 import { syncTickets } from '../src/integrations/tickets.js';
 import { decide as decideNextAction, explain as explainDecision } from '../src/posture/router.js';
 import * as triage from '../src/posture/triage.js';
@@ -45,7 +45,7 @@ Commands:
   ci [path]                    Baseline-aware CI scan: auto-detects PR base ref,
                                writes SARIF + JUnit + JSON, applies --fail-on policy
   fix --finding <id> [--preview|--apply]  Show diff or apply fix for a single finding
-  undo [--all|--list]          Revert the most recent applied fix (or all, or list)
+  undo [--all|--list|--compact]  Revert the most recent applied fix; --compact archives terminal entries (--retain-days N --prune-backups)
   accept --finding <id>        Soft-suppress a finding for 30 days (vibecoder)
   setup [project-dir]          Install /security-* shortcut commands into a project
   profile set <vibecoder|pro>  Set or change the persona profile
@@ -58,6 +58,7 @@ Commands:
   tickets sync --provider <p>  Two-way sync findings ↔ GitHub Issues / Linear / Jira
   digest --slack <webhook>     Vibecoder: send daily digest to Slack
   mcp                          Start the MCP stdio server (scan_diff, query_taint, explain_finding, apply_fix)
+  validator-cache stats|gc     Inspect / prune .agentic-security/llm-cache/ (use --older-than <days> --dry-run)
   version                      Print version
 
 Options:
@@ -673,6 +674,60 @@ async function cmdRule(args) {
 }
 
 // packs list — enumerate the curated rule packs available to --pack.
+// Premortem 3R-14: validator-cache GC. .agentic-security/llm-cache/ grows
+// without bound — every cache miss writes a small JSON. After months of CI
+// runs, a project carries hundreds of MB of stale verdicts whose prompt or
+// model versions no longer match. This subcommand prunes entries by age and
+// by prompt-version mismatch.
+async function cmdValidatorCache(args) {
+  const sub = args._[1] || 'help';
+  const root = path.resolve(args._[2] || '.');
+  const cacheDir = path.join(root, '.agentic-security', 'llm-cache');
+  if (!fs.existsSync(cacheDir)) {
+    console.log(`No validator cache at ${cacheDir}`);
+    return 0;
+  }
+  if (sub === 'list' || sub === 'stats') {
+    const entries = await fsp.readdir(cacheDir);
+    let total = 0, bytes = 0;
+    for (const f of entries) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const st = await fsp.stat(path.join(cacheDir, f));
+        total++; bytes += st.size;
+      } catch {}
+    }
+    console.log(`validator cache: ${total} entries, ${(bytes / 1024).toFixed(1)} KB at ${cacheDir}`);
+    return 0;
+  }
+  if (sub === 'gc' || sub === 'prune') {
+    const olderThanDays = parseInt(args.flags['older-than'] || '30', 10);
+    const dryRun = !!args.flags['dry-run'];
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const { _internal } = await import('../src/llm-validator/index.js');
+    const wantedPromptVersion = _internal && _internal.PROMPT_VERSION;
+    const entries = await fsp.readdir(cacheDir);
+    let removed = 0, kept = 0, bytesFreed = 0;
+    for (const f of entries) {
+      if (!f.endsWith('.json')) continue;
+      const fp = path.join(cacheDir, f);
+      let st, body;
+      try { st = await fsp.stat(fp); } catch { continue; }
+      try { body = JSON.parse(await fsp.readFile(fp, 'utf8')); } catch { body = null; }
+      const tooOld = st.mtimeMs < cutoff;
+      const wrongVersion = body && wantedPromptVersion && body.prompt_version && body.prompt_version !== wantedPromptVersion;
+      if (tooOld || wrongVersion) {
+        if (!dryRun) { try { await fsp.unlink(fp); } catch {} }
+        removed++; bytesFreed += st.size;
+      } else { kept++; }
+    }
+    console.log(`${dryRun ? '[dry-run] would remove' : 'removed'} ${removed} entries (${(bytesFreed / 1024).toFixed(1)} KB), kept ${kept}.`);
+    return 0;
+  }
+  console.error('Usage: agentic-security validator-cache <stats|gc> [path] [--older-than <days>] [--dry-run]');
+  return 4;
+}
+
 async function cmdPacks(args) {
   const sub = args._[1] || 'list';
   if (sub !== 'list') { console.error('Usage: agentic-security packs list'); return 4; }
@@ -785,6 +840,14 @@ async function cmdUndo(args) {
       const status = e.reverted ? '↩ reverted' : '✓ applied ';
       console.log(`  ${status}  ${e.id}  ${e.file}  (${e.vuln || e.findingId})`);
     }
+    return 0;
+  }
+  if (args.flags.compact) {
+    // Premortem 3R-17: surface log compaction so operators can keep the
+    // fix-history dir bounded on long-lived projects.
+    const retainDays = parseInt(args.flags['retain-days'] || '90', 10);
+    const r = await compactLog(scanRoot, { retainDays, pruneBackups: !!args.flags['prune-backups'] });
+    console.log(`Compacted: archived ${r.archived} entries, retained ${r.kept} in active log.`);
     return 0;
   }
   if (args.flags.all) {
@@ -931,6 +994,7 @@ async function main() {
       case 'tickets':  process.exit(await cmdTickets(args));
       case 'secure':   process.exit(await cmdSecure(args));
       case 'packs':    process.exit(await cmdPacks(args));
+      case 'validator-cache': process.exit(await cmdValidatorCache(args));
       case 'digest':   process.exit(await cmdDigest(args));
       case 'setup':    process.exit(await cmdSetup(args));
       case 'mcp':      {
@@ -939,7 +1003,7 @@ async function main() {
         runStdio({ sessionRoot: path.resolve(root) });
         return;
       }
-      case 'version':  console.log('agentic-security 0.39.2  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.47.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'help': case '--help': case '-h': case undefined:
         console.log(USAGE); process.exit(cmd ? 0 : 1);
       default:

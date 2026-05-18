@@ -229,6 +229,16 @@ async function loadCuratedExpected(name, gtPath) {
   return JSON.parse(await fs.readFile(p, 'utf8'));
 }
 
+// Premortem 3R-7: the curated expected JSONs carry a `requiresReAudit: true`
+// flag for any corpus we have NOT re-walked by hand since the last engine
+// rev. We surface this in the bench output so a reader can't mistake an
+// auto-curated stale GT for a verified one. Findings against such corpora
+// still get computed, but the per-corpus block is tagged.
+function corpusRequiresReAudit(curated) {
+  if (!curated || typeof curated !== 'object' || Array.isArray(curated)) return false;
+  return curated.requiresReAudit === true;
+}
+
 // Build expected[] for a SARD/Juliet-style test suite. Each test file lives in
 // `juliet-cweN/.../<TestFile>.java`. The CWE in the directory name maps to a
 // scanner family via gt.cweToFamily. We walk the cloned repo, find every test
@@ -891,6 +901,7 @@ async function runOne(name, app, vulnFamilyMap) {
 
   let expected;
   let wildcardFamilies = [];
+  let reAuditFlag = false;  // Premortem 3R-7
   if (app.groundTruth.kind === 'csv') {
     expected = await buildOwaspBenchmarkExpected(repoRoot, app.groundTruth);
     if (Array.isArray(app.wildcardFamilies)) wildcardFamilies = app.wildcardFamilies;
@@ -917,6 +928,12 @@ async function runOne(name, app, vulnFamilyMap) {
     const curated = await loadCuratedExpected(name, app.groundTruth.path);
     if (Array.isArray(curated)) { expected = curated; }
     else { expected = curated.expected || []; wildcardFamilies = curated.wildcardFamilies || []; }
+    // Premortem 3R-7: surface stale-GT warning to stderr so a reader of the
+    // bench run knows this corpus's pass/fail is not yet load-bearing.
+    if (corpusRequiresReAudit(curated)) {
+      console.error(`  WARNING: ${name}: expected ground truth carries requiresReAudit:true — F1 against this corpus is informational only until a human re-walks it.`);
+      reAuditFlag = true;
+    }
   }
 
   // Apply per-app excludePaths via a generated rules.yml under the scan root.
@@ -964,12 +981,13 @@ async function runOne(name, app, vulnFamilyMap) {
   for (const x of fns) bump(x.family, 'fn');
 
   const auditorVerified = !!(app.groundTruth && app.groundTruth.auditorVerified);
-  return { name, language: app.language, scanned: actual.length, tp, fp, fn, precision, recall, f1: fOne, perFamily, fps, fns, elapsedSec: parseFloat(elapsed), expectedTotal: expected.length, auditorVerified };
+  return { name, language: app.language, scanned: actual.length, tp, fp, fn, precision, recall, f1: fOne, perFamily, fps, fns, elapsedSec: parseFloat(elapsed), expectedTotal: expected.length, auditorVerified, requiresReAudit: reAuditFlag };
 }
 
 function printResult(r) {
   const auditorTag = r.auditorVerified ? '  [auditor-verified GT]' : '';
-  console.log(`\n${r.name} (${r.language})${auditorTag}`);
+  const reAuditTag = r.requiresReAudit ? '  [GT requires re-audit — F1 informational]' : '';
+  console.log(`\n${r.name} (${r.language})${auditorTag}${reAuditTag}`);
   console.log(`  P: ${(r.precision*100).toFixed(1)}%   R: ${(r.recall*100).toFixed(1)}%`);
   console.log(`  TP: ${r.tp} / FP: ${r.fp} / FN: ${r.fn}   (expected: ${r.expectedTotal}, scan emitted: ${r.scanned}, ${r.elapsedSec}s)`);
   if (Object.keys(r.perFamily).length) {

@@ -183,7 +183,20 @@ async function handleMessage(msg) {
   }
   if (msg.method === 'textDocument/didSave') {
     const uri = msg.params?.textDocument?.uri;
-    if (uri) scanFile(uri);
+    if (uri) {
+      // Premortem 3R-9: when the user saves a manifest file, the dep-cache is
+      // stale. Without invalidation, the editor would keep firing scans
+      // against the old dependency snapshot and miss freshly-added vulnerable
+      // packages (or false-positive on ones the user just removed).
+      const savedPath = uriToPath(uri);
+      if (savedPath) {
+        const base = path.basename(savedPath);
+        if (DEP_BASE_NAMES.has(base) || DEP_EXT_RE.test(base) || DEP_NAME_RE.test(base)) {
+          _depCache = { rootDir: null, depFileContents: {} };
+        }
+      }
+      scanFile(uri);
+    }
     return null;
   }
   if (msg.method === 'textDocument/didClose') {

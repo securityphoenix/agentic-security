@@ -351,14 +351,15 @@ for (const e of CATALOG) {
   if (!e.source) e.source = 'official';
 }
 
-const OFFICIAL_ONLY = process.env.AGENTIC_SECURITY_CATALOG_OFFICIAL_ONLY === '1';
-
-// Pre-build lookups: callee name → entry. Filter by provenance.
+// Premortem 3R-10: OFFICIAL_ONLY was captured ONCE at module load, baked
+// into the prebuilt indexes. A caller that sets the env var just before
+// running a scan (e.g., a CI lane that wants strict-mode just for this one
+// invocation) was silently ignored. Now the indexes hold ALL entries; the
+// filter runs per-match by reading the env each call.
 const CALLEE_INDEX = new Map();
 const MEMBER_INDEX = new Map();
 for (const e of CATALOG) {
   if (!e.match) continue;
-  if (OFFICIAL_ONLY && e.source !== 'official') continue;
   if (e.match.type === 'call' && e.match.callee && e.match.callee !== '*') {
     const k = e.match.callee;
     if (!CALLEE_INDEX.has(k)) CALLEE_INDEX.set(k, []);
@@ -370,13 +371,24 @@ for (const e of CATALOG) {
   }
 }
 
+function isOfficialOnlyMode() {
+  return process.env.AGENTIC_SECURITY_CATALOG_OFFICIAL_ONLY === '1';
+}
+
+function filterByProvenance(entries) {
+  if (!isOfficialOnlyMode()) return entries;
+  return entries.filter(e => e.source === 'official');
+}
+
 export function matchSource(memberExpr) {
   // memberExpr is exprDesc: { kind: 'member', object: {kind:'ident',name}, prop }
   if (!memberExpr || memberExpr.kind !== 'member') return null;
   if (memberExpr.object?.kind !== 'ident') return null;
   const k = `${memberExpr.object.name}.${memberExpr.prop}`;
-  const hits = MEMBER_INDEX.get(k);
-  if (!hits) return null;
+  const raw = MEMBER_INDEX.get(k);
+  if (!raw) return null;
+  const hits = filterByProvenance(raw);
+  if (!hits.length) return null;
   return hits.find(h => h.kind === 'source') || null;
 }
 
@@ -386,7 +398,10 @@ export function matchSinkOrSanitizer(calleeExpr) {
   if (calleeExpr.kind === 'ident') calleeName = calleeExpr.name;
   else if (calleeExpr.kind === 'member') calleeName = calleeExpr.prop;
   if (!calleeName) return null;
-  return CALLEE_INDEX.get(calleeName) || null;
+  const raw = CALLEE_INDEX.get(calleeName);
+  if (!raw) return null;
+  const hits = filterByProvenance(raw);
+  return hits.length ? hits : null;
 }
 
 // For tests and reflection.

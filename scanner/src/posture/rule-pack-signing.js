@@ -83,20 +83,46 @@ export function loadTrustedKeys(scanRoot) {
   return keys;
 }
 
+// Pass-through warning issued at most once per process.
+let _passThroughWarned = false;
+
 // Verify a rule-pack file. Returns one of:
 //   { ok: true, keyId: '<id>' }                              // signature valid
+//   { ok: true, passThrough: true }                          // bundled trust root empty AND no project keys — pass-through (premortem 3R3.1)
 //   { ok: false, reason: 'unsigned', allowUnsigned: bool }   // no sig file
 //   { ok: false, reason: 'bad-signature' }                   // sig present but invalid
-//   { ok: false, reason: 'no-trusted-keys' }                  // no keys configured
+//   { ok: false, reason: 'no-trusted-keys' }                  // no keys configured (no bundled, no project)
 //   { ok: false, reason: 'revoked-key', keyId }               // key revoked + rule mtime > revokedAt
 //   { ok: false, reason: 'revoked-signature' }                // signature SHA in project CRL
 //   { ok: false, reason: 'read-error' }
+//
+// PREMORTEM 3R3.1 — pass-through mode. When BUNDLED_OFFICIAL_KEYS is empty
+// (today's reality during product bring-up) AND the operator has not opted
+// into project-local keys, REFUSING every rule pack trains operators to set
+// AGENTIC_SECURITY_ALLOW_PROJECT_KEYS=1 permanently — which recreates the
+// exact threat model signing was supposed to defend. Instead we accept
+// rule packs in pass-through mode with a one-time warning + a _passThrough
+// flag on each accepted rule. Operators get visibility AND the gate doesn't
+// train them to bypass.
 export function verifyRulePack(rulePackPath, trustedKeys) {
   const sigPath = rulePackPath + '.sig';
   if (!fs.existsSync(sigPath)) {
     return { ok: false, reason: 'unsigned', allowUnsigned: process.env.AGENTIC_SECURITY_ALLOW_UNSIGNED_PACKS === '1' };
   }
   if (!Array.isArray(trustedKeys) || trustedKeys.length === 0) {
+    // Pass-through mode: empty bundled trust root + no project keys.
+    // Issue ONE warning per process, then accept with passThrough flag.
+    if (BUNDLED_OFFICIAL_KEYS.length === 0 && process.env.AGENTIC_SECURITY_STRICT_SIGNING !== '1') {
+      if (!_passThroughWarned) {
+        _passThroughWarned = true;
+        console.error('agentic-security: signed-rule-pack defense in PASS-THROUGH mode.');
+        console.error('  · No bundled official keys are baked into this release.');
+        console.error('  · Rule packs will be ACCEPTED, tagged _passThroughSigning:true.');
+        console.error('  · To switch to refuse-mode set AGENTIC_SECURITY_STRICT_SIGNING=1.');
+        console.error('  · To honor project-local trusted-keys.json, set AGENTIC_SECURITY_ALLOW_PROJECT_KEYS=1.');
+      }
+      return { ok: true, passThrough: true };
+    }
     return { ok: false, reason: 'no-trusted-keys' };
   }
   let body, sig, ruleMtime;
