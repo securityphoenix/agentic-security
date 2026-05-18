@@ -105,6 +105,8 @@ function f1(p, r) {
 function pad(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
 
 async function main() {
+  const _t0 = Date.now();
+  const SLO_MS = parseInt(process.env.BENCH_SLO_MS || '30000', 10); // 30s default
   const manifestPath = path.join(ROOT, 'expected.json');
   let manifest;
   try {
@@ -267,6 +269,13 @@ async function main() {
     }
   } else {
     console.log('\nNo baseline yet. Run with --update-baseline to set one.');
+  }
+
+  // SLO assertion — warn if wall-clock time exceeds budget (non-fatal).
+  const elapsedMs = Date.now() - _t0;
+  console.log(`\nWall time: ${(elapsedMs / 1000).toFixed(1)}s  (SLO: ${(SLO_MS / 1000).toFixed(0)}s)`);
+  if (elapsedMs > SLO_MS) {
+    console.error(`WARN: bench exceeded SLO (${(elapsedMs/1000).toFixed(1)}s > ${(SLO_MS/1000).toFixed(0)}s). Set BENCH_SLO_MS to adjust.`);
   }
 }
 

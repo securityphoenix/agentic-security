@@ -64,12 +64,17 @@ function familyOf(finding) {
   if (v.includes('weak') && (v.includes('rng') || v.includes('prng') || v.includes('rand'))) return 'weak-rng';
   if (v.includes('cryptograph') && v.includes('weak')) return 'weak-crypto';
   if (v.includes('hardcoded') || v.includes('hard-coded')) return 'hardcoded-secret';
+  // Keyword fallbacks for cpp-dataflow.js vuln strings (use-after-free,
+  // double-free, missing-null-check, off-by-one, alloc-size-overflow).
+  if (v.includes('use-after-free') || v.includes('double-free') || v.includes('null check')) return 'mem-unsafe';
+  if (v.includes('off-by-one') || v.includes('allocation size overflow')) return 'buffer-overflow';
   // CWE-based fallback so newly-added rules without keyword overlap still classify.
   const cwe = String(finding.cwe || '');
-  if (cwe === 'CWE-120' || cwe === 'CWE-787' || cwe === 'CWE-242' || cwe === 'CWE-676') return 'buffer-overflow';
+  if (cwe === 'CWE-120' || cwe === 'CWE-787' || cwe === 'CWE-242' || cwe === 'CWE-676'
+   || cwe === 'CWE-190' || cwe === 'CWE-193') return 'buffer-overflow';
   if (cwe === 'CWE-134') return 'format-string';
   if (cwe === 'CWE-78')  return 'command-injection';
-  if (cwe === 'CWE-770') return 'mem-unsafe';
+  if (cwe === 'CWE-770' || cwe === 'CWE-415' || cwe === 'CWE-416' || cwe === 'CWE-476') return 'mem-unsafe';
   if (cwe === 'CWE-338' || cwe === 'CWE-330') return 'weak-rng';
   if (cwe === 'CWE-327' || cwe === 'CWE-328') return 'weak-crypto';
   if (cwe === 'CWE-259' || cwe === 'CWE-321' || cwe === 'CWE-798') return 'hardcoded-secret';
@@ -90,6 +95,12 @@ export function julietPrimaryFamily(file) {
 //   - Findings the family classifier can't bucket are kept — silent
 //     suppression should never expand silently.
 export function applyJulietCppSuppressions(findings, file) {
+  // Blind-bench guard: this suppressor reads the testcases/CWE<N>_*/ folder
+  // name to drop findings whose family doesn't match the labelled CWE.
+  // That's answer-key reading. Disable for blind benchmarking so scored
+  // numbers reflect the engine's actual precision, not folder bookkeeping.
+  if (!(process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1')) return findings;
   if (!CPP_EXT_RE.test(file)) return findings;
   const norm = String(file).replace(/\\/g, '/');
   const m = JULIET_DIR_RE.exec(norm);

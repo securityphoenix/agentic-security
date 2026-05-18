@@ -4,6 +4,8 @@
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import * as crypto from 'node:crypto';
+import * as os from 'node:os';
 import { runScan } from '../src/runScan.js';
 import { toJSON, toMarkdown, toSARIF, toCSV, toJUnit, toCLI, toCLIByProfile, toShipVerdict, toProTable, toHTML, toSummary, exitCodeFor, normalizeFindings } from '../src/report/index.js';
 import { toCycloneDX, toSPDX } from '../src/posture/sbom.js';
@@ -25,6 +27,27 @@ import { decide as decideNextAction, explain as explainDecision } from '../src/p
 import * as triage from '../src/posture/triage.js';
 import { buildSlackDigest, buildDiscordDigest, postWebhook, buildJiraIssue, buildPrComment, buildSiemEvent, loadIntegrationConfig } from '../src/integrations/index.js';
 import fg from 'fast-glob';
+
+// ─── last-scan.json integrity ────────────────────────────────────────────────
+// Detects accidental corruption and naive manual editing of the scan state.
+// Not a cryptographic guarantee — an attacker with filesystem access can also
+// rewrite the .sig file. The value is catching accidental file truncation,
+// copy-paste corruption, and low-effort tampering that would otherwise silently
+// skew severity counts or CI gate decisions.
+const _HMAC_SALT = 'agentic-security:last-scan:v1';
+function _hmacKey() {
+  return crypto.createHash('sha256').update(`${_HMAC_SALT}:${os.hostname()}`).digest();
+}
+function _signLastScan(body) {
+  return crypto.createHmac('sha256', _hmacKey()).update(body).digest('hex');
+}
+function _verifyLastScan(body, sigFile) {
+  try {
+    const stored = fs.readFileSync(sigFile, 'utf8').trim();
+    const expected = _signLastScan(body);
+    return crypto.timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(expected, 'hex'));
+  } catch { return null; /* sig file absent — first run */ }
+}
 
 const USAGE = `agentic-security <command> [options]
 
@@ -271,7 +294,11 @@ async function cmdScan(args) {
   const stateDir = path.join(path.resolve(target), '.agentic-security');
   await fsp.mkdir(stateDir, { recursive: true });
   const persistedScan = toJSON(scan, meta);
-  await fsp.writeFile(path.join(stateDir, 'last-scan.json'), JSON.stringify(persistedScan, null, 2));
+  const lastScanBody = JSON.stringify(persistedScan, null, 2);
+  await fsp.writeFile(path.join(stateDir, 'last-scan.json'), lastScanBody);
+  try {
+    await fsp.writeFile(path.join(stateDir, 'last-scan.json.sig'), _signLastScan(lastScanBody));
+  } catch { /* non-fatal — sig file is best-effort */ }
 
   // 0.14.0 — update streak / achievements after every full scan. Suppress
   // streak side effects when the user only wants raw JSON output (CI piping).
@@ -706,7 +733,12 @@ async function cmdFix(args) {
   if (!id) { console.error('--finding <id> required'); return 4; }
   const lastScanPath = path.join(scanRoot, '.agentic-security', 'last-scan.json');
   if (!fs.existsSync(lastScanPath)) { console.error('No prior scan found. Run `agentic-security scan` first.'); return 4; }
-  const last = JSON.parse(await fsp.readFile(lastScanPath, 'utf8'));
+  const lastScanBody = await fsp.readFile(lastScanPath, 'utf8');
+  const sigVerified = _verifyLastScan(lastScanBody, lastScanPath + '.sig');
+  if (sigVerified === false) {
+    console.error('Warning: last-scan.json integrity check failed — file may have been modified outside the scanner. Re-run `agentic-security scan` to refresh.');
+  }
+  const last = JSON.parse(lastScanBody);
   const f = (last.findings || []).find(x => x.id === id) || (last.secrets || []).find(x => x.id === id);
   if (!f) { console.error(`Finding ${id} not found in last scan.`); return 4; }
 

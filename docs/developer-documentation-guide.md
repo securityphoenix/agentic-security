@@ -129,9 +129,12 @@ DESCRIPTION
        actually use: triage state, audit-grade suppressions, org-wide fleet
        scans, and custom rules.
 
-       F1 benchmark: 100% precision and recall on 33/33 real-world and
-       adversarial benchmarks (OWASP Benchmark, NodeGoat, Juice Shop, DVWA,
-       LLMGoat, AIGoat, and more). Zero false positives on baseline fixtures.
+       Evaluated against a structured ground-truth benchmark harness with
+       a `--blind` mode that strips answer-key markers (FLAW comments, CWE
+       folder names) before scoring, so the published numbers measure the
+       engine — not pattern-matching against the test corpus's own labels.
+       See BENCHMARK.md for the three scoring modes, reproducibility instructions,
+       and the published per-family blind-mode baseline table.
 
        Coverage pillars:
 
@@ -1316,7 +1319,7 @@ Every finding produced by the scanner includes:
 {
   "id":          "module:RULE_ID:file/path.js:42",
   "title":       "Human-readable title",
-  "vuln":        "Canonical vulnerability name (used for F1 family mapping)",
+  "vuln":        "Canonical vulnerability name (used for bench family mapping)",
   "severity":    "critical | high | medium | low | info",
   "file":        "relative/path/to/file.js",
   "line":        42,
@@ -2106,74 +2109,57 @@ Each exports one or more `scan*()` functions returning `Finding[]`.
 
 ---
 
-## F1 BENCHMARK
+## BENCHMARK HARNESS
 
 The scanner is evaluated against structured ground-truth benchmarks. Every
 rule ships with a `vulnerable/` + `clean/` fixture pair in `test/fixtures/`.
 
-Local benchmark suite (33 fixture scenarios):
+Run benchmarks locally:
 
 ```bash
-cd scanner && npm run bench
-```
-
-Real-world benchmark (requires internet — clones external repos):
-
-```bash
-npm run bench:realworld              # all apps
+cd scanner && npm run bench               # in-repo fixture suite
+npm run bench:realworld                    # all real-world apps
 npm run bench:realworld -- --app nodegoat
 npm run bench:realworld -- --app juice-shop
+npm run bench:llm-goats                    # LLM/AI adversarial suite
 ```
 
-LLM/AI adversarial suite:
+**Always run in blind mode** to measure the engine instead of label leakage
+from the test corpora:
 
 ```bash
-npm run bench:llm-goats
+node test/benchmark/realworld/bench-realworld.js --app sard-juliet-java --blind
+node test/benchmark/realworld/bench-realworld.js --all --blind
 ```
 
-Current scores:
+`--blind` produces a sanitized copy of the corpus (FLAW / POTENTIAL FLAW
+comments stripped, OWASP template marker comments removed, `@WebServlet`
+category prefixes opaqued) and sets `AGENTIC_SECURITY_BLIND_BENCH=1` so the
+scanner disables every rule that reads benchmark answer keys:
 
-| Mode                       | Local fixture suite | Real-world benchmarks                               |
-|----------------------------|---------------------|-----------------------------------------------------|
-| Wildcard-relaxed (default) | F1 100.0%           | F1 100% on 33/33 apps (family-level coverage)       |
-| Strict line-level (`--no-wildcards`) | F1 100.0%  | See per-app breakdown below                          |
+- `juliet-shape.js` — emits one finding per `/* POTENTIAL FLAW */` marker
+- `applyJuliet*Suppressions` — folder→family suppression
+- `_javaWebServletCategory` — reads `@WebServlet("/cmdi-NN/…")` URL prefix
+- `_hasOwasp*Safe` template-marker suppressors in `java-bench-extras.js`
+- OWASP dead-branch + Juliet OIS+BAIS suppressors inside `findSuppressionLines`
 
-Strict-line breakdown on real-world benchmarks (post ground-truth curation):
+What's still active under blind mode (genuine static analysis):
 
-```
-30 apps at F1 100%   snyk-goof, nodegoat, juice-shop, railsgoat, trufflehog-fixtures,
-                     gitleaks-fixtures, owasp-mastg-mobile, issueblot-dotnet, bandit-test,
-                     dvwa, pygoat, cfngoat, terragoat, hadolint-fixtures,
-                     damn-vulnerable-defi, ethernaut, openzeppelin-contracts,
-                     owasp-dotnet, ossf-cve-benchmark, gai-risk-management,
-                     django-clean, flask-clean, rails-clean, gin-gonic-gin,
-                     expressjs-express, gitea-polyglot, linux-kernel-perf,
-                     igoat-swift, + 2 more.
-laravel-clean      F1 98.7%   (recall gap from matchAny-collapsed Composer.json entries)
-snyk-rust-vuln-apps F1 90.6%  (recall gap from matchAny-collapsed Cargo.toml entries)
-owasp-benchmark    F1 80.0%   (engine-bound on Java flow patterns — planned tree-sitter)
-sard-juliet-java   F1 25.6%   (engine recall gap on Java SAST patterns)
-juliet-c-cpp       quarantined (no C/C++ GT builder yet — wildcards-only)
-```
+- All `cpp.js` / `java*.js` / `csharp.js` family rules
+- `cpp-dataflow.js` (intra-procedural use-after-free / null-deref / alloc-size)
+- `java-collection-passthrough.js` (real Java taint propagation)
+- ARGV_FORM / PARAMETERIZED_PS / XSS-helper-sanitizer recognition (real safe
+  patterns that exist in any codebase, not just benchmarks)
+- `java-ast-folding.js` (AST-level constant folding)
 
-See `scanner/test/benchmark/STRICT-F1-BASELINE.md` for the full methodology
-notes, why each gap exists, and the engineering roadmap to raise it.
+Always report precision, recall, and raw TP/FP/FN per family. A bare summary
+metric on a benchmark you tuned against is uninformative; the per-family
+breakdown shows where the engine is genuinely strong vs. where it's empty.
 
-Run the strict mode yourself:
-
-```bash
-cd scanner
-node test/benchmark/realworld/bench-realworld.js --all --no-wildcards
-node test/benchmark/realworld/bench-realworld.js --app owasp-benchmark --no-wildcards
-```
-
-F1 safety rules for new rules:
+When adding new rules:
 1. Gate on at least 2 signals before firing (never single-regex)
 2. Include `_NONPROD_RE` to exclude test/fixture/spec paths
-3. New `vuln` strings must either (a) not fire on benchmark apps or (b)
-   be added to the relevant app's `wildcardFamilies` in expected JSON
-   (with a `_doc` field explaining why family-level scoring is appropriate)
-4. Verify with `npm run bench` AND `--no-wildcards` after adding any rule
-5. If strict-F1 regresses on any app, either fix the rule or add line-level
-   expected entries documenting the new finding
+3. Verify with `npm run bench` AND `--blind` before committing
+4. Never read folder names, file paths, or comment markers that exist only
+   in benchmark corpora — that's label leakage and produces inflated numbers
 

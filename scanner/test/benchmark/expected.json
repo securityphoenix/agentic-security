@@ -1,5 +1,5 @@
 {
-  "_doc": "Per-fixture expected findings, used by scripts/bench.js to compute precision/recall/F1. Match key is (file, line\u00b1tolerance, family). 'expectedNone: true' means the fixture should produce zero findings of any family except those listed in 'expected'. Add fixtures incrementally \u2014 only fixtures listed here are scored.",
+  "_doc": "Per-fixture expected findings, used by scripts/bench.js to compute precision and recall. Match key is (file, line\u00b1tolerance, family). 'expectedNone: true' means the fixture should produce zero findings of any family except those listed in 'expected'. Add fixtures incrementally \u2014 only fixtures listed here are scored.",
   "_familyMap": {
     "_doc": "Maps scanner vuln strings \u2192 canonical family. New vuln names get auto-categorized via prefix; explicit overrides win.",
     "exact": {
@@ -133,6 +133,11 @@
       "Format string vulnerability": "format-string",
       "Memory-safety risk": "mem-unsafe",
       "Stack-allocation with user-controllable size": "mem-unsafe",
+      "Use-after-free": "mem-unsafe",
+      "Double-free": "mem-unsafe",
+      "Missing NULL check": "mem-unsafe",
+      "Off-by-one in loop bound": "buffer-overflow",
+      "Allocation size overflow": "buffer-overflow",
       "Cryptographically weak PRNG (rand": "weak-rng",
       "Cryptographic randomness seeded from time": "weak-rng",
       "Reentrancy": "reentrancy",

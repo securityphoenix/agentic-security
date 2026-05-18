@@ -4,12 +4,12 @@
 // browser-side attack surface: unsafe HTML injection, auth tokens in Web
 // Storage, open redirects in client routing, and unsafe postMessage handling.
 //
-// F1 safety:
+// Precision posture:
 //   - Only scans JSX/TSX files and JS files with recognisable React/component patterns
 //   - Uses multi-signal patterns to minimise FP rate
 //   - NONPROD_RE excludes test fixtures
-//   - Benchmark apps (NodeGoat = server-rendered, Juice Shop = Angular, OWASP = Java)
-//     do not use React patterns targeted here → no benchmark FP risk
+//   - Server-rendered apps and non-React frontends are unaffected since the
+//     targeted patterns are React/JSX-specific.
 
 const _JSX_EXT_RE = /\.(?:jsx|tsx)$/i;
 const _JS_EXT_RE = /\.(?:js|mjs|ts)$/i;

@@ -125,9 +125,18 @@ const OWASP_BENCH_DEAD_BRANCH_PATTERNS = [
 // ─── Public API ───────────────────────────────────────────────────────────
 
 /** Find file:line tuples where a SAFE pattern indicates the engine's finding
- *  is a false positive. Used to filter the engine's `findings` array. */
+ *  is a false positive. Used to filter the engine's `findings` array.
+ *
+ *  Bench-shape suppressors (OWASP dead-branch patterns, Juliet OIS+BAIS) are
+ *  OFF by default and activate only with AGENTIC_SECURITY_BENCH_SHAPE=1.
+ *  Both rely on bench-specific shapes (OWASP's `int x = 86; if ((7*42)-x > 200)`
+ *  template, Juliet's "OIS fed by ByteArrayInputStream(byte[])" scaffolding).
+ *  Argv-form and PARAMETERIZED_PS always run — they recognise GENUINE safe
+ *  patterns (real exec-without-shell, real parameterized SQL) in any codebase. */
 export function findSuppressionLines(file, raw) {
   if (!JAVA_EXT.test(file) || !raw || raw.length > 500_000) return [];
+  const blind = !(process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1');
   const content = blankComments(raw);
   const lines = content.split('\n');
   const suppressed = new Set();   // "line:family" keys
@@ -163,44 +172,44 @@ export function findSuppressionLines(file, raw) {
     SETX_RE.lastIndex = 0;
   }
 
-  // 3. OWASP Benchmark dead-branch sanitizers
-  for (const re of OWASP_BENCH_DEAD_BRANCH_PATTERNS) {
-    re.lastIndex = 0;
-    let mm;
-    while ((mm = re.exec(content))) {
-      const L = lineOf(mm.index);
-      // Look ahead ~20 lines for the rest of the if-block. Suppress on the
-      // else-branch (or if-branch, depending on which is dead — for the
-      // simple shapes we recognize, the SOURCE OF TAINT typically lands in
-      // the else; we conservatively suppress on both branches' suspected lines.
-      addRange(L, L + 20, ['sql-injection', 'command-injection', 'path-traversal', 'xss', 'ldap-injection', 'xpath-injection']);
+  // 3. OWASP Benchmark dead-branch sanitizers — BENCH-SPECIFIC.
+  // These match the literal `if ((7 * 42) - x > 200)` template OWASP uses.
+  // The arithmetic looks like constant-folding but depends on the value
+  // of `x`, which we don't actually analyse — we just trust the template.
+  // Pure label leakage on the safe side. Disabled in blind mode.
+  if (!blind) {
+    for (const re of OWASP_BENCH_DEAD_BRANCH_PATTERNS) {
+      re.lastIndex = 0;
+      let mm;
+      while ((mm = re.exec(content))) {
+        const L = lineOf(mm.index);
+        addRange(L, L + 20, ['sql-injection', 'command-injection', 'path-traversal', 'xss', 'ldap-injection', 'xpath-injection']);
+      }
     }
   }
 
-  // 4. ObjectInputStream fed by ByteArrayInputStream(<literal-bytes-or-param>)
-  //    — Juliet's CWE-256/319/etc. test files use OIS to round-trip a byte[]
-  //    parameter or a hardcoded array. The shape is not the same as real
-  //    untrusted-network deserialization. Match `new ObjectInputStream(X)`
-  //    where X resolves locally to a `new ByteArrayInputStream(...)` (the
-  //    BAIS argument being a method parameter or named local). Suppress the
-  //    insecure-deserialization emissions on the readObject line(s) below.
-  const OIS_BAIS_RE = /\bnew\s+ObjectInputStream\s*\(\s*(\w+)\s*\)/g;
-  const BAIS_DECL_RE = /\b(\w+)\s*=\s*new\s+ByteArrayInputStream\s*\(/g;
-  OIS_BAIS_RE.lastIndex = 0;
-  let oisM;
-  while ((oisM = OIS_BAIS_RE.exec(content))) {
-    const oisVar = oisM[1];
-    // Confirm the OIS argument was declared as a ByteArrayInputStream in scope.
-    BAIS_DECL_RE.lastIndex = 0;
-    let baisM, hasBais = false;
-    while ((baisM = BAIS_DECL_RE.exec(content))) {
-      if (baisM[1] === oisVar) { hasBais = true; break; }
-    }
-    if (!hasBais) continue;
-    // Suppress all readObject sites in the next 200 lines (entire test method body).
-    const L = lineOf(oisM.index);
-    for (let off = 0; off <= 200; off++) {
-      suppressed.add(`${L + off}:insecure-deserialization`);
+  // 4. ObjectInputStream fed by ByteArrayInputStream — JULIET-SPECIFIC.
+  // Juliet's CWE-256/319/etc. test files use OIS to round-trip a byte[]
+  // parameter or a hardcoded array. Real production code uses OIS with
+  // genuinely untrusted network streams. Disabled in blind mode so we
+  // don't over-credit on Juliet's test scaffolding.
+  if (!blind) {
+    const OIS_BAIS_RE = /\bnew\s+ObjectInputStream\s*\(\s*(\w+)\s*\)/g;
+    const BAIS_DECL_RE = /\b(\w+)\s*=\s*new\s+ByteArrayInputStream\s*\(/g;
+    OIS_BAIS_RE.lastIndex = 0;
+    let oisM;
+    while ((oisM = OIS_BAIS_RE.exec(content))) {
+      const oisVar = oisM[1];
+      BAIS_DECL_RE.lastIndex = 0;
+      let baisM, hasBais = false;
+      while ((baisM = BAIS_DECL_RE.exec(content))) {
+        if (baisM[1] === oisVar) { hasBais = true; break; }
+      }
+      if (!hasBais) continue;
+      const L = lineOf(oisM.index);
+      for (let off = 0; off <= 200; off++) {
+        suppressed.add(`${L + off}:insecure-deserialization`);
+      }
     }
   }
 
@@ -439,28 +448,32 @@ const _KNOWN_TAINT_SOURCE_HINT = /\brequest\s*\.\s*get(?:Parameter|Header|Cookie
 /** Filter findings array against the suppression set + AST dead-branch ranges. */
 export function applyJavaBenchSuppressions(findings, file, raw) {
   if (!JAVA_EXT.test(file)) return findings;
+  // Bench-shape guard: template-comment suppressors below read OWASP's own
+  // marker comments ("condition 'B', which is safe", etc.) — answer-key
+  // reading on the safe side. Off by default; active only with BENCH_SHAPE=1.
+  // The argv-form ProcessBuilder, PARAMETERIZED_PS, XSS helper-sanitizer,
+  // and dead-branch suppressors always run — they recognise GENUINE safe
+  // patterns (parameterized SQL, exec-without-shell, ESAPI sanitization,
+  // constant-folded unreachable branches) real in any codebase.
+  const blind = !(process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1');
   const suppressed = findSuppressionLines(file, raw);
-  // AST-level: if the taint flow's source OR sink line falls in a constant-folded
-  // dead branch, the finding is unreachable.
   let deadRanges = [];
   try { deadRanges = deadBranchRanges(raw); } catch { /* parse error → no AST suppress */ }
-  // OWASP Benchmark template-shape suppressors. All four patterns produce
-  // a `bar` value that is provably constant; only bar-using families are
-  // suppressed (weak-crypto/weak-rng/header-hardening fire on non-bar paths).
-  const listShuffleSafe = _hasOwaspListShuffleGet1Safe(raw);
-  const thingFlowSafe = _hasOwaspThingFlowSafe(raw);
-  const constantTernarySafe = _hasOwaspConstantTernaryHelper(raw);
-  const constantIfSafe = _hasOwaspConstantIfHelper(raw);
-  const mapDoubleGetSafe = _hasOwaspMapDoubleGetSafe(raw);
-  const switchGuessB1Safe = _hasOwaspSwitchGuessB1Safe(raw);
+  // OWASP Benchmark template-shape suppressors — pure label leakage.
+  // Off by default; active only with BENCH_SHAPE=1.
+  const listShuffleSafe = !blind && _hasOwaspListShuffleGet1Safe(raw);
+  const thingFlowSafe = !blind && _hasOwaspThingFlowSafe(raw);
+  const constantTernarySafe = !blind && _hasOwaspConstantTernaryHelper(raw);
+  const constantIfSafe = !blind && _hasOwaspConstantIfHelper(raw);
+  const mapDoubleGetSafe = !blind && _hasOwaspMapDoubleGetSafe(raw);
+  const switchGuessB1Safe = !blind && _hasOwaspSwitchGuessB1Safe(raw);
+  // GENUINE pattern-recognition suppressors — kept under blind mode.
   const xssHelperSafe = _hasOwaspXssHelperSanitizer(raw);
-  const owaspBarSafe = listShuffleSafe || thingFlowSafe || constantTernarySafe || constantIfSafe || mapDoubleGetSafe || switchGuessB1Safe;
-  // Argv-form-safe: lines where a Process exec call takes a String[]/List<String>
-  // variable. SAFE unless a previous .add()/array-init line in the same file
-  // concatenates a tainted variable into the arg.
   const taintedConcatPresent = _ARG_ADD_TAINTED_RE.test(raw) || _ARG_ARRAY_INIT_TAINTED_RE.test(raw);
   _ARG_ADD_TAINTED_RE.lastIndex = 0; _ARG_ARRAY_INIT_TAINTED_RE.lastIndex = 0;
   const argvSafeLines = taintedConcatPresent ? new Set() : _findArgvSafeLines(raw);
+  const owaspBarSafe = listShuffleSafe || thingFlowSafe || constantTernarySafe || constantIfSafe || mapDoubleGetSafe || switchGuessB1Safe;
   if (!suppressed.size && deadRanges.length === 0 && !owaspBarSafe && !xssHelperSafe && !argvSafeLines.size) return findings;
   return findings.filter(f => {
     const sinkLine = f.line ?? f.sink?.line ?? 0;

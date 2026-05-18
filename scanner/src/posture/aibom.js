@@ -17,8 +17,8 @@
 //     pgvector, milvus, faiss)
 //
 // No outbound calls; pure transform from already-collected fileContents and
-// scan.components. F1 strategy: extraction precision is verified by a smoke
-// test against a labelled fixture set.
+// scan.components. Extraction precision is verified by a smoke test against
+// a labelled fixture set.
 
 import * as crypto from 'node:crypto';
 

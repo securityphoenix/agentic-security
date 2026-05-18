@@ -75,6 +75,14 @@ export function loadCustomRules(scanRoot) {
   return out;
 }
 
+// Reject patterns with nested quantifiers — the most common ReDoS shape.
+// Catches (a+)+, (a*)*, (.+)+, (\w+)+, (a|b)+, (a+|b)* etc.
+// Not exhaustive but eliminates the vast majority of catastrophic patterns.
+const _REDOS_NESTED_RE = /\([^)]*[+*][^)]*\)[+*?{]/;
+function _isSafePattern(p) {
+  return !_REDOS_NESTED_RE.test(p);
+}
+
 function normalizeRule(r, fp) {
   if (!r || !r.id || !r.match) return null;
   const m = r.match;
@@ -83,6 +91,13 @@ function normalizeRule(r, fp) {
   else if (Array.isArray(m.allOf)) patterns = m.allOf;
   else return null;
 
+  // ReDoS guard: reject patterns with nested quantifiers before compiling.
+  for (const p of patterns) {
+    if (!_isSafePattern(p)) {
+      console.error(`agentic-security: rejected potentially unsafe regex in ${r.id} (nested quantifiers): ${p.slice(0, 80)}`);
+      return null;
+    }
+  }
   let regexes;
   try { regexes = patterns.map(p => new RegExp(p, 'gm')); }
   catch (e) {
@@ -100,6 +115,7 @@ function normalizeRule(r, fp) {
     message: r.message || r.title || r.id,
     remediation: r.remediation || '',
     languages: Array.isArray(r.languages) ? r.languages : (r.languages ? [r.languages] : ['any']),
+    shadow: r.shadow === true,
     regexes,
     notMatch,
     requireAll: Array.isArray(m.allOf),
@@ -137,12 +153,18 @@ export function runRule(rule, file, content) {
     return lo + 1;
   };
 
+  const EXEC_TIMEOUT_MS = 200;
   const matches = rule.regexes.map(rx => {
     const list = [];
     rx.lastIndex = 0;
+    const deadline = Date.now() + EXEC_TIMEOUT_MS;
     let m; while ((m = rx.exec(content)) !== null) {
       list.push({ index: m.index, line: offsetToLine(m.index), text: m[0] });
       if (m.index === rx.lastIndex) rx.lastIndex++;
+      if (Date.now() > deadline) {
+        console.error(`agentic-security: custom rule ${rule.id} regex timed out (>${EXEC_TIMEOUT_MS}ms) on ${file} — skipping`);
+        break;
+      }
     }
     return list;
   });
@@ -178,17 +200,36 @@ function toFinding(rule, file, m) {
     confidence: 0.9,
     source: 'custom-rule',
     customRuleId: rule.id,
+    ...(rule.shadow ? { _shadow: true } : {}),
   };
 }
 
 // Run every loaded rule across every file. Used by the engine as a final pass.
+// Returns only non-shadow findings. Shadow findings (rule.shadow=true) are
+// written to .agentic-security/shadow-findings.json so they can be reviewed
+// without blocking CI gates or polluting the main findings list.
 export function applyCustomRules(scanRoot, fileContents) {
   const rules = loadCustomRules(scanRoot);
   if (!rules.length) return [];
   const out = [];
+  const shadow = [];
   for (const [file, content] of Object.entries(fileContents)) {
     if (!content || content.length > 500_000) continue;
-    for (const r of rules) out.push(...runRule(r, file, content));
+    for (const r of rules) {
+      const found = runRule(r, file, content);
+      if (r.shadow) shadow.push(...found);
+      else out.push(...found);
+    }
+  }
+  if (shadow.length) {
+    try {
+      const stateDir = path.join(scanRoot, '.agentic-security');
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(stateDir, 'shadow-findings.json'),
+        JSON.stringify({ generatedAt: new Date().toISOString(), findings: shadow }, null, 2),
+      );
+    } catch { /* non-fatal */ }
   }
   return out;
 }

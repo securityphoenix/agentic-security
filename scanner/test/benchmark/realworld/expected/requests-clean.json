@@ -1,5 +1,5 @@
 {
-  "_doc": "requests-clean — negative-corpus fixture. python-requests is the canonical Python HTTP library, audited and used in millions of projects. The 4 entries below are info-severity broken-marker (TODO/FIXME) emissions verified to be legitimate developer comments in the upstream source — they are NOT engine FPs but they define the noise floor. Future engine changes that add NEW emissions beyond these will cause F1 to drop, surfacing precision regressions.",
+  "_doc": "requests-clean — negative-corpus fixture. python-requests is the canonical Python HTTP library, audited and used in millions of projects. The 4 entries below are info-severity broken-marker (TODO/FIXME) emissions verified to be legitimate developer comments in the upstream source — they are NOT engine FPs but they define the noise floor. Future engine changes that add NEW emissions beyond these will surface as precision regressions.",
   "wildcardFamilies": [],
   "expected": [
     {

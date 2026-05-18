@@ -156,6 +156,13 @@ if (streak && streak.totalScans) {
     console.log('');
   }
 }
+// Engine error counters (persisted in last-scan.json#_engineErrors)
+const engineErrors = lastScan?._engineErrors || {};
+const cppParseErrors = engineErrors.cppDataflowParseErrors || 0;
+if (cppParseErrors > 0) {
+  console.log('Warning: ' + cppParseErrors + ' C/C++ dataflow parse error(s) in last scan — some files may have been skipped');
+}
+
 if (counts.critical > 0) {
   console.log('Action: ' + counts.critical + ' critical finding(s). Run /fix --all --critical');
 } else if (counts.high > 0) {

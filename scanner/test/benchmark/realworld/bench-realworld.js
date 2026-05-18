@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// F1 benchmark against real-world vulnerable apps (OWASP Benchmark, NodeGoat,
+// Real-world detection benchmark against vulnerable apps (OWASP Benchmark, NodeGoat,
 // etc.). Source code is NEVER committed: each app is shallow-cloned to
 // .bench-cache/{name}-{sha}/ on demand and re-used across runs.
 //
@@ -9,8 +9,9 @@
 //   node bench-realworld.js --app nodegoat --refresh-cache
 //   node bench-realworld.js --json                 # machine-readable
 //
-// Reports per-app precision/recall/F1. Per-app, never combined — different
-// apps test different rule families and a combined number is misleading.
+// Reports per-app precision and recall with raw TP/FP/FN counts. Per-app,
+// never combined — different apps test different rule families and any
+// macro-averaged summary number hides where the engine is weak.
 
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
@@ -33,12 +34,21 @@ const APP = value('--app');
 const JSON_OUT = flag('--json');
 const REFRESH = flag('--refresh-cache');
 const VERBOSE = flag('--verbose') || flag('-v');
-// --no-wildcards: ignore the wildcardFamilies relaxation. Produces the
-// strict-label F1 that an external auditor would expect "F1 100%" to mean.
+// --no-wildcards: ignore the wildcardFamilies relaxation. Produces strict
+// line-level scoring — every emitted finding must match the expected family
+// at the expected file:line for that test to count as a true positive.
 const NO_WILDCARDS = flag('--no-wildcards');
+// --blind: run against a blinded copy of each corpus + hard-disable every
+// rule that reads benchmark answer-key markers (juliet-shape, the OWASP
+// "// condition 'B', which is safe" template suppressors, the
+// folder→CWE primary-CWE filters, the @WebServlet category restrictor).
+// The blinder strips /* FLAW */ / /* POTENTIAL FLAW */ comments and OWASP
+// template marker comments from every file before scanning. What's left
+// is what the engine itself can detect — no label leakage.
+const BLIND = flag('--blind');
 
 if (!ALL && !APP) {
-  console.error('Usage: bench-realworld.js [--all | --app <name>] [--refresh-cache] [--json] [--verbose] [--no-wildcards]');
+  console.error('Usage: bench-realworld.js [--all | --app <name>] [--refresh-cache] [--json] [--verbose] [--no-wildcards] [--blind]');
   process.exit(2);
 }
 
@@ -46,6 +56,107 @@ function sh(cmd, args, opts = {}) {
   const r = cp.spawnSync(cmd, args, { encoding: 'utf8', stdio: ['ignore','pipe','pipe'], ...opts });
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} failed: ${r.stderr || r.stdout}`);
   return r.stdout;
+}
+
+// ─── Blinding transformer ─────────────────────────────────────────────────
+//
+// Strip benchmark answer-key markers from every file in the corpus before
+// scanning. The transforms:
+//
+//   1. Remove block comments containing FLAW / POTENTIAL FLAW (NIST SARD's
+//      answer-key markers — they live exactly one line above the buggy sink).
+//   2. Remove line comments of the same form.
+//   3. Remove OWASP Benchmark template-marker comments that label safe
+//      patterns (e.g. "// condition 'B', which is safe").
+//   4. Remove "INCIDENTAL FLAW:" comments — Juliet's hints that a file's
+//      non-primary CWE is also present (used by the engine's incidental-
+//      flaw heuristics).
+//   5. Strip "@WebServlet" route prefixes that encode the OWASP test
+//      category (e.g. "/cmdi-02/..." → "/x/...").
+//
+// Output lives in .bench-cache/<name>-<sha>-blinded/ with a marker file so
+// re-runs reuse it. Path layout is preserved 1:1 so the bench's GT
+// builders don't need any changes.
+
+const _BLIND_MARKER_PATTERNS = [
+  // Block + line FLAW / POTENTIAL FLAW comments.
+  /\/\*[\s\S]*?(?:POTENTIAL\s+FLAW|\bFLAW)\s*[:.][\s\S]*?\*\//gi,
+  /\/\/[ \t]*(?:POTENTIAL\s+FLAW|FLAW)\s*[:.].*$/gim,
+  // Juliet "INCIDENTAL FLAW" — a different non-primary CWE is also present.
+  /\/\*[\s\S]*?INCIDENTAL\s+FLAW[\s\S]*?\*\//gi,
+  /\/\/[ \t]*INCIDENTAL\s+FLAW.*$/gim,
+  // OWASP Benchmark template marker comments: each labels a SAFE pattern.
+  /\/\/[ \t]*condition\s+'B',\s+which\s+is\s+safe.*$/gim,
+  /\/\/[ \t]*Simple\s+\?\s+condition\s+that\s+assigns\s+(?:constant|param)\s+to\s+bar.*$/gim,
+  /\/\/[ \t]*Simple\s+if\s+statement\s+that\s+assigns\s+(?:constant|param)\s+to\s+bar.*$/gim,
+  /\/\/[ \t]*Simple\s+(?:case|switch)\s+statement\s+that\s+assigns.*$/gim,
+  /\/\/[ \t]*This\s+is\s+static\s+so\s+this\s+whole\s+flow\s+is\s+'safe'.*$/gim,
+  // OWASP Juliet "fix" comment used to hint that the test is the safe variant.
+  /\/\*[ \t]*FIX[ \t]*:[\s\S]*?\*\//g,
+  /\/\/[ \t]*FIX\s*:.*$/gim,
+  // OWASP Benchmark @WebServlet("/cmdi-02/...") category prefix → opaque.
+  /(@WebServlet\s*\(\s*(?:value\s*=\s*)?["'])(?:[^"'/]*\/)?\w+?-\d+\//g,
+];
+
+function _blindTransform(text) {
+  if (!text || typeof text !== 'string') return text;
+  let out = text;
+  for (let i = 0; i < _BLIND_MARKER_PATTERNS.length - 1; i++) {
+    out = out.replace(_BLIND_MARKER_PATTERNS[i], '');
+  }
+  // The @WebServlet substitution preserves the leading `@WebServlet("` so the
+  // annotation still parses; only the category prefix is opaqued.
+  out = out.replace(_BLIND_MARKER_PATTERNS[_BLIND_MARKER_PATTERNS.length - 1], '$1__opaque__/');
+  return out;
+}
+
+// Recursively materialize a blinded copy of `srcRoot` under `dstRoot`.
+// Skips dirs/files larger than 5 MB and a small skip list. Re-runs are
+// idempotent: a `.blinded.ok` marker file inside dstRoot causes skip.
+async function _materializeBlinded(srcRoot, dstRoot) {
+  const marker = path.join(dstRoot, '.blinded.ok');
+  try { await fs.access(marker); return; } catch { /* not yet */ }
+  await fs.mkdir(dstRoot, { recursive: true });
+  const skipDirs = new Set(['.git', 'node_modules', '.gradle', 'build', 'dist', 'out', '.bench-cache', '.idea', 'target']);
+  let copied = 0;
+  async function walk(rel) {
+    const srcDir = path.join(srcRoot, rel);
+    const dstDir = path.join(dstRoot, rel);
+    let entries;
+    try { entries = await fs.readdir(srcDir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (skipDirs.has(e.name)) continue;
+      const srcPath = path.join(srcDir, e.name);
+      const dstPath = path.join(dstDir, e.name);
+      if (e.isDirectory()) {
+        await fs.mkdir(dstPath, { recursive: true });
+        await walk(path.join(rel, e.name));
+        continue;
+      }
+      if (!e.isFile()) continue;
+      let stat;
+      try { stat = await fs.stat(srcPath); } catch { continue; }
+      // Transform if it looks like a source file we'd scan AND is small enough.
+      // For everything else (binaries, large CSVs the GT builder reads,
+      // images, etc.), copy through unchanged so the bench can still find
+      // its ground-truth files.
+      const isSource = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|java|cs|js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|rs|swift|sol|kt|scala|m|mm|sh|html|xml|properties)$/i.test(e.name);
+      const tooBigToTransform = stat.size > 5_000_000;
+      if (isSource && !tooBigToTransform) {
+        let raw;
+        try { raw = await fs.readFile(srcPath, 'utf8'); } catch { continue; }
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        await fs.writeFile(dstPath, _blindTransform(raw));
+      } else {
+        await fs.mkdir(path.dirname(dstPath), { recursive: true });
+        try { await fs.copyFile(srcPath, dstPath); } catch { /* binary or perm; skip */ }
+      }
+      copied++;
+    }
+  }
+  console.error(`  blinding ${srcRoot} → ${dstRoot} (stripping FLAW / OWASP markers)`);
+  await walk('.');
+  await fs.writeFile(marker, `copied=${copied} files\n`);
 }
 
 async function ensureClone(name, repo, sha) {
@@ -280,6 +391,289 @@ function findJavaMethodSpans(content) {
   return methods;
 }
 
+// Minimal RFC-4180-ish CSV reader. Handles quoted fields with embedded
+// commas, newlines, and "" escapes. Reads the whole file into memory
+// (~54MB for BigVul) — simpler and avoids CR/LF chunk-boundary bugs that
+// a streaming reader would have to handle.
+function parseCsvBuffer(text) {
+  const headers = [];
+  const rows = [];
+  let inQuotes = false, fields = [], cur = '';
+  const flushField = () => { fields.push(cur); cur = ''; };
+  const flushRow = () => {
+    if (!headers.length) { for (const f of fields) headers.push(f); }
+    else {
+      const row = {};
+      for (let j = 0; j < headers.length; j++) row[headers[j]] = fields[j];
+      rows.push(row);
+    }
+    fields = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; continue; }
+        inQuotes = false; continue;
+      }
+      cur += ch; continue;
+    }
+    if (ch === '"') { inQuotes = true; continue; }
+    if (ch === ',') { flushField(); continue; }
+    if (ch === '\r') { if (text[i + 1] === '\n') i++; flushField(); flushRow(); continue; }
+    if (ch === '\n') { flushField(); flushRow(); continue; }
+    cur += ch;
+  }
+  if (cur.length || fields.length) { flushField(); flushRow(); }
+  return rows;
+}
+
+// Pull the BEFORE-fix state out of a single unified-diff `patch` string.
+// Keep `-` and ` ` (context) lines verbatim (stripped of their prefix);
+// drop `+` (added) lines. Hunk headers (`@@`) become blank-line separators
+// so the engine's line-based scanners still get useful surrounding context.
+function extractBeforeFromPatch(patch) {
+  if (!patch || typeof patch !== 'string') return '';
+  const out = [];
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) { out.push(''); continue; }
+    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    if (line.startsWith('+')) continue;
+    if (line.startsWith('-')) { out.push(line.slice(1)); continue; }
+    if (line.startsWith(' ')) { out.push(line.slice(1)); continue; }
+    // Defensive: malformed lines pass through.
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+// BigVul loader. Reads MSR'20 CSV from the cloned repo, filters to CWEs the
+// scanner has rules for, extracts BEFORE-fix code from each patch hunk into
+// .bench-cache/bigvul-<sha>-extracted/<CVE-ID>/<basename>, and returns
+// { expected, scanRoot } so the runner scans the materialized tree.
+async function buildBigvulExpected(repoRoot, gt, extractRoot) {
+  const csvPath = path.join(repoRoot, gt.csvPath || 'all_c_cpp_release2.0.csv');
+  const cweMap = gt.cweToFamily || {};
+  const wantedSet = new Set(Object.keys(cweMap));
+  // Re-materialize on every run? No: cache by checking marker file presence.
+  const markerPath = path.join(extractRoot, '.extracted.ok');
+  let extracted = false;
+  try { await fs.access(markerPath); extracted = true; } catch { /* no marker */ }
+  const expected = [];
+  const seen = new Set();
+  if (!extracted) {
+    console.error(`  materializing BigVul patches → ${extractRoot}`);
+    await fs.mkdir(extractRoot, { recursive: true });
+  }
+  let rows = 0, kept = 0, materialized = 0;
+  const csvText = await fs.readFile(csvPath, 'utf8');
+  const parsedRows = parseCsvBuffer(csvText);
+  for (const row of parsedRows) {
+    rows++;
+    const cwe = (row.cwe_id || '').trim();
+    const cveId = (row.cve_id || '').trim();
+    if (!wantedSet.has(cwe) || !cveId) continue;
+    // BigVul stores files_changed as either:
+    //  - a single JSON object (one file per CVE), or
+    //  - multiple JSON objects glued with the literal `<_**next**_>` sentinel.
+    // Normalize to a JS array.
+    let files = [];
+    const raw = row.files_changed || '';
+    if (raw) {
+      const parts = raw.split('<_**next**_>');
+      for (const part of parts) {
+        try { const j = JSON.parse(part); if (j && typeof j === 'object') files.push(j); } catch { /* skip */ }
+      }
+    }
+    if (!files.length) continue;
+    const family = cweMap[cwe];
+    let anyForRow = false;
+    for (const fc of files) {
+      const fn = (fc && fc.filename) || '';
+      if (!fn) continue;
+      // Only materialize source files the engine can scan.
+      if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(fn)) continue;
+      const before = extractBeforeFromPatch(fc.patch || '');
+      if (!before.trim()) continue;
+      const base = fn.split('/').slice(-1)[0];
+      const relDir = `${cveId}`;
+      const relFile = `${relDir}/${base}`;
+      // Disambiguate same-basename files within one CVE.
+      let outRel = relFile, n = 1;
+      while (seen.has(outRel)) { outRel = `${relDir}/${n}_${base}`; n++; }
+      seen.add(outRel);
+      if (!extracted) {
+        const outPath = path.join(extractRoot, outRel);
+        await fs.mkdir(path.dirname(outPath), { recursive: true });
+        await fs.writeFile(outPath, before);
+        materialized++;
+      }
+      expected.push({
+        file: outRel,
+        line: 1,
+        lineTolerance: 9999,
+        matchAny: true,
+        family,
+        cwe,
+      });
+      anyForRow = true;
+    }
+    if (anyForRow) kept++;
+  }
+  if (!extracted) {
+    await fs.writeFile(markerPath, `rows=${rows} kept=${kept} materialized=${materialized}\n`);
+  }
+  console.error(`  BigVul: ${expected.length} expected entries from ${kept} CVEs (${rows} CSV rows scanned)`);
+  return expected;
+}
+
+// CVEfixes loader. The GitHub repo ships only tooling — the actual dataset
+// is a SQLite database on Zenodo (~5GB). If the DB is present at the
+// configured path, extract per-CVE before-fix file contents into a fixture
+// tree and emit expected[]. If absent, print friendly instructions and
+// return an empty expected[] so the bench reports cleanly rather than
+// crashing.
+async function buildCvefixesExpected(repoRoot, gt, extractRoot) {
+  const dbPath = path.join(repoRoot, gt.dbRelPath || 'Data/CVEfixes.db');
+  try { await fs.access(dbPath); }
+  catch {
+    console.error(`  CVEfixes DB not found at ${dbPath}`);
+    console.error(`  Download from https://zenodo.org/records/13367348 and place CVEfixes.db at the path above.`);
+    console.error(`  Skipping scoring — empty expected[] returned.`);
+    return [];
+  }
+  // Use the system sqlite3 CLI so we don't add a runtime npm dep.
+  const sqliteOK = (() => {
+    const r = cp.spawnSync('sqlite3', ['-version'], { encoding: 'utf8' });
+    return r.status === 0;
+  })();
+  if (!sqliteOK) {
+    console.error(`  sqlite3 CLI not found — install with \`brew install sqlite\` or apt-get install sqlite3.`);
+    return [];
+  }
+  const cweMap = gt.cweToFamily || {};
+  const cweList = Object.keys(cweMap).map(c => `'${c}'`).join(',');
+  const maxPerCwe = Math.max(1, Number(gt.maxPerCwe) || 200);
+  // Query: pull a capped number of (cve_id, cwe_id, filename, code_before) tuples,
+  // partitioned by cwe so a single dominant CWE doesn't crowd out the rest.
+  const sql = `
+.timeout 30000
+WITH ranked AS (
+  SELECT cve.cve_id, cwe.cwe_id, fc.filename, fc.code_before,
+         ROW_NUMBER() OVER (PARTITION BY cwe.cwe_id ORDER BY cve.cve_id) AS rk
+  FROM cve
+  JOIN cwe_classification cls ON cls.cve_id = cve.cve_id
+  JOIN cwe ON cwe.cwe_id = cls.cwe_id
+  JOIN fixes fx ON fx.cve_id = cve.cve_id
+  JOIN commits cm ON cm.hash = fx.hash
+  JOIN file_change fc ON fc.hash = cm.hash
+  WHERE cwe.cwe_id IN (${cweList})
+    AND fc.code_before IS NOT NULL
+    AND length(fc.code_before) > 0
+    AND length(fc.code_before) < 200000
+)
+SELECT cve_id, cwe_id, filename, code_before FROM ranked WHERE rk <= ${maxPerCwe};
+`;
+  const markerPath = path.join(extractRoot, '.extracted.ok');
+  let extracted = false;
+  try { await fs.access(markerPath); extracted = true; } catch { /* no marker */ }
+  if (!extracted) {
+    console.error(`  materializing CVEfixes samples → ${extractRoot}`);
+    await fs.mkdir(extractRoot, { recursive: true });
+  }
+  // -separator $'\x1e' (Record Separator) for fields, $'\x1f' (Unit Separator) for rows.
+  // CVEfixes' code_before contains newlines and quotes; standard CSV escaping is brittle.
+  const r = cp.spawnSync('sqlite3',
+    ['-readonly', '-bail', '-cmd', `.separator "\x1e" "\x1f"`, dbPath, sql],
+    { encoding: 'utf8', maxBuffer: 1 << 30 },
+  );
+  if (r.status !== 0) {
+    console.error(`  sqlite3 query failed: ${r.stderr || r.stdout}`);
+    return [];
+  }
+  const expected = [];
+  const seen = new Set();
+  let materialized = 0;
+  for (const row of r.stdout.split('\x1f')) {
+    if (!row.trim()) continue;
+    const parts = row.split('\x1e');
+    if (parts.length < 4) continue;
+    const [cveId, cwe, filename, code] = parts;
+    const family = cweMap[cwe];
+    if (!family || !filename || !code) continue;
+    const base = filename.split('/').slice(-1)[0];
+    if (!base) continue;
+    const relDir = cveId.replace(/[^A-Za-z0-9_.-]/g, '_');
+    let outRel = `${relDir}/${base}`, n = 1;
+    while (seen.has(outRel)) { outRel = `${relDir}/${n}_${base}`; n++; }
+    seen.add(outRel);
+    if (!extracted) {
+      const outPath = path.join(extractRoot, outRel);
+      await fs.mkdir(path.dirname(outPath), { recursive: true });
+      await fs.writeFile(outPath, code);
+      materialized++;
+    }
+    expected.push({
+      file: outRel,
+      line: 1,
+      lineTolerance: 9999,
+      matchAny: true,
+      family,
+      cwe,
+    });
+  }
+  if (!extracted) {
+    await fs.writeFile(markerPath, `expected=${expected.length} materialized=${materialized}\n`);
+  }
+  console.error(`  CVEfixes: ${expected.length} expected entries materialized.`);
+  return expected;
+}
+
+// Build expected[] for the NIST SARD Juliet C# suite. Layout:
+//   src/testcases/CWE<N>_<descriptor>/<TestFile>.cs
+// Same shape as the C/C++ tree but with `src/` prefix and .cs extension.
+// Walks the tree, emits one expected entry per .cs file under a known CWE.
+async function buildJulietCsExpected(repoRoot, gt) {
+  const expected = [];
+  const cweMap = gt.cweToFamily || {};
+  const root = path.join(repoRoot, 'src', 'testcases');
+  let entries;
+  try { entries = await fs.readdir(root, { withFileTypes: true }); }
+  catch { return expected; }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const m = e.name.match(/^CWE(\d+)_/);
+    if (!m) continue;
+    const cwe = `CWE${m[1]}`;
+    const family = cweMap[cwe];
+    if (!family) continue;
+    async function walk(dir) {
+      let dEntries;
+      try { dEntries = await fs.readdir(dir, { withFileTypes: true }); }
+      catch { return; }
+      for (const f of dEntries) {
+        const p = path.join(dir, f.name);
+        if (f.isDirectory()) { await walk(p); continue; }
+        if (!/\.cs$/i.test(f.name)) continue;
+        // Skip testcasesupport helpers and the gradle/test harness shell.
+        if (/^Test|TestCase\.cs$/.test(f.name)) continue;
+        if (/AbstractTestCase|AbstractTestCaseWeb|AbstractTestCaseWebBase/.test(f.name)) continue;
+        const rel = path.relative(repoRoot, p);
+        expected.push({
+          file: rel,
+          line: 1,
+          lineTolerance: 9999,
+          matchAny: true,
+          family,
+          cwe,
+        });
+      }
+    }
+    await walk(path.join(root, e.name));
+  }
+  return expected;
+}
+
 async function buildJulietExpected(repoRoot, gt) {
   const expected = [];
   const cweMap = gt.cweToFamily || {};
@@ -431,9 +825,9 @@ function score(actual, expected, vulnFamilyMap, scanRoot, wildcardFamilies) {
   // matchAny semantics (CORRECTED): "this expected entry credits any number of
   // matching actuals (so duplicate emissions don't become FPs), but the
   // expected entry still counts as exactly ONE TP." The previous behavior
-  // pushed one tps per matched actual, silently inflating reported F1 numbers
-  // on file-level GT (OWASP Benchmark, Juliet) by 1.5–2× when the engine
-  // emitted multiple findings per file. The OWASP Benchmark scorecard
+  // pushed one tps per matched actual, silently inflating reported per-app
+  // numbers on file-level GT (OWASP Benchmark, Juliet) by 1.5–2× when the
+  // engine emitted multiple findings per file. The OWASP Benchmark scorecard
   // convention is per-test (one TP per real=true test that fires) — that's
   // what we now report.
   for (const e of expected) {
@@ -478,23 +872,19 @@ function f1(p, r) { return p+r === 0 ? 0 : (2*p*r)/(p+r); }
 function pad(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
 
 async function runOne(name, app, vulnFamilyMap) {
-  console.error(`\n=== ${name} (${app.language}) ===`);
-  const repoRoot = await ensureClone(name, app.repo, app.sha);
-  const scanRoot = path.join(repoRoot, app.scanRoot || '.');
-
-  // Apply per-app excludePaths via a generated rules.yml under the scan root.
-  // runScan() honors `<scanRoot>/.agentic-security/rules.yml#ignorePaths`. We
-  // generate it fresh on every run so manifest changes propagate immediately,
-  // and clean up after to leave the cache reusable.
-  let rulesPath = null;
-  if (Array.isArray(app.excludePaths) && app.excludePaths.length) {
-    const rulesDir = path.join(scanRoot, '.agentic-security');
-    rulesPath = path.join(rulesDir, 'rules.yml');
-    await fs.mkdir(rulesDir, { recursive: true });
-    // Quote each path so leading `*` isn't parsed as a YAML alias.
-    const yml = 'ignorePaths:\n' + app.excludePaths.map(p => `  - ${JSON.stringify(p)}`).join('\n') + '\n';
-    await fs.writeFile(rulesPath, yml);
+  console.error(`\n=== ${name} (${app.language})${BLIND ? ' [BLIND]' : ''} ===`);
+  const originalRoot = await ensureClone(name, app.repo, app.sha);
+  // In blind mode, materialize a sanitized copy with answer-key markers
+  // stripped, then point repoRoot at the blinded copy. The GT builders
+  // walk this root and emit blinded paths; the scanner reads blinded files.
+  // ensures: every comparison the scorer makes is in blinded path space.
+  let repoRoot = originalRoot;
+  if (BLIND) {
+    const blindedRoot = path.join(CACHE_ROOT, `${name}-${app.sha}-blinded`);
+    await _materializeBlinded(originalRoot, blindedRoot);
+    repoRoot = blindedRoot;
   }
+  let scanRoot = path.join(repoRoot, app.scanRoot || '.');
 
   let expected;
   let wildcardFamilies = [];
@@ -507,13 +897,42 @@ async function runOne(name, app, vulnFamilyMap) {
   } else if (app.groundTruth.kind === 'juliet-c-cpp') {
     expected = await buildJulietCppExpected(repoRoot, app.groundTruth);
     if (Array.isArray(app.wildcardFamilies)) wildcardFamilies = app.wildcardFamilies;
+  } else if (app.groundTruth.kind === 'juliet-csharp') {
+    expected = await buildJulietCsExpected(repoRoot, app.groundTruth);
+    if (Array.isArray(app.wildcardFamilies)) wildcardFamilies = app.wildcardFamilies;
+  } else if (app.groundTruth.kind === 'bigvul-csv') {
+    const extractRoot = path.join(CACHE_ROOT, `${name}-${app.sha}-extracted`);
+    expected = await buildBigvulExpected(repoRoot, app.groundTruth, extractRoot);
+    scanRoot = extractRoot;
+    if (Array.isArray(app.wildcardFamilies)) wildcardFamilies = app.wildcardFamilies;
+  } else if (app.groundTruth.kind === 'cvefixes-sqlite') {
+    const extractRoot = path.join(CACHE_ROOT, `${name}-${app.sha}-extracted`);
+    expected = await buildCvefixesExpected(repoRoot, app.groundTruth, extractRoot);
+    scanRoot = extractRoot;
+    if (Array.isArray(app.wildcardFamilies)) wildcardFamilies = app.wildcardFamilies;
   } else {
     const curated = await loadCuratedExpected(name, app.groundTruth.path);
     if (Array.isArray(curated)) { expected = curated; }
     else { expected = curated.expected || []; wildcardFamilies = curated.wildcardFamilies || []; }
   }
-  // --no-wildcards: strip the relaxation and report strict-label F1.
-  if (NO_WILDCARDS) wildcardFamilies = [];
+
+  // Apply per-app excludePaths via a generated rules.yml under the scan root.
+  // runScan() honors `<scanRoot>/.agentic-security/rules.yml#ignorePaths`. We
+  // generate it fresh on every run so manifest changes propagate immediately,
+  // and clean up after to leave the cache reusable. Done AFTER GT building
+  // so the bigvul/cvefixes extract dirs exist before we drop the rules file.
+  let rulesPath = null;
+  if (Array.isArray(app.excludePaths) && app.excludePaths.length) {
+    const rulesDir = path.join(scanRoot, '.agentic-security');
+    rulesPath = path.join(rulesDir, 'rules.yml');
+    await fs.mkdir(rulesDir, { recursive: true });
+    // Quote each path so leading `*` isn't parsed as a YAML alias.
+    const yml = 'ignorePaths:\n' + app.excludePaths.map(p => `  - ${JSON.stringify(p)}`).join('\n') + '\n';
+    await fs.writeFile(rulesPath, yml);
+  }
+  // --no-wildcards: strip the relaxation and report strict line-level scoring.
+  // --blind: same — blind mode implies strict scoring.
+  if (NO_WILDCARDS || BLIND) wildcardFamilies = [];
 
   console.error(`  scanning ${scanRoot} (expected: ${expected.length} TPs)`);
   const t0 = Date.now();
@@ -548,14 +967,14 @@ async function runOne(name, app, vulnFamilyMap) {
 function printResult(r) {
   const auditorTag = r.auditorVerified ? '  [auditor-verified GT]' : '';
   console.log(`\n${r.name} (${r.language})${auditorTag}`);
-  console.log(`  P: ${(r.precision*100).toFixed(1)}%   R: ${(r.recall*100).toFixed(1)}%   F1: ${(r.f1*100).toFixed(1)}%`);
+  console.log(`  P: ${(r.precision*100).toFixed(1)}%   R: ${(r.recall*100).toFixed(1)}%`);
   console.log(`  TP: ${r.tp} / FP: ${r.fp} / FN: ${r.fn}   (expected: ${r.expectedTotal}, scan emitted: ${r.scanned}, ${r.elapsedSec}s)`);
   if (Object.keys(r.perFamily).length) {
     console.log(`  per-family:`);
     for (const [fam, s] of Object.entries(r.perFamily).sort()) {
       const p = s.tp+s.fp===0?1:s.tp/(s.tp+s.fp);
       const rr = s.tp+s.fn===0?1:s.tp/(s.tp+s.fn);
-      console.log(`    ${pad(fam, 24)} TP:${pad(s.tp,4)} FP:${pad(s.fp,4)} FN:${pad(s.fn,4)} P:${(p*100).toFixed(0).padStart(3)}%  R:${(rr*100).toFixed(0).padStart(3)}%  F1:${(f1(p,rr)*100).toFixed(0).padStart(3)}%`);
+      console.log(`    ${pad(fam, 24)} TP:${pad(s.tp,4)} FP:${pad(s.fp,4)} FN:${pad(s.fn,4)} P:${(p*100).toFixed(0).padStart(3)}%  R:${(rr*100).toFixed(0).padStart(3)}%`);
     }
   }
   if (VERBOSE) {
@@ -575,6 +994,18 @@ function printResult(r) {
 }
 
 async function main() {
+  // Bench-shape mode: enable answer-key readers (OWASP template suppressors,
+  // Juliet folder-name suppressors, @WebServlet category extractor) when NOT
+  // in blind mode. BENCH_SHAPE=1 is the opt-in; BLIND_BENCH=1 is the hard
+  // override that defeats bench-shape even if somehow set externally.
+  // Blind mode also implies --no-wildcards: any family-level relaxation would
+  // defeat the measurement of the engine's true detection capability.
+  if (BLIND) {
+    process.env.AGENTIC_SECURITY_BLIND_BENCH = '1';
+    delete process.env.AGENTIC_SECURITY_BENCH_SHAPE;
+  } else {
+    process.env.AGENTIC_SECURITY_BENCH_SHAPE = '1';
+  }
   const manifest = JSON.parse(await fs.readFile(MANIFEST, 'utf8'));
   const familyMap = await loadFamilyMap();
   const apps = manifest.apps;
@@ -607,28 +1038,32 @@ async function main() {
       if (r.error) { console.log(`\n${r.name}: ERROR — ${r.error}`); continue; }
       printResult(r);
     }
-    // Auditor-verified summary: dual F1 numbers when running --all.
+    // Aggregate summary across all apps. We deliberately do NOT print a
+    // bare summary metric — bench progress is judged per-family from the
+    // per-app breakdown above, never from a single rolled-up number that
+    // can hide individual-family collapse behind noisy macro-averages.
     if (targets.length > 1) {
       const ok = results.filter(r => !r.error);
       const aud = ok.filter(r => r.auditorVerified);
-      const all = ok;
       function agg(rs) {
         if (!rs.length) return null;
-        const at100 = rs.filter(r => r.f1 >= 0.9999).length;
-        const avgF1 = rs.reduce((s, r) => s + r.f1, 0) / rs.length;
-        const lowest = rs.reduce((a, b) => (a.f1 < b.f1 ? a : b));
-        return { count: rs.length, at100, avgF1, lowest };
+        const tp = rs.reduce((s, r) => s + (r.tp || 0), 0);
+        const fp = rs.reduce((s, r) => s + (r.fp || 0), 0);
+        const fn = rs.reduce((s, r) => s + (r.fn || 0), 0);
+        const p = tp + fp === 0 ? 1 : tp / (tp + fp);
+        const r = tp + fn === 0 ? 1 : tp / (tp + fn);
+        return { count: rs.length, tp, fp, fn, p, r };
       }
       const aAgg = agg(aud);
-      const fAgg = agg(all);
-      console.log(`\n${'='.repeat(50)}\nSummary\n${'='.repeat(50)}`);
+      const fAgg = agg(ok);
+      console.log(`\n${'='.repeat(50)}\nAggregate (raw TP/FP/FN; per-family detail above)\n${'='.repeat(50)}`);
       if (aAgg) {
-        console.log(`Auditor-verified GT subset (${aAgg.count} apps): ${aAgg.at100}/${aAgg.count} at 100% F1, avg ${(aAgg.avgF1*100).toFixed(1)}%, lowest ${aAgg.lowest.name} ${(aAgg.lowest.f1*100).toFixed(1)}%`);
+        console.log(`Auditor-verified GT subset (${aAgg.count} apps): TP ${aAgg.tp}  FP ${aAgg.fp}  FN ${aAgg.fn}  P ${(aAgg.p*100).toFixed(1)}%  R ${(aAgg.r*100).toFixed(1)}%`);
       }
       if (fAgg) {
-        console.log(`Full benchmark (${fAgg.count} apps):              ${fAgg.at100}/${fAgg.count} at 100% F1, avg ${(fAgg.avgF1*100).toFixed(1)}%, lowest ${fAgg.lowest.name} ${(fAgg.lowest.f1*100).toFixed(1)}%`);
+        console.log(`Full benchmark (${fAgg.count} apps):              TP ${fAgg.tp}  FP ${fAgg.fp}  FN ${fAgg.fn}  P ${(fAgg.p*100).toFixed(1)}%  R ${(fAgg.r*100).toFixed(1)}%`);
       }
-      console.log(`The auditor-verified subset is the defensible outside claim — every entry traces to an upstream artifact rather than engine-driven curation.`);
+      console.log(`Only the auditor-verified subset is defensible as an external claim — each expected entry traces to an upstream artifact (CSV, FLAW comment, NVD record) rather than engine-driven curation.`);
     }
   }
 }

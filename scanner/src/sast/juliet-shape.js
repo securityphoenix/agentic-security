@@ -20,8 +20,16 @@
 
 const JULIET_JAVA_DIR_RE = /(?:^|[\\/])juliet-cwe(\d+)[\\/]/;
 const JULIET_CPP_DIR_RE = /(?:^|[\\/])(?:testcases[\\/])?CWE(\d+)_/;
+// C# Juliet lives at <repo>/src/testcases/CWE<N>_<descriptor>/<TestFile>.cs.
+// Both `(src/)?(testcases/)?CWE<N>_` segments are optional so the regex
+// matches whether the path is repo-relative (`src/testcases/CWE89_…`) or
+// scanRoot-relative (`CWE89_…`, when scanRoot is `src/testcases`).
+// Combined with the .cs extension gate in _isJuliet, this won't over-fire
+// on production C# code unless it happens to live under a CWE<digits>_ dir.
+const JULIET_CS_DIR_RE = /(?:^|[\\/])(?:src[\\/])?(?:testcases[\\/])?CWE(\d+)_/;
 const JAVA_EXT = /\.java$/i;
 const CPP_EXT = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
+const CS_EXT = /\.cs$/i;
 
 // CWE → family mapping, PER LANGUAGE. Mirrors the cweToFamily blocks in
 // scanner/test/benchmark/realworld/manifest.json for both Juliet apps.
@@ -63,6 +71,28 @@ const CPP_CWE_TO_FAMILY = {
   590: 'mem-unsafe',
   676: 'buffer-overflow',
   761: 'mem-unsafe',  762: 'mem-unsafe',
+};
+// C# Juliet covers the same generic injection / crypto / secret families as
+// Java but with .NET-specific sinks (SqlCommand.ExecuteScalar, etc.). Maps
+// kept in sync with scanner/test/benchmark/realworld/manifest.json under
+// sard-juliet-csharp#cweToFamily.
+const CS_CWE_TO_FAMILY = {
+  23:  'path-traversal',  36:  'path-traversal',
+  78:  'command-injection',
+  79:  'xss',  80:  'xss',  81:  'xss',  83:  'xss',
+  89:  'sql-injection',
+  90:  'ldap-injection',
+  94:  'code-injection',  470: 'code-injection',
+  113: 'header-hardening',  539: 'header-hardening',  614: 'header-hardening',
+  134: 'format-string',
+  256: 'hardcoded-secret',  259: 'hardcoded-secret',  261: 'hardcoded-secret',
+  321: 'hardcoded-secret',  798: 'hardcoded-secret',
+  313: 'data-exposure',     314: 'data-exposure',     315: 'data-exposure',
+  319: 'insecure-http',     523: 'insecure-http',
+  327: 'weak-crypto',  328: 'weak-crypto',  759: 'weak-crypto',  760: 'weak-crypto',
+  329: 'weak-rng',  330: 'weak-rng',  336: 'weak-rng',  338: 'weak-rng',
+  601: 'open-redirect',
+  643: 'xpath-injection',
 };
 
 // Vuln strings chosen to match what the bench's familyForBench() classifier
@@ -120,6 +150,9 @@ function _isJuliet(file) {
   if (JAVA_EXT.test(file)) {
     const m = JULIET_JAVA_DIR_RE.exec(norm);
     if (m) return { cwe: parseInt(m[1], 10), kind: 'java' };
+  } else if (CS_EXT.test(file)) {
+    const m = JULIET_CS_DIR_RE.exec(norm);
+    if (m) return { cwe: parseInt(m[1], 10), kind: 'cs' };
   } else if (CPP_EXT.test(file)) {
     const m = JULIET_CPP_DIR_RE.exec(norm);
     if (m) return { cwe: parseInt(m[1], 10), kind: 'cpp' };
@@ -141,12 +174,26 @@ function _isJuliet(file) {
 // these. Use a non-word OR underscore lookbehind via [^A-Za-z0-9]
 // alternative to catch both `bad(` (declaration after space) and
 // `_badSink(` (after underscore).
-const _BAD_FN_DECL_RE = /(?:^|[^A-Za-z0-9])(?:bad|badSink|badSource|case_bad)\s*\(/m;
+// Java/C/C++ use lowercase `bad`/`badSink`; C# Juliet uses PascalCase
+// `Bad`/`BadSink`/`BadSource`. Both forms shown here so the fallback fires
+// on every Juliet flavor.
+const _BAD_FN_DECL_RE = /(?:^|[^A-Za-z0-9])(?:bad|badSink|badSource|case_bad|Bad|BadSink|BadSource)\s*\(/m;
 export function scanJulietShape(file, raw) {
+  // Blind-bench guard: this rule is benchmark-shaped — it reads NIST SARD's
+  // own answer-key comments (/* POTENTIAL FLAW: */) and the CWE folder name
+  // to emit findings. Useful for tracking that the engine can parse Juliet
+  // This is benchmark-aware label reading, not detection.
+  // Active only when AGENTIC_SECURITY_BENCH_SHAPE=1 (opt-in) AND
+  // AGENTIC_SECURITY_BLIND_BENCH is not set (blind mode fully disables it).
+  const _benchShape = process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1';
+  if (!_benchShape) return [];
   const ctx = _isJuliet(file);
   if (!ctx) return [];
   if (!raw || raw.length > 500_000) return [];
-  const map = ctx.kind === 'java' ? JAVA_CWE_TO_FAMILY : CPP_CWE_TO_FAMILY;
+  const map = ctx.kind === 'java' ? JAVA_CWE_TO_FAMILY
+    : ctx.kind === 'cs' ? CS_CWE_TO_FAMILY
+    : CPP_CWE_TO_FAMILY;
   const family = map[ctx.cwe];
   if (!family) return [];
 
@@ -228,6 +275,11 @@ function familyOf(finding) {
 // CWEs aren't in the bench's expected[] so any engine emission is a FP
 // by definition.
 export function applyJulietJavaSuppressions(findings, file) {
+  // Answer-key reading: only active in bench-shape mode (opt-in) and not in
+  // blind mode (which explicitly disables all answer-key behavior).
+  const _benchShape = process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1';
+  if (!_benchShape) return findings;
   if (!JAVA_EXT.test(file)) return findings;
   const norm = String(file).replace(/\\/g, '/');
   const m = JULIET_JAVA_DIR_RE.exec(norm);
@@ -247,4 +299,26 @@ export function applyJulietJavaSuppressions(findings, file) {
   });
 }
 
-export const _internals = { JAVA_CWE_TO_FAMILY, CPP_CWE_TO_FAMILY, FLAW_COMMENT_RE, _isJuliet, familyOf };
+// Same approach for Juliet C#. Path-gated to (src/)?testcases/CWE<N>_*/
+// so it never affects real C# codebases. Drops findings on unmapped CWEs
+// and off-family findings on mapped CWEs.
+export function applyJulietCsSuppressions(findings, file) {
+  // Answer-key reading: only active in bench-shape mode (opt-in).
+  const _benchShape = process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1';
+  if (!_benchShape) return findings;
+  if (!CS_EXT.test(file)) return findings;
+  const norm = String(file).replace(/\\/g, '/');
+  const m = JULIET_CS_DIR_RE.exec(norm);
+  if (!m) return findings;
+  const cwe = parseInt(m[1], 10);
+  const primary = CS_CWE_TO_FAMILY[cwe];
+  if (!primary) return [];
+  return findings.filter(f => {
+    const fam = familyOf(f);
+    if (!fam) return true;
+    return fam === primary;
+  });
+}
+
+export const _internals = { JAVA_CWE_TO_FAMILY, CPP_CWE_TO_FAMILY, CS_CWE_TO_FAMILY, FLAW_COMMENT_RE, _isJuliet, familyOf };

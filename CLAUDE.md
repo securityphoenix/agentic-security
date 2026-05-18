@@ -87,7 +87,7 @@ Each file exports one or more `scan*()` functions:
 | `solidity.js` | Solidity / smart-contract vulnerabilities |
 | `xxe.js` | XML External Entity (XXE) injection |
 | `zip-slip.js` | Zip-slip / path traversal in archives |
-| `juliet-shape.js` | Benchmark-aware Juliet detector — emits findings on `/* FLAW: */` comments in Juliet test files, classified by per-language CWE→family map. Gated to `juliet-cwe<N>/` (Java) and `testcases/CWE<N>_*/` (C/C++) paths so it cannot fire on production code. Lifts SARD Juliet Java 45→94% and Juliet C/C++ 7→97% F1 |
+| `juliet-shape.js` | Benchmark-shape detector for NIST SARD Juliet — reads the test-suite's own `/* FLAW: */` and `/* POTENTIAL FLAW: */` markers and the `juliet-cwe<N>/` / `testcases/CWE<N>_*/` folder names. **This is label-leakage and is disabled in blind benchmarking** (set `AGENTIC_SECURITY_BLIND_BENCH=1`). Kept only because it makes Juliet integration smoke tests human-readable; never use its emissions as a quality signal. |
 | `cpp-bench-extras.js` | Juliet C/C++ primary-CWE family suppressor — drops findings on Juliet test files for unmapped CWEs |
 | `java-bench-extras.js` | OWASP Benchmark template suppressors (Map double-get safe-key, switch-charAt(1)-condition-B-safe, ListShuffle, ConstantTernary, ThingFlow, etc.) gated to `_BAR_USING_FAMILIES` |
 | `java-collection-passthrough.js` | Java taint passthrough through `Vector`/`List`/`Map`/`Stream`/`Optional`/array-literal collection extractions |
@@ -136,7 +136,7 @@ Each file exports one or more `scan*()` functions:
 
 Tests use the Node built-in test runner. Key test files:
 
-`smoke`, `llm`, `llm-owasp`, `logic`, `fn-reach`, `material-change`, `drift`, `sbom`, `api-inventory`, `sarif-ingest`, `pipeline`, `license-policy`, `mttr`, `container`, `dep-confusion`, `scorecard`, `mcp-audit`, `authz`, `kev`, `model-load`, `prompt-template`, `aibom`, `packs`, `junit`, `ci`
+`smoke`, `llm`, `llm-owasp`, `logic`, `fn-reach`, `material-change`, `drift`, `sbom`, `api-inventory`, `sarif-ingest`, `pipeline`, `license-policy`, `mttr`, `container`, `dep-confusion`, `scorecard`, `mcp-audit`, `authz`, `kev`, `model-load`, `prompt-template`, `aibom`, `packs`, `junit`, `ci`, `cpp-dataflow` (requires `AGENTIC_SECURITY_CPP_DATAFLOW=1`)
 
 New modules (`db-rls`, `rate-limit`, `auth-provider`, `env-hygiene`, `deploy-platform`, `stack-playbook`) are integration-tested via `npm run smoke` and inline module tests. Dedicated test files should be added under `test/` to match the pattern above.
 
@@ -150,6 +150,9 @@ New modules (`db-rls`, `rate-limit`, `auth-provider`, `env-hygiene`, `deploy-pla
 - **Findings schema** — every finding must include `{ id, title, severity, file, line, description, remediation }`. Severity values: `critical`, `high`, `medium`, `low`, `info`.
 - **Suppression pragmas** — `// agentic-security-ignore: <rule-id>` on a line suppresses that rule for that line.
 - **Rules override** — `.agentic-security/rules.yml` in any project can enable/disable/tune rules without touching scanner source.
+- **Shadow mode** — custom rules with `shadow: true` emit to `.agentic-security/shadow-findings.json` and are excluded from CI gates. Use for experimental rules not yet ready for blocking.
+- **Bench-shape isolation** — all answer-key reading (Juliet folder names, OWASP template markers, `@WebServlet` prefix) lives in `sast/bench-shape/` and is OFF by default. Set `AGENTIC_SECURITY_BENCH_SHAPE=1` to enable (done automatically by `bench-realworld.js`). `AGENTIC_SECURITY_BLIND_BENCH=1` overrides to force everything off.
+- **last-scan.json integrity** — each write is accompanied by a `.sig` file (HMAC-SHA256). A tamper warning is printed on read if the sig doesn't match.
 - **Test fixtures** — add a minimal fixture directory under `scanner/test/fixtures/<rule-name>/` when adding a new rule; the smoke test should detect the vuln in `vulnerable/` and pass on `clean/`.
 
 ---

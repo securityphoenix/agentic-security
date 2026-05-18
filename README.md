@@ -2,7 +2,7 @@
 
 <img src="docs/brand/patch-bug-scene.svg" align="right" width="220" alt="Patch the mascot side-eyeing a bug on a monitor — agentic-security's signature scene">
 
-### The Claude Code plugin that catches what your AI assistant misses.
+### The Claude Code plugin that catches what your AI coding assistant misses.
 
 > Built by **[Clear Capabilities](https://www.clearcapabilities.com/)**.
 

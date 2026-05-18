@@ -2,8 +2,8 @@
 //
 // Narrow, high-signal patterns for ASP.NET (Framework + Core), EF, Razor.
 // Each rule fires ONLY on the unsafe shape and has a safe-shape detector
-// where applicable — keeps precision near 100% and avoids polluting the
-// repo-wide F1 score.
+// where applicable — keeps precision high and avoids polluting clean repos
+// with low-signal warnings.
 //
 // Covered families:
 //   - sql-injection           SqlCommand / EF FromSqlRaw with string concat

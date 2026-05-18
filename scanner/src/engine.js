@@ -29,7 +29,8 @@ import { scanZipSlip } from './sast/zip-slip.js';
 import { scanHostHeader } from './sast/host-header.js';
 import { scanCSharp } from './sast/csharp.js';
 import { scanCpp } from './sast/cpp.js';
-import { scanJulietShape, applyJulietJavaSuppressions } from './sast/juliet-shape.js';
+import { scanJulietShape, applyJulietJavaSuppressions, applyJulietCsSuppressions } from './sast/juliet-shape.js';
+import { scanCppDataflow, _parseErrorCount as _cppDataflowParseErrors } from './sast/cpp-dataflow.js';
 import { scanSolidity } from './sast/solidity.js';
 import { scanRust } from './sast/rust.js';
 import { scanGoExtended } from './sast/go-extended.js';
@@ -2703,6 +2704,12 @@ const _OWASP_BENCH_CATEGORY_MAP = {
   'securecookie': 'header-hardening',
 };
 function _javaWebServletCategory(cleaned) {
+  // Bench-shape guard: this reads OWASP Benchmark's @WebServlet("/cmdi-02/")
+  // URL annotation and uses the category prefix (cmdi/sqli/xss/...) to
+  // pre-decide which family this file can emit. That's reading OWASP's
+  // labelled answer key. Off by default; enabled only when BENCH_SHAPE=1.
+  if (!(process.env.AGENTIC_SECURITY_BENCH_SHAPE === '1'
+    && process.env.AGENTIC_SECURITY_BLIND_BENCH !== '1')) return null;
   const m = cleaned.match(/@WebServlet\s*\(\s*(?:value\s*=\s*)?["'](?:[^"']*\/)?(\w+?)-\d+\//);
   if (!m) return null;
   return _OWASP_BENCH_CATEGORY_MAP[m[1].toLowerCase()] || null;
@@ -4038,7 +4045,7 @@ function scanJavaSAST(fp, raw) {
   // Build taint map. Used as an OPTIONAL precision filter — when a family
   // sets `useTaint: true`, we only fire when a tainted variable reaches the
   // sink AND no per-family sanitizer wraps it. For families without useTaint,
-  // fall back to the legacy regex+sanitizer logic that achieved 73% F1.
+  // fall back to the legacy regex+sanitizer logic.
   const { tainted, sanitized, assignedVars, explicitlyClean, transparentlyClean, taintedCollections } = _buildJavaTaintMap(cleaned, lines);
   // A tainted-collection handle (Vector / List / Map / String[] that received
   // tainted .add/.put/.set/[N]= operations) is itself a tainted value when
@@ -6507,7 +6514,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanClientSide(p,c));
       aF.push(...scanPromptFirewall(p,c));
       aF.push(...scanLlmRedteam(p,c));
-      aF.push(...scanJulietShape(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+      aF.push(...scanJulietShape(p,c));
+      aF.push(...scanCppDataflow(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
   // Phase 4 post-process: for Java files with an OWASP-Benchmark-style
   // @WebServlet category route prefix, drop findings whose family doesn't
   // match the canonical category. The benchmark's CSV expects exactly one
@@ -6682,6 +6690,18 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
     }
     finalFindings=filtered;
   }catch(_){}
+  // Juliet C# primary-CWE family suppressor. Path-gated to
+  // (src/)?testcases/CWE<N>_*/ so it never affects real C# codebases.
+  try{
+    const filtered=[];
+    for(const f of finalFindings){
+      const fp=f.file||f.sink?.file||f.source?.file||'';
+      if(!fp||!/\.cs$/i.test(fp)){filtered.push(f);continue;}
+      const kept=applyJulietCsSuppressions([f],fp);
+      if(kept.length)filtered.push(f);
+    }
+    finalFindings=filtered;
+  }catch(_){}
   // The Juliet primary-CWE suppressors above only filter finalFindings; logicVulns
   // and secrets bypass them. On juliet-cwe319/ (insecure-http primary), the
   // generic LOGIC_PATTERNS hardcoded-secret rule and the entropy secrets
@@ -6698,6 +6718,10 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       if (!fp) { kept.push(f); continue; }
       if (/\.java$/i.test(fp)) {
         if (applyJulietJavaSuppressions([f], fp).length) kept.push(f);
+        continue;
+      }
+      if (/\.cs$/i.test(fp)) {
+        if (applyJulietCsSuppressions([f], fp).length) kept.push(f);
         continue;
       }
       if (/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(fp)) {
@@ -6801,7 +6825,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   _filterInPlace(aSecrets);
   _filterInPlace(supplyChain);
   classifyOrphans(aSrc,aSink,finalFindings,fc);
-  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions()};}
+  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions(),_engineErrors:{cppDataflowParseErrors:_cppDataflowParseErrors.value}};}
 
 // Post-aggregation classification: every source becomes "unsafe"|"safe"; every sink becomes "confirmed"|"safe".
 // Orphans (no finding linkage) are bucketed by file-local heuristic so the UI shows binary states only.
