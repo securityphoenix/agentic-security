@@ -27,6 +27,12 @@ on:
       - '.github/workflows/bench.yml'
   workflow_dispatch:
 
+# Least-privilege GITHUB_TOKEN. Both jobs only need to read the repo;
+# actions/upload-artifact@v4 does not require any write scopes.
+# (CodeQL actions/missing-workflow-permissions.)
+permissions:
+  contents: read
+
 jobs:
   synthetic-bench:
     runs-on: ubuntu-latest
