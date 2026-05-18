@@ -175,6 +175,130 @@ export function buildSiemEvent(finding, options = {}) {
   };
 }
 
+// ─── ServiceNow REST API poster ──────────────────────────────────────────────
+// Activated by AGENTIC_SECURITY_SERVICENOW_URL +
+// AGENTIC_SECURITY_SERVICENOW_USER + AGENTIC_SECURITY_SERVICENOW_PASS.
+// URL example: https://example.service-now.com/api/now/table/incident
+export async function postServiceNowIncident(finding) {
+  const url = process.env.AGENTIC_SECURITY_SERVICENOW_URL;
+  const user = process.env.AGENTIC_SECURITY_SERVICENOW_USER;
+  const pass = process.env.AGENTIC_SECURITY_SERVICENOW_PASS;
+  if (!url || !user || !pass) {
+    return { ok: false, reason: 'servicenow-not-configured' };
+  }
+  const body = buildServiceNowIncident(finding);
+  const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    return { ok: r.ok, status: r.status, body: await r.text().catch(() => '') };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ─── PagerDuty Events API v2 ────────────────────────────────────────────────
+// Activated by AGENTIC_SECURITY_PAGERDUTY_KEY (a routing key, NOT a user API
+// token). One event per critical finding; PagerDuty handles de-dup by
+// dedup_key so the same finding doesn't spam.
+export async function postPagerDutyEvent(finding) {
+  const routingKey = process.env.AGENTIC_SECURITY_PAGERDUTY_KEY;
+  if (!routingKey) return { ok: false, reason: 'pagerduty-not-configured' };
+  const dedupKey = finding.stableId || finding.id || `${finding.file}:${finding.line}:${finding.vuln}`;
+  const sevMap = { critical: 'critical', high: 'error', medium: 'warning', low: 'info', info: 'info' };
+  const payload = {
+    routing_key: routingKey,
+    event_action: 'trigger',
+    dedup_key: dedupKey,
+    payload: {
+      summary: `[${(finding.severity || '').toUpperCase()}] ${finding.vuln} — ${finding.file}:${finding.line}`,
+      source: 'agentic-security',
+      severity: sevMap[finding.severity] || 'warning',
+      class: finding.cwe || finding.family || 'security',
+      custom_details: {
+        file: finding.file,
+        line: finding.line,
+        cwe: finding.cwe || null,
+        confidence: finding.confidence ?? null,
+        exploitability: finding.exploitability ?? null,
+        snippet: finding.snippet,
+        remediation: typeof finding.remediation === 'string' ? finding.remediation.slice(0, 500) : null,
+      },
+    },
+  };
+  try {
+    const r = await fetch('https://events.pagerduty.com/v2/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return { ok: r.ok, status: r.status, body: await r.text().catch(() => '') };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ─── Microsoft Teams (Adaptive Card via Incoming Webhook) ───────────────────
+// Activated by AGENTIC_SECURITY_TEAMS_WEBHOOK (a webhook URL from a Teams
+// channel's "Incoming Webhook" connector).
+export function buildTeamsCard(findings, summary) {
+  const sev = summary || {};
+  const total = (sev.critical || 0) + (sev.high || 0) + (sev.medium || 0) + (sev.low || 0);
+  const top = (findings || []).filter(f => /critical|high/.test(f.severity || '')).slice(0, 5);
+  const card = {
+    type: 'message',
+    attachments: [{
+      contentType: 'application/vnd.microsoft.card.adaptive',
+      content: {
+        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+        type: 'AdaptiveCard',
+        version: '1.4',
+        body: [
+          { type: 'TextBlock', size: 'Medium', weight: 'Bolder', text: '🛡 agentic-security scan' },
+          { type: 'FactSet', facts: [
+            { title: 'Critical', value: String(sev.critical || 0) },
+            { title: 'High',     value: String(sev.high || 0) },
+            { title: 'Medium',   value: String(sev.medium || 0) },
+            { title: 'Low',      value: String(sev.low || 0) },
+            { title: 'Total',    value: String(total) },
+          ]},
+          ...(top.length ? [
+            { type: 'TextBlock', wrap: true, weight: 'Bolder', text: 'Top critical/high' },
+            ...top.map(f => ({
+              type: 'TextBlock', wrap: true, isSubtle: false,
+              text: `**[${(f.severity || '').toUpperCase()}]** ${f.vuln} — \`${f.file}:${f.line}\``,
+            })),
+          ] : []),
+        ],
+      },
+    }],
+  };
+  return card;
+}
+
+export async function postTeamsCard(findings, summary) {
+  const url = process.env.AGENTIC_SECURITY_TEAMS_WEBHOOK;
+  if (!url) return { ok: false, reason: 'teams-not-configured' };
+  const card = buildTeamsCard(findings, summary);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(card),
+    });
+    return { ok: r.ok, status: r.status, body: await r.text().catch(() => '') };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 // ─── GH PR comment (vibecoder) ───────────────────────────────────────────────
 export function buildPrComment(findings, summary, options = {}) {
   const sev = summary;

@@ -78,12 +78,15 @@ function sh(cmd, args, opts = {}) {
 // re-runs reuse it. Path layout is preserved 1:1 so the bench's GT
 // builders don't need any changes.
 
+// Match a single /* ... */ block (using the standard non-greedy idiom that
+// REJECTS internal `*/` so we don't gobble code between comment blocks).
+// Using `(?:[^*]|\*(?!\/))*` is the canonical regex-101 form.
 const _BLIND_MARKER_PATTERNS = [
-  // Block + line FLAW / POTENTIAL FLAW comments.
-  /\/\*[\s\S]*?(?:POTENTIAL\s+FLAW|\bFLAW)\s*[:.][\s\S]*?\*\//gi,
+  // Block FLAW / POTENTIAL FLAW comments — scoped to one comment block.
+  /\/\*(?:[^*]|\*(?!\/))*?(?:POTENTIAL\s+FLAW|\bFLAW)\s*[:.](?:[^*]|\*(?!\/))*?\*\//gi,
   /\/\/[ \t]*(?:POTENTIAL\s+FLAW|FLAW)\s*[:.].*$/gim,
-  // Juliet "INCIDENTAL FLAW" — a different non-primary CWE is also present.
-  /\/\*[\s\S]*?INCIDENTAL\s+FLAW[\s\S]*?\*\//gi,
+  // Juliet "INCIDENTAL FLAW" — same scoping fix.
+  /\/\*(?:[^*]|\*(?!\/))*?INCIDENTAL\s+FLAW(?:[^*]|\*(?!\/))*?\*\//gi,
   /\/\/[ \t]*INCIDENTAL\s+FLAW.*$/gim,
   // OWASP Benchmark template marker comments: each labels a SAFE pattern.
   /\/\/[ \t]*condition\s+'B',\s+which\s+is\s+safe.*$/gim,
@@ -1029,6 +1032,23 @@ async function main() {
       results.push({ name: t, error: e.message, quarantined: !!apps[t]._quarantined });
     }
   }
+  // Persist per-CWE precision/recall to .agentic-security/validator-metrics.json
+  // so /security-trend and /report-card can show benchmark trajectory.
+  try {
+    const { recordRun } = await import('../../src/posture/validator-metrics.js');
+    const projectRoot = path.resolve(__dirname, '..', '..', '..');
+    const blindTag = BLIND ? 'blind' : 'non-blind';
+    const wildTag  = NO_WILDCARDS ? 'strict' : 'wildcard';
+    for (const r of results) {
+      if (r.error) continue;
+      recordRun(projectRoot, {
+        benchmark: r.name,
+        mode: `${blindTag}+${wildTag}`,
+        tp: r.tp, fp: r.fp, fn: r.fn,
+        perFamily: r.perFamily || {},
+      });
+    }
+  } catch (e) { /* best-effort telemetry */ }
 
   if (JSON_OUT) {
     console.log(JSON.stringify({ results }, null, 2));

@@ -1,0 +1,62 @@
+{
+  "f1": 0.9066937119675457,
+  "precision": 0.8690861957226182,
+  "recall": 0.9477031802120142,
+  "tp": 1341,
+  "fp": 202,
+  "fn": 74,
+  "perFamily": {
+    "path-traversal": {
+      "tp": 112,
+      "fp": 28,
+      "fn": 21
+    },
+    "weak-crypto": {
+      "tp": 259,
+      "fp": 0,
+      "fn": 0
+    },
+    "trust-boundary": {
+      "tp": 76,
+      "fp": 7,
+      "fn": 7
+    },
+    "command-injection": {
+      "tp": 106,
+      "fp": 16,
+      "fn": 20
+    },
+    "sql-injection": {
+      "tp": 259,
+      "fp": 57,
+      "fn": 13
+    },
+    "ldap-injection": {
+      "tp": 27,
+      "fp": 10,
+      "fn": 0
+    },
+    "xss": {
+      "tp": 234,
+      "fp": 83,
+      "fn": 12
+    },
+    "weak-rng": {
+      "tp": 218,
+      "fp": 0,
+      "fn": 0
+    },
+    "header-hardening": {
+      "tp": 36,
+      "fp": 0,
+      "fn": 0
+    },
+    "xpath-injection": {
+      "tp": 14,
+      "fp": 1,
+      "fn": 1
+    }
+  },
+  "mode": "strict",
+  "when": "2026-05-18T20:42:17Z"
+}

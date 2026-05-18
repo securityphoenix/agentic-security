@@ -52,11 +52,12 @@ test('initialize returns protocol version and server info', async () => {
   await cleanup();
 });
 
-test('tools/list exposes the four PRD-named tools', async () => {
+test('tools/list exposes the PRD-named tools', async () => {
   const { handleRequest, cleanup } = await makeSession();
   const r = await handleRequest({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   const names = r.result.tools.map(t => t.name).sort();
-  assert.deepEqual(names, ['apply_fix', 'explain_finding', 'query_taint', 'scan_diff']);
+  // Phase-2 additions: verify_fix + synthesize_fix.
+  assert.deepEqual(names, ['apply_fix', 'explain_finding', 'query_taint', 'scan_diff', 'synthesize_fix', 'verify_fix']);
   for (const t of r.result.tools) {
     assert.equal(t.inputSchema.type, 'object');
     assert.equal(t.inputSchema.additionalProperties, false, `${t.name} schema must reject additional properties`);
@@ -300,7 +301,7 @@ test('stdio: spawned bin handles initialize+tools/list over NDJSON', async () =>
   await new Promise(r => child.on('exit', r));
   const lines = stdout.trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
   assert.equal(lines[0].result.serverInfo.name, SERVER_NAME);
-  assert.equal(lines[1].result.tools.length, 4);
+  assert.equal(lines[1].result.tools.length, 6);
   await fsp.rm(tmpRoot, { recursive: true, force: true });
 });
 

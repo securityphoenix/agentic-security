@@ -1,0 +1,29 @@
+# agentic-security CI gate for CircleCI.
+# Copy to .circleci/config.yml — or merge the agentic-security job into yours.
+
+version: 2.1
+
+jobs:
+  agentic-security:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      - run:
+          name: Install scanner
+          command: npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+      - run:
+          name: Run agentic-security scan
+          command: npx agentic-security scan --all --json > findings.json
+      - run:
+          name: Gate on threshold
+          command: npx agentic-security ci-gate --threshold high
+      - store_artifacts:
+          path: findings.json
+      - store_artifacts:
+          path: .agentic-security/findings.sarif
+
+workflows:
+  security:
+    jobs:
+      - agentic-security

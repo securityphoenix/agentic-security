@@ -19,6 +19,7 @@ import { runScan } from '../runScan.js';
 import { applyFix as applyFixHistory } from '../posture/fix-history.js';
 import { verifyLastScan } from '../posture/integrity.js';
 import { redactString, redactFinding } from './redact.js';
+import { verifyFix as verifyFixCore } from '../posture/fix-verify.js';
 
 const MAX_FILES_PER_SCAN = 1024;
 const MAX_FILE_BYTES = 500_000;
@@ -314,4 +315,111 @@ export const apply_fix = {
   },
 };
 
-export const ALL_TOOLS = [scan_diff, query_taint, explain_finding, apply_fix];
+// ─── verify_fix ──────────────────────────────────────────────────────────────
+// Closed-loop verification of a proposed patch BEFORE the agent applies it.
+// Re-scans the patched files in-memory (no disk write), confirms the original
+// stableId is gone, and runs the project's existing linter on the patched
+// files. Returns a structured verdict the agent can use to decide whether to
+// proceed with apply_fix.
+export const verify_fix = {
+  name: 'verify_fix',
+  description: 'Verify a proposed patch before applying. Re-scans the patched files in memory and runs the project linter. Returns { ok, rescan, lint, summary }. No filesystem writes.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      stable_id: { type: 'string', minLength: 8, maxLength: 64 },
+      files: {
+        type: 'object',
+        additionalProperties: { type: 'string', maxLength: 500_000 },
+        minProperties: 1,
+        maxProperties: 8,
+      },
+    },
+    required: ['stable_id', 'files'],
+  },
+  async handler({ stable_id, files }, ctx) {
+    // Confine every file path before passing to the verifier.
+    const confined = {};
+    for (const [relPath, content] of Object.entries(files || {})) {
+      try {
+        _confine(ctx.sessionRoot, relPath, 'files key');
+      } catch (e) {
+        return { _meta: META, ok: false, reason: `path-escape refused: ${e.message}` };
+      }
+      confined[relPath] = String(content);
+    }
+    try {
+      const r = await verifyFixCore({
+        scanRoot: ctx.sessionRoot,
+        originalFindingStableId: stable_id,
+        files: confined,
+      });
+      return {
+        _meta: META,
+        ok: r.ok,
+        rescan: { ok: r.rescan.ok, reason: r.rescan.reason, introduced: r.rescan.introduced || [] },
+        lint: { runner: r.lint.runner, ok: r.lint.ok, skipped: r.lint.skipped || false, output: redactString(r.lint.output || '').slice(0, 1500) },
+        summary: r.summary,
+      };
+    } catch (e) {
+      return { _meta: META, ok: false, reason: `verify_fix failed: ${e.message}` };
+    }
+  },
+};
+
+// ─── synthesize_fix ──────────────────────────────────────────────────────────
+// Return the stored fix replacement + regression-test scaffold for a finding,
+// WITHOUT applying anything. The agent can call verify_fix → apply_fix in
+// sequence with the returned blob.
+export const synthesize_fix = {
+  name: 'synthesize_fix',
+  description: 'Return the stored fix replacement for a finding (replacement text + remediation + plan if the patch is too large). Read-only; never writes to disk. Use verify_fix → apply_fix to deploy.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      finding_id: { type: 'string', minLength: 1, maxLength: 256 },
+    },
+    required: ['finding_id'],
+  },
+  async handler({ finding_id }, ctx) {
+    const { scan, status } = _readLastScanVerified(ctx.sessionRoot, { allowUnsigned: false });
+    if (!scan) {
+      return { _meta: META, ok: false, reason: `last-scan.json failed integrity check: ${status}` };
+    }
+    const f = _findById(scan, finding_id);
+    if (!f) return { _meta: META, ok: false, reason: `Finding not found: ${finding_id}` };
+    if (f._shadow === true) return { _meta: META, ok: false, reason: 'shadow findings have no synthesized fix' };
+    const fix = f.fix || {};
+    const hasReplacement = typeof fix.replacement === 'string' && fix.replacement.length > 0;
+    // Patch bounds: count files touched + LoC delta.
+    let touchedFiles = 1;
+    let locDelta = 0;
+    if (hasReplacement) {
+      let orig = '';
+      try {
+        const abs = _confine(ctx.sessionRoot, f.file, 'finding.file');
+        orig = fs.readFileSync(abs, 'utf8');
+      } catch { /* ignore — counts will reflect new-only LoC */ }
+      locDelta = Math.abs(fix.replacement.split('\n').length - orig.split('\n').length);
+    }
+    const oversized = touchedFiles > 3 || locDelta > 100;
+    return {
+      _meta: META,
+      ok: true,
+      stable_id: f.stableId || null,
+      file: f.file, line: f.line,
+      vuln: f.vuln,
+      severity: f.severity,
+      hasReplacement,
+      replacement: hasReplacement ? redactString(fix.replacement) : null,
+      template: fix.code ? redactString(fix.code) : null,
+      remediation: typeof fix.description === 'string' ? fix.description : (typeof fix === 'string' ? fix : null),
+      patchBounds: { touchedFiles, locDelta, oversized },
+      recommendsFixPlan: oversized && !hasReplacement,
+    };
+  },
+};
+
+export const ALL_TOOLS = [scan_diff, query_taint, explain_finding, apply_fix, verify_fix, synthesize_fix];

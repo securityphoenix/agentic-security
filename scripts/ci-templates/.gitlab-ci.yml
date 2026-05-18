@@ -1,0 +1,26 @@
+# agentic-security CI gate for GitLab CI.
+# Copy to your project's .gitlab-ci.yml or include via:
+#   include:
+#     - local: '.gitlab-ci.agentic-security.yml'
+
+stages:
+  - security
+
+agentic-security:
+  stage: security
+  image: node:20
+  script:
+    - npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+    - npx agentic-security scan --all --json > findings.json
+    - npx agentic-security ci-gate --threshold high
+  artifacts:
+    when: always
+    paths:
+      - findings.json
+      - .agentic-security/findings.sarif
+    reports:
+      sast: .agentic-security/findings.sarif
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: Example API
+  version: 1.0.0
+paths:
+  /users/{id}:
+    get:
+      summary: Get user
+      parameters:
+        - name: id
+          in: path
+          required: true
+      responses:
+        '200': { description: ok }

@@ -1,0 +1,27 @@
+// agentic-security CI gate for Jenkins (declarative pipeline).
+// Add this stage to your existing Jenkinsfile or use as a standalone.
+
+pipeline {
+  agent any
+  tools { nodejs 'node20' }
+  stages {
+    stage('Security · agentic-security') {
+      steps {
+        sh '''
+          npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+          npx agentic-security scan --all --json > findings.json
+          npx agentic-security ci-gate --threshold high
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'findings.json, .agentic-security/findings.sarif',
+                           allowEmptyArchive: true
+          recordIssues tools: [
+            sarif(pattern: '.agentic-security/findings.sarif')
+          ]
+        }
+      }
+    }
+  }
+}

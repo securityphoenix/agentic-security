@@ -1,0 +1,36 @@
+<idea-plugin>
+  <id>com.clearcapabilities.agentic-security</id>
+  <name>agentic-security</name>
+  <vendor email="ross@clearcapabilities.com" url="https://clearcapabilities.com">Clear Capabilities</vendor>
+
+  <description><![CDATA[
+    Inline security findings from the agentic-security scanner (SAST, SCA,
+    secrets, IaC, prompt-injection, MCP/agent-tool audit).
+    Findings appear as squiggles in the editor and in the Problems tool window.
+    Auto-fix and detailed remediation are available via the Claude Code plugin
+    or the CLI (npx agentic-security fix --one &lt;id&gt;).
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.redhat.devtools.lsp4ij</depends>
+
+  <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+    <server id="agentic-security"
+            name="agentic-security"
+            factoryClass="com.clearcapabilities.agenticsec.AgenticSecurityServerFactory">
+      <description><![CDATA[
+        Wraps the agentic-security-lsp bin (npm: @clearcapabilities/agentic-security-scanner).
+        Emits security diagnostics on save.
+      ]]></description>
+    </server>
+
+    <languageMapping language="JavaScript"  serverId="agentic-security"/>
+    <languageMapping language="TypeScript"  serverId="agentic-security"/>
+    <languageMapping language="Python"       serverId="agentic-security"/>
+    <languageMapping language="Java"         serverId="agentic-security"/>
+    <languageMapping language="Kotlin"       serverId="agentic-security"/>
+    <languageMapping language="Go"           serverId="agentic-security"/>
+    <languageMapping language="Ruby"         serverId="agentic-security"/>
+    <languageMapping language="PHP"          serverId="agentic-security"/>
+  </extensions>
+</idea-plugin>

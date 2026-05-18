@@ -19,6 +19,11 @@
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/pre-edit-bodyguard.js",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/conversation-context.js",
+            "timeout": 2
           }
         ]
       },

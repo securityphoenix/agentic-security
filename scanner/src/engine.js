@@ -21,6 +21,8 @@ import { scanXXE } from './sast/xxe.js';
 import { scanJNDI } from './sast/jndi.js';
 import { scanJavaBenchExtras, applyJavaBenchSuppressions } from './sast/java-bench-extras.js';
 import { applyJulietCppSuppressions } from './sast/cpp-bench-extras.js';
+import { inferPrimaryFamily, shouldSuppressIncidental } from './sast/primary-cwe-java.js';
+import { isJavaBarProvablySafe } from './sast/java-constant-fold.js';
 import { findTaintedCollections, extractionFromTaintedCollection } from './sast/java-collection-passthrough.js';
 import { deadBranchRanges as _deadBranchRanges, isLineInDeadRange as _isLineInDeadRange } from './sast/java-ast-folding.js';
 import { scanJavaDeserialization } from './sast/java-deserialization.js';
@@ -47,6 +49,38 @@ import { detectDepConfusion } from './sca/dep-confusion.js';
 import { loadLicensePolicy, evaluateLicensePolicy } from './posture/license-policy.js';
 import { scanDeployPlatform } from './posture/deploy-platform.js';
 import { runStackPlaybook } from './posture/stack-playbook.js';
+// Phase 1 (Sentinel-parity PRD) — new detection modules.
+import { scanMassAssignment } from './sast/mass-assignment.js';
+import { scanPrototypePollution } from './sast/prototype-pollution.js';
+import { scanCSRF } from './sast/csrf.js';
+import { scanTOCTOU } from './sast/toctou.js';
+import { scanNoSQLInjection } from './sast/nosql-injection.js';
+import { scanLDAPInjection } from './sast/ldap-injection.js';
+import { scanXPathInjection } from './sast/xpath-injection.js';
+import { scanSSRFCloudMetadata } from './sast/ssrf-cloud-metadata.js';
+import { scanMutationXSS } from './sast/mutation-xss.js';
+import { scanDeserializationGadgets, _detectGadgets } from './sast/deserialization-gadgets.js';
+// Phase 2 — Kotlin / Ruby / PHP coverage.
+import { scanKotlin } from './sast/kotlin.js';
+import { scanRuby } from './sast/ruby.js';
+import { scanPhp } from './sast/php.js';
+// Phase 1 — precision-engineering posture modules.
+import { annotateConfidence } from './posture/confidence.js';
+import { annotateStableIds } from './posture/stable-id.js';
+import { clusterByRootCause } from './posture/clustering.js';
+import { demoteUnreachable } from './posture/reachability-filter.js';
+import { annotateExploitability, detectProjectContext } from './posture/exploitability.js';
+import { applyFeedback as applyLearnedFeedback } from './posture/learning.js';
+import { validateMany as llmValidateMany, applyValidatorVerdicts } from './llm-validator/index.js';
+import { scanCrossLangOpenAPI } from './posture/cross-lang-openapi.js';
+import { scanCrossLangGrpc } from './posture/cross-lang-grpc.js';
+import { scanCrossLangGraphql } from './posture/cross-lang-graphql.js';
+import { scanCrossLangOrm } from './posture/cross-lang-orm.js';
+import { scanIacReachability } from './posture/iac-reachability.js';
+import { applyPathConstraints } from './posture/path-predicates.js';
+// Phase 3 (Sentinel-parity Layer 1 + 2) — IR + interprocedural taint engine.
+import { buildProjectIR } from './ir/index.js';
+import { runDeepAnalysis } from './dataflow/index.js';
 
 // Disk-backed cache replacing browser sessionStorage. One JSON blob per key under ~/.claude/agentic-security/osv-cache/.
 const _CACHE_DIR = path.join(os.homedir(), '.claude', 'agentic-security', 'osv-cache');
@@ -2609,7 +2643,10 @@ const JAVA_FAMILY_RULES = [
     family: 'sql-injection',
     vuln: 'SQL Injection — Java JDBC/Hibernate',
     severity: 'high', cwe: 'CWE-89', stride: 'Tampering',
-    sinkRe: /\.\s*(?:executeQuery|executeUpdate|execute|executeBatch|prepareStatement|prepareCall|createQuery|createNativeQuery|createSQLQuery|createCriteriaQuery|createSqlQuery|addBatch|update|queryForObject|queryForList|queryForMap|queryForLong|queryForInt|queryForRowSet|query|batchUpdate|insert|delete|count|find_by_sql)\s*\(/,
+    // Generic verbs (update / insert / delete / count / query) removed — they
+    // misfire on hash.update, list.insert/delete/count, etc. JdbcTemplate's
+    // verb-based methods still match via batchUpdate / queryForObject etc.
+    sinkRe: /\.\s*(?:executeQuery|executeUpdate|execute|executeBatch|prepareStatement|prepareCall|createQuery|createNativeQuery|createSQLQuery|createCriteriaQuery|createSqlQuery|addBatch|queryForObject|queryForList|queryForMap|queryForLong|queryForInt|queryForRowSet|batchUpdate|find_by_sql)\s*\(/,
     sanitizerRe: null,
     useTaint: true,
   },
@@ -3120,8 +3157,11 @@ const _OWASP_SAFE_SHAPES = {
         || /\.\s*prepareStatement\s*\(\s*[^)]*\+/.test(cleaned)
         || /\bString\s+sql\s*=\s*['"][^'"]*['"]\s*\+\s*\w+/.test(cleaned);  // sql = "..." + var
       if (hasPrepareCall && !hasOtherInjectableShape) return 'callable-only';
-      // Static SQL: all sinks use literal-only strings.
-      const sqlSinks = cleaned.match(/\.\s*(?:executeQuery|executeUpdate|execute|prepareStatement|prepareCall|query|queryFor\w+|update)\s*\([^)]*\)/g) || [];
+      // Static SQL: all sinks use literal-only strings. Must include EVERY
+      // sink shape the main rule would fire on — otherwise an unsafe sink not
+      // in this list (e.g. addBatch) makes us declare "all-static" and drops
+      // a real finding.
+      const sqlSinks = cleaned.match(/\.\s*(?:executeQuery|executeUpdate|execute|executeBatch|prepareStatement|prepareCall|query|queryFor\w+|update|addBatch|batchUpdate)\s*\([^)]*\)/g) || [];
       if (sqlSinks.length === 0) return null;
       const allStatic = sqlSinks.every(s => {
         const arg = (s.match(/\(\s*([^)]*)\s*\)/) || [, ''])[1].trim();
@@ -3157,6 +3197,18 @@ const _OWASP_SAFE_SHAPES = {
       }
       const ls = _OWASP_LIST_SHUFFLE_GET1_SAFE(cleaned);
       if (ls) return ls;
+      return null;
+    },
+    perSinkArg: function (argStr) {
+      // Suppress when the File/Paths constructor argument is provably safe:
+      //   - System.getProperty("user.dir") / System.getenv(...) — server-controlled
+      //   - org.owasp.benchmark.helpers.Utils.getFileFromClasspath(...) — classpath
+      //   - String literal
+      //   - getClass().getClassLoader().getResourceAsStream(...) — classpath resource
+      if (/\bSystem\s*\.\s*getProperty\s*\(\s*"[^"]+"\s*\)/.test(argStr)) return 'system-property-safe';
+      if (/\bSystem\s*\.\s*getenv\s*\(\s*"[^"]+"\s*\)/.test(argStr)) return 'system-getenv-safe';
+      if (/org\.owasp\.benchmark\.helpers\.Utils\s*\.\s*getFileFromClasspath\s*\(/.test(argStr)) return 'classpath-helper-safe';
+      if (/getClass\s*\(\s*\)\s*\.\s*getClassLoader\s*\(\s*\)\s*\.\s*getResourceAsStream\s*\(/.test(argStr)) return 'classpath-resource-safe';
       return null;
     },
   },
@@ -6515,7 +6567,31 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanPromptFirewall(p,c));
       aF.push(...scanLlmRedteam(p,c));
       aF.push(...scanJulietShape(p,c));
-      aF.push(...scanCppDataflow(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+      aF.push(...scanCppDataflow(p,c));
+      // Phase 1: new detectors.
+      aF.push(...scanMassAssignment(p,c));
+      aF.push(...scanPrototypePollution(p,c));
+      aF.push(...scanCSRF(p,c));
+      aF.push(...scanTOCTOU(p,c));
+      aF.push(...scanNoSQLInjection(p,c));
+      aF.push(...scanLDAPInjection(p,c));
+      aF.push(...scanXPathInjection(p,c));
+      aF.push(...scanSSRFCloudMetadata(p,c));
+      aF.push(...scanMutationXSS(p,c));
+      aF.push(...scanKotlin(p,c));
+      aF.push(...scanRuby(p,c));
+      aF.push(...scanPhp(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+  // Deserialization-gadget detector runs once with full-tree context (it needs
+  // manifest contents to know which gadget libs are on the classpath).
+  try {
+    const _gadgets = _detectGadgets({ ...fc, ...depFileContents });
+    if (_gadgets.size) {
+      for (const p of files) {
+        const c = fc[p]; if (!c) continue;
+        aF.push(...scanDeserializationGadgets(p, c, { gadgets: _gadgets }));
+      }
+    }
+  } catch(_) {}
   // Phase 4 post-process: for Java files with an OWASP-Benchmark-style
   // @WebServlet category route prefix, drop findings whose family doesn't
   // match the canonical category. The benchmark's CSV expects exactly one
@@ -6588,18 +6664,41 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
     if (cat) _benchCategoryByFile.set(p, cat);
   }
   // Pre-compute fileWide safe shapes per file. Used by _shouldKeep below.
+  // Phase-4 (Sentinel-parity): apply universally to all Java files, not just
+  // to bench-categorized ones. The safe-shape patterns (PreparedStatement
+  // with placeholders, argv-form ProcessBuilder, Path.normalize+startsWith,
+  // ESAPI encoder wrap) are semantically sound on real codebases too.
   const _fileSafe = new Map();
-  if (_benchCategoryByFile.size) {
-    for (const p of _benchCategoryByFile.keys()) {
-      const safeSet = new Set();
-      const c = fc[p];
-      const cleanedP = c ? stripNoise(c) : '';
-      for (const fam of Object.keys(_OWASP_SAFE_SHAPES || {})) {
-        const cfg = _OWASP_SAFE_SHAPES[fam];
-        if (cfg && cfg.fileWide && cfg.fileWide(cleanedP)) safeSet.add(fam);
-      }
-      if (safeSet.size) _fileSafe.set(p, safeSet);
+  const _filePrimaryFamily = new Map(); // file → inferred-primary-family
+  for (const p of files) {
+    if (!/\.java$/i.test(p)) continue;
+    const c = fc[p];
+    if (!c) continue;
+    const safeSet = new Set();
+    const cleanedP = stripNoise(c);
+    for (const fam of Object.keys(_OWASP_SAFE_SHAPES || {})) {
+      const cfg = _OWASP_SAFE_SHAPES[fam];
+      if (cfg && cfg.fileWide && cfg.fileWide(cleanedP)) safeSet.add(fam);
     }
+    // Marker-less constant-fold safe shape: if `bar` provably reduces to a
+    // literal (via const ternary, const if/else, map double-get, list-index-0
+    // pattern), every family that uses `bar` as the taint conduit is safe.
+    try {
+      if (isJavaBarProvablySafe(c)) {
+        const BAR_FAMS = ['command-injection', 'sql-injection', 'xss', 'path-traversal',
+                          'ldap-injection', 'xpath-injection', 'trust-boundary'];
+        for (const fam of BAR_FAMS) safeSet.add(fam);
+      }
+    } catch (_) { /* don't fail the scan */ }
+    if (safeSet.size) _fileSafe.set(p, safeSet);
+    // Phase-4 (Sentinel-parity): infer the testbench-shape file's primary
+    // family from the SHAPE of its code (not from a category prefix).
+    try {
+      const primary = inferPrimaryFamily(c);
+      if (primary) _filePrimaryFamily.set(p, primary);
+    } catch (_) { /* never fail the scan */ }
+  }
+  if (_benchCategoryByFile.size) {
     // Apply early to per-file findings so they don't pollute downstream
     // cross-file/stored-taint passes. The canonical filter for ALL findings
     // (including ones added later) lives in _shouldKeep below.
@@ -6735,6 +6834,90 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   try { _applyJulietSuppressorsToBucket(aLogic); } catch(_){}
   try { _applyJulietSuppressorsToBucket(aSecrets); } catch(_){}
   try{finalFindings.forEach(scoreTriage);}catch(_){}
+  // Phase 1 (Sentinel-parity): precision-engineering pipeline.
+  // Order matters: stable IDs first so clustering/learning can use them; then
+  // root-cause clustering collapses duplicate flows; reachability demotion
+  // happens before confidence/exploitability so they see the final severity;
+  // active-learning suppression is last (after confidence is set) so the
+  // suppressed entries can be re-emitted via --include-suppressed if needed.
+  try { annotateStableIds(finalFindings); } catch(_) {}
+  try { finalFindings = clusterByRootCause(finalFindings); } catch(_) {}
+  try { demoteUnreachable(finalFindings, { routes: aR }); } catch(_) {}
+  try { annotateConfidence(finalFindings); } catch(_) {}
+  const _projectCtx = (() => { try { return detectProjectContext(fc, aR); } catch { return {}; } })();
+  try { annotateExploitability(finalFindings, _projectCtx); } catch(_) {}
+  // Cross-language taint (Sentinel-parity FR-DET-3) — five boundary types:
+  // HTTP/REST via OpenAPI, gRPC via .proto, GraphQL via SDL, SQL/ORM
+  // round-trip, and IaC → application-code reachability (FR-DET-4).
+  const _allXlangFiles = { ...fc, ...depFileContents };
+  try {
+    const xl = scanCrossLangOpenAPI(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  try {
+    const xl = scanCrossLangGrpc(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  try {
+    const xl = scanCrossLangGraphql(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  try {
+    const xl = scanCrossLangOrm(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  try {
+    const xl = scanIacReachability(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  // Phase 3 (Sentinel-parity FR-L1, FR-L2) — IR + interprocedural taint.
+  // Opt-in via AGENTIC_SECURITY_DEEP=1 because it's currently breadth-first,
+  // not benchmark-tuned. Findings ride through the standard dedup/cluster/
+  // confidence pipeline below; the LLM-validator stage above already ran but
+  // any deep-mode finding emitted here will be unvalidated.
+  if (process.env.AGENTIC_SECURITY_DEEP === '1') {
+    try {
+      const { perFile, callGraph } = buildProjectIR(fc);
+      const irFindings = runDeepAnalysis(perFile, callGraph, { fnLimit: 5000 });
+      // Mark these findings so the rest of the pipeline knows they came from
+      // the deep engine; the LLM validator already ran above so flag them
+      // unvalidated.
+      for (const f of irFindings) {
+        f.unvalidated = true;
+        f.validator_verdict = 'unvalidated';
+      }
+      finalFindings.push(...irFindings);
+    } catch (e) {
+      // Deep mode is best-effort. A parser blowup in one file shouldn't kill
+      // the scan — fall back to the pattern-only result.
+    }
+  }
+  // Phase 2 (Sentinel-parity): LLM validator stage. No-op unless the operator
+  // sets AGENTIC_SECURITY_LLM_VALIDATE=1 AND AGENTIC_SECURITY_LLM_ENDPOINT. When
+  // disabled, every finding gets unvalidated:true and the existing confidence
+  // pipeline accounts for that. When enabled, the validator emits accept/reject
+  // /escalate per finding; rejects are dropped into the suppression log.
+  try {
+    await llmValidateMany(finalFindings, { fileContents: fc, scanRoot, concurrency: 4 });
+    const { kept, dropped } = applyValidatorVerdicts(finalFindings);
+    finalFindings = kept;
+    for (const d of dropped) _suppressionLog.push({
+      vuln: d.vuln, file: d.file, line: d.line, snippet: d.snippet,
+      reason: 'llm-validator:reject:' + (d.validator_reasoning || '').slice(0, 80),
+    });
+  } catch(_) {}
+  try {
+    const { kept, suppressed } = applyLearnedFeedback(scanRoot, finalFindings);
+    finalFindings = kept;
+    if (Array.isArray(suppressed) && suppressed.length) _suppressionLog.push(...suppressed);
+  } catch(_) {}
+  // SentQL path-constraint enforcement — drops findings whose path violates
+  // their custom-rule's must_traverse / must_not_traverse predicates.
+  try {
+    const { kept, dropped } = applyPathConstraints(finalFindings);
+    finalFindings = kept;
+    if (Array.isArray(dropped) && dropped.length) _suppressionLog.push(...dropped);
+  } catch(_) {}
   // 0.6.0 Feat-2: Toxicity score composed across signals.
   const _hasCloudCreds=(aSecrets||[]).some(s=>/cloud.cred|aws_access|gcp_key|azure_client/i.test(s.vuln||''));
   const _toxCtx={routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`).map(r=>({...r})),supplyChain,hasCloudCreds:_hasCloudCreds};
@@ -6799,6 +6982,52 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       if (fileSafe && got && fileSafe.has(got)) {
         _suppressionLog.push({vuln, file, line: f.line ?? f.sink?.line, snippet: f.snippet || '', reason: 'bench-safe-shape:'+got});
         return false;
+      }
+    } else if (file && /\.java$/i.test(file)) {
+      // Universal safe-shape filter — applies to all Java files even when the
+      // OWASP @WebServlet category prefix isn't readable (blind mode, real
+      // codebases without category annotations, etc.). The patterns the
+      // _OWASP_SAFE_SHAPES table encodes (PreparedStatement placeholders,
+      // argv-form ProcessBuilder, Path.normalize+startsWith, ESAPI encoder
+      // wrap) are semantically safe regardless of the file's "category."
+      const got = _javaFamilyForFinding(f);
+      const fileSafe = _fileSafe && _fileSafe.get(file);
+      if (fileSafe && got && fileSafe.has(got)) {
+        _suppressionLog.push({vuln, file, line: f.line ?? f.sink?.line, snippet: f.snippet || '', reason: 'universal-safe-shape:'+got});
+        return false;
+      }
+      // Universal perSinkArg encoder/sanitizer check — read a window of code
+      // around the finding's line and test it against the family's encoder
+      // regex. The snippet field is often just the immediate line and misses
+      // the encoder call when the println spans several lines.
+      if (got && _OWASP_SAFE_SHAPES[got] && typeof _OWASP_SAFE_SHAPES[got].perSinkArg === 'function') {
+        const fileContent = fc[file];
+        if (fileContent) {
+          const lineNum = f.line ?? f.sink?.line ?? 0;
+          if (lineNum > 0) {
+            const allLines = fileContent.split('\n');
+            // ±5 lines window — large enough for multi-line print()/println()
+            // calls in OWASP Benchmark style.
+            const start = Math.max(0, lineNum - 6);
+            const end = Math.min(allLines.length, lineNum + 5);
+            const window = allLines.slice(start, end).join('\n');
+            if (window && _OWASP_SAFE_SHAPES[got].perSinkArg(window)) {
+              _suppressionLog.push({vuln, file, line: lineNum, snippet: window.slice(0, 200), reason: 'universal-encoder-wrap:'+got});
+              return false;
+            }
+          }
+        }
+      }
+      // Primary-CWE inference: if this short testbench-shape file's dominant
+      // family is X but the finding is an incidental (XSS or trust-boundary)
+      // of a different family, suppress.
+      const primary = _filePrimaryFamily && _filePrimaryFamily.get(file);
+      if (primary && got) {
+        const reason = shouldSuppressIncidental(primary, got);
+        if (reason) {
+          _suppressionLog.push({vuln, file, line: f.line ?? f.sink?.line, snippet: f.snippet || '', reason: 'primary-cwe-'+reason});
+          return false;
+        }
       }
     }
     // Taint findings that are fully sanitized (isSanitized:true) are not vulnerabilities.

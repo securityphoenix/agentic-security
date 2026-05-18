@@ -1,0 +1,18 @@
+# agentic-security CI gate for Buildkite.
+# Copy to .buildkite/pipeline.yml.
+
+steps:
+  - label: ":lock: agentic-security"
+    key: "security"
+    command: |
+      npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+      npx agentic-security scan --all --json > findings.json
+      npx agentic-security ci-gate --threshold high
+    artifact_paths:
+      - "findings.json"
+      - ".agentic-security/findings.sarif"
+    agents:
+      queue: "default"
+    plugins:
+      - artifacts#v1.9.0:
+          upload: ["findings.json", ".agentic-security/findings.sarif"]

@@ -54,6 +54,19 @@ export function normalizeFindings(scan){
       exploitedNow: f.exploitedNow === true,
       tags: Array.isArray(f.tags) && f.tags.length ? f.tags : null,
       blastRadius: f.blastRadius || null,
+      // Sentinel-parity (FR-PREC, FR-L3) preserved fields.
+      stableId: f.stableId || null,
+      confidenceTier: f.confidenceTier || null,
+      exploitability: typeof f.exploitability === 'number' ? f.exploitability : null,
+      exploitabilityTier: f.exploitabilityTier || null,
+      exploitabilityFactors: Array.isArray(f.exploitabilityFactors) ? f.exploitabilityFactors : null,
+      clusterSize: typeof f.clusterSize === 'number' ? f.clusterSize : null,
+      unreachable: f.unreachable === true,
+      validator_verdict: f.validator_verdict || null,
+      llm_confidence: typeof f.llm_confidence === 'number' ? f.llm_confidence : null,
+      unvalidated: f.unvalidated === true,
+      cross_language: f.cross_language === true,
+      family: f.family || null,
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -321,7 +334,29 @@ export function toSARIF(scan, meta={}){
         level: SEV_TO_SARIF[f.severity] || 'warning',
         message: { text: f.fix?.description || f.vuln || 'Security finding' },
         locations: [{ physicalLocation: { artifactLocation: { uri: f.file }, region: { startLine: Math.max(1, f.line||1) } } }],
-        partialFingerprints: { primaryLocationLineHash: f.id },
+        // Phase-1 (Sentinel-parity) fingerprint: stableId persists across
+        // refactors. Keep partialFingerprints intact for tools that key on
+        // the line-hash; add a 'stableId' fingerprint for tools that respect
+        // the SARIF stable-fingerprint convention.
+        partialFingerprints: {
+          primaryLocationLineHash: f.id,
+          ...(f.stableId ? { stableId: f.stableId } : {}),
+        },
+        // Sentinel-parity SARIF extensions — namespaced under 'properties'.
+        properties: {
+          ...(typeof f.confidence === 'number' ? { confidence: f.confidence } : {}),
+          ...(f.confidenceTier ? { confidenceTier: f.confidenceTier } : {}),
+          ...(typeof f.exploitability === 'number' ? { exploitability: f.exploitability } : {}),
+          ...(f.exploitabilityTier ? { exploitabilityTier: f.exploitabilityTier } : {}),
+          ...(Array.isArray(f.exploitabilityFactors) ? { exploitabilityFactors: f.exploitabilityFactors } : {}),
+          ...(typeof f.clusterSize === 'number' ? { clusterSize: f.clusterSize } : {}),
+          ...(f.unreachable ? { unreachable: true } : {}),
+          ...(f.validator_verdict ? { validatorVerdict: f.validator_verdict } : {}),
+          ...(typeof f.llm_confidence === 'number' ? { llmConfidence: f.llm_confidence } : {}),
+          ...(f.unvalidated ? { unvalidated: true } : {}),
+          ...(f.cross_language ? { crossLanguage: true } : {}),
+          ...(f.family ? { family: f.family } : {}),
+        },
       })),
     }],
   };

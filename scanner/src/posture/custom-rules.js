@@ -107,6 +107,24 @@ function normalizeRule(r, fp) {
   let notMatch = null;
   if (m.notMatch) { try { notMatch = new RegExp(m.notMatch, 'm'); } catch {} }
 
+  // SentQL extensions (Sentinel-parity FR-DSL-1):
+  //   llm_validate: { prompt, min_confidence }
+  //   path: { must_traverse: [...], must_not_traverse: [...] }
+  let llmValidate = null;
+  if (r.llm_validate && typeof r.llm_validate === 'object') {
+    const minC = typeof r.llm_validate.min_confidence === 'number' ? r.llm_validate.min_confidence : 0.7;
+    llmValidate = {
+      prompt: String(r.llm_validate.prompt || 'Is this exploitable as described? Reply yes|no|maybe.').slice(0, 1000),
+      minConfidence: Math.max(0, Math.min(1, minC)),
+    };
+  }
+  let pathConstraints = null;
+  if (r.path && typeof r.path === 'object') {
+    pathConstraints = {
+      mustTraverse:    Array.isArray(r.path.must_traverse)     ? r.path.must_traverse.map(String)     : [],
+      mustNotTraverse: Array.isArray(r.path.must_not_traverse) ? r.path.must_not_traverse.map(String) : [],
+    };
+  }
   return {
     id: r.id,
     title: r.title || r.id,
@@ -121,6 +139,8 @@ function normalizeRule(r, fp) {
     requireAll: Array.isArray(m.allOf),
     windowLines: m.window || 50,
     sourceFile: fp,
+    llmValidate,
+    pathConstraints,
   };
 }
 
@@ -200,6 +220,10 @@ function toFinding(rule, file, m) {
     confidence: 0.9,
     source: 'custom-rule',
     customRuleId: rule.id,
+    // SentQL extensions — annotate the finding so the engine's downstream
+    // LLM-validator and reachability-filter passes can act on them.
+    ...(rule.llmValidate ? { _llmValidate: rule.llmValidate } : {}),
+    ...(rule.pathConstraints ? { _pathConstraints: rule.pathConstraints } : {}),
     ...(rule.shadow ? { _shadow: true } : {}),
   };
 }

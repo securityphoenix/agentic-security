@@ -40,6 +40,13 @@ export async function readTree(root, { ignore = [] } = {}) {
     try { content = await fs.readFile(abs, 'utf8'); } catch { continue; }
     const base = path.basename(rel);
     if (DEP_FILE_NAMES.has(base)) depFileContents[rel] = content;
+    // Cross-language taint module needs to see openapi/swagger specs even
+    // though they aren't "code" per se. Stash them in depFileContents so
+    // they ride through to runFullScan without polluting the SAST loop.
+    if (/(?:openapi|swagger)\.(?:ya?ml|json)$/i.test(base)) depFileContents[rel] = content;
+    else if (/\.proto$/i.test(base)) depFileContents[rel] = content;
+    else if (/\.(?:graphql|gql)$/i.test(base)) depFileContents[rel] = content;
+    else if (/\.tf$/i.test(base)) depFileContents[rel] = content;
     if (shouldScan(rel)) fileContents[rel] = content;
     // Auxiliary files: .properties files are referenced by Java rules
     // (e.g. OWASP Benchmark's benchmark.properties resolves algorithm
