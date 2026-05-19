@@ -1,5 +1,98 @@
 # Changelog
 
+## 0.51.0 — 11 of 16 PRD-missing features (5 research items deferred)
+
+This release lands all 11 tractable FRs from the v2 PRD audit. The 5
+research-level FRs (k=2 calling context, narrow symbolic execution, hybrid
+static+dynamic, eBPF/dtrace live instrumentation, LLM-based intent
+inference) are deferred to Phase 6+ with their reasons documented in the
+PRD.
+
+### Shipped
+
+- **FR-CHAIN-FILTER** (`posture/cross-lang-meta.js`). Cross-language chain
+  detectors only chain to chain-worthy families (sql-injection,
+  command-injection, xss, ssrf, code-injection, deserialization, xxe,
+  path-traversal, idor, mass-assignment, prototype pollution, and others).
+  Eliminates the "queue chain to CSRF" semantic-noise the polyglot bench
+  surfaced.
+- **FR-FAMILY-REGISTRY** (`posture/cross-lang-meta.js`). Cross-language
+  chains get canonical family names (xlang-openapi / xlang-grpc /
+  xlang-graphql / xlang-queue / xlang-orm / xlang-iac / xlang-unknown).
+- **FR-LEARN-7** (`bin/agentic-security reset`). Right-to-delete CLI;
+  wipes accumulated learned state while preserving operator-authored
+  config. `--yes` to actually delete; `--keep <names>` to spare specific
+  items.
+- **FR-PY-SAST** (`sast/python-sinks.js`). Python sink-side coverage:
+  SQLAlchemy text() with f-string, cursor.execute concat, os.system /
+  subprocess shell=True, pickle.loads, yaml.load, marshal.loads, eval/exec
+  on request data, compile() on user input, flask.send_file with user
+  path, send_from_directory, open() with f-string, requests verify=False,
+  ssl._create_unverified_context, requests/urlopen with user URL, lxml/
+  etree on user input. **Closes G3:** polyglot F1 went from 0.727 → 1.00.
+- **FR-VER-3** (`posture/regression-test-gen.js`). Per finding with a PoC,
+  emit a framework-idiomatic regression test (Jest for Node, pytest for
+  Python). Surfaced as `f.regression_test = { lang, framework, filename,
+  runHint, code }`.
+- **FR-LIVE-HARNESS** (`posture/verifier-target.js`). Schema for
+  `.agentic-security/verifier-target.yaml` describing how to bring up the
+  customer's app (docker-compose or command shape). The `verify --live`
+  CLI auto-discovers it. Safety: `command` shape requires a known-good
+  start pattern unless `AGENTIC_SECURITY_VERIFY_TARGET_OK=1`.
+- **FR-XSAT-7** (`posture/iam-policy.js`). AWS IAM policy auditing.
+  Curated dangerous-actions list (iam:*, s3:*, lambda:*, ec2:*, dynamodb:*,
+  rds:*, secretsmanager:*, kms:*). Flag Effect=Allow + wildcard resource
+  + no Condition.
+- **FR-XSAT-8** (`posture/container-runtime.js`). Dockerfile + k8s
+  manifest + ECS task def. Detects USER root, privileged: true,
+  hostNetwork, hostPID, runAsUser: 0, capabilities ALL/SYS_ADMIN,
+  /var/run/docker.sock bind-mount, ADD with remote URL.
+- **FR-LOGIC-1 + FR-LOGIC-2 + FR-LOGIC-7** (`posture/business-logic.js`).
+  AuthZ matrix construction (per-resource consistency check + IDOR
+  detection on mutation routes with :id but no ownership/role check),
+  state-machine extraction (catches writes outside the declared status
+  set), and negative-test-gap detection (auth route + happy-path test +
+  no 401/403 assertion = miss).
+- **FR-LOGIC-6** (`posture/flow-narration.js`). Per high-severity finding,
+  emit a one-paragraph attacker→impact→cost narrative. Template fallback
+  for 10 CWE families; opt-in LLM mode via
+  `AGENTIC_SECURITY_FLOW_NARRATION_LLM=1`.
+- **FR-LEARN-6** (`posture/rule-synthesis.js`, `agentic-security rule-synth`).
+  Read triage-feedback.json, cluster FP verdicts by family + dir prefix,
+  propose a YAML suppression rule when ≥ 5 verdicts cluster. Proposes —
+  doesn't activate.
+- **FR-SDLC-5** (`report/index.js::toSTIX`). `--format stix` emits a STIX
+  2.1 bundle with one Vulnerability + Indicator + Relationship SDO per
+  finding. CWE external_references; x_* custom properties for severity,
+  calibrated confidence, exploitability, verifier verdict.
+- **FR-SDLC-9** (`posture/policy-gate.js`, `--policy <file.rego>`).
+  Policy-as-code gate. External OPA binary preferred; embedded mini-DSL
+  evaluator for the common case. Supports == != > < >= != comparisons
+  on `finding.<field>` and `sprintf("...", [args])` for messages.
+
+### Deferred (Phase 6+ research)
+
+- FR-SEM-2 k=2 calling-context — requires dataflow engine refactor
+- FR-SEM-5 narrow symbolic execution — needs KLEE-style backend
+- FR-SEM-6 hybrid static+dynamic — needs customer app instrumentation
+- FR-VER-5 eBPF/dtrace live instrumentation — Linux/macOS only, opt-in
+- FR-LOGIC-5 intent inference — LLM-based; pending prompt-injection-safe design
+
+### Tests, bench, integrity
+
+- 295 + 26 + 2 unit tests pass (was 240 before this release).
+- Synthetic-bench F1 = 100% (baseline updated; new IDOR expected entry added
+  for orm-raw-sql:15 — AuthZ-matrix detector finds a genuine missing
+  ownership check that wasn't previously caught).
+- Polyglot bench F1 = 100% (was 72.7%; Python SAST coverage closed G3 gap).
+- No dead exports.
+
+### Honesty correction
+
+The PRD v2 said all 16 missing features. This release ships 11; 5 are
+honestly deferred. The PRD-v3 update (next session) should reflect this
+delivery state.
+
 ## 0.50.0 — next-gen SAST Phase 1 complete (5 of 5 units)
 
 Closes Phase 1 of `docs/PRD-next-gen-sast-phase1.md`. The two units queued

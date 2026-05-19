@@ -81,7 +81,6 @@ const ALLOWLIST = new Set([
   'suppressions.js::loadProSuppressions',
   'suppressions.js::validateProSuppression',
   'triage.js::loadTriage',
-  'triage.js::STATES',
   'validator-metrics.js::getLatest',
   'validator-metrics.js::checkFloors',
 ]);

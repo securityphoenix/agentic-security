@@ -78,6 +78,13 @@ export function normalizeFindings(scan){
       // Phase-1 next-gen P1.1 (FR-VER-2): generated PoC, or null if the CWE
       // family has no template in v1. `poc.code` is the runnable script;
       // `poc.runHint` is the suggested invocation (e.g. `node poc.mjs`).
+      regression_test: f.regression_test && typeof f.regression_test === 'object' ? {
+        lang: f.regression_test.lang || null,
+        framework: f.regression_test.framework || null,
+        filename: f.regression_test.filename || null,
+        runHint: f.regression_test.runHint || null,
+        code: typeof f.regression_test.code === 'string' ? f.regression_test.code : null,
+      } : null,
       poc: f.poc && typeof f.poc === 'object' ? {
         lang: f.poc.lang || null,
         kind: f.poc.kind || null,
@@ -97,6 +104,7 @@ export function normalizeFindings(scan){
       verifier_verdict: f.verifier_verdict || null,
       verifier_reason: f.verifier_reason || null,
       verifier_runner: f.verifier_runner || null,
+      narration: typeof f.narration === 'string' ? f.narration : null,
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -257,6 +265,86 @@ export function toJSON(scan, meta={}, opts={}){
 
 // R2: Always-on CSV writer for pro mode. One row per finding, columns chosen
 // for spreadsheet/Excel/BigQuery import.
+// STIX 2.1 emit (FR-SDLC-5). One Vulnerability + Indicator SDO pair per
+// finding, wrapped in a single Bundle. Lets threat-intel platforms consume
+// the scanner output natively. Spec: https://docs.oasis-open.org/cti/stix/v2.1/
+import { randomUUID, createHash } from 'node:crypto';
+
+function _stixId(type, finding) {
+  // Deterministic UUID: derive from sha256(stableId||vuln||file||line) so
+  // re-runs produce stable ids per finding.
+  const seed = `${finding.stableId || ''}::${finding.vuln || ''}::${finding.file || ''}::${finding.line || ''}`;
+  const h = createHash('sha256').update(seed).digest('hex');
+  // Format as UUIDv4-shaped (8-4-4-4-12).
+  const u = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+  return `${type}--${u}`;
+}
+
+export function toSTIX(scan, meta = {}) {
+  const findings = normalizeFindings(scan);
+  const now = (meta.startedAt && new Date(meta.startedAt).toISOString()) || new Date().toISOString();
+  const objects = [];
+  for (const f of findings) {
+    const vulnId = _stixId('vulnerability', f);
+    const indId  = _stixId('indicator',     f);
+    const cweExt = f.cwe ? [{
+      source_name: 'cwe',
+      external_id: String(f.cwe),
+      url: `https://cwe.mitre.org/data/definitions/${String(f.cwe).replace(/[^0-9]/g, '')}.html`,
+    }] : [];
+    objects.push({
+      type: 'vulnerability',
+      spec_version: '2.1',
+      id: vulnId,
+      created: now,
+      modified: now,
+      name: `${f.vuln || 'Security finding'} at ${f.file || '?'}:${f.line || '?'}`,
+      description: f.fix?.description || f.vuln || '',
+      external_references: cweExt,
+      labels: [f.severity || 'unknown'],
+      // x_* extension fields — STIX 2.1 allows custom properties prefixed
+      // with x_ for tool-specific data.
+      x_severity: f.severity || 'unknown',
+      x_confidence: typeof f.confidence === 'number' ? f.confidence : null,
+      x_calibrated_confidence: typeof f.calibrated_confidence === 'number' ? f.calibrated_confidence : null,
+      x_calibrated_ci: Array.isArray(f.calibrated_confidence_ci) ? f.calibrated_confidence_ci : null,
+      x_exploitability: typeof f.exploitability === 'number' ? f.exploitability : null,
+      x_verifier_verdict: f.verifier_verdict || null,
+      x_stable_id: f.stableId || null,
+      x_family: f.family || null,
+    });
+    objects.push({
+      type: 'indicator',
+      spec_version: '2.1',
+      id: indId,
+      created: now,
+      modified: now,
+      indicator_types: ['vulnerable'],
+      name: `${f.vuln || 'Security finding'} signature`,
+      pattern: `[file:name = '${(f.file || '').replace(/'/g, "\\'")}']`,
+      pattern_type: 'stix',
+      pattern_version: '2.1',
+      valid_from: now,
+      // Link to the vulnerability via a relationship object below.
+    });
+    objects.push({
+      type: 'relationship',
+      spec_version: '2.1',
+      id: _stixId('relationship', { ...f, vuln: 'relationship:' + (f.vuln || '') }),
+      created: now,
+      modified: now,
+      relationship_type: 'indicates',
+      source_ref: indId,
+      target_ref: vulnId,
+    });
+  }
+  return {
+    type: 'bundle',
+    id: `bundle--${randomUUID()}`,
+    objects,
+  };
+}
+
 export function toCSV(scan){
   const findings = normalizeFindings(scan);
   const esc = v => {

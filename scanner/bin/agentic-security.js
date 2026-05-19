@@ -6,7 +6,7 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import { signLastScan as _signLastScan, verifyLastScan as _verifyLastScanShared } from '../src/posture/integrity.js';
 import { runScan } from '../src/runScan.js';
-import { toJSON, toMarkdown, toSARIF, toCSV, toJUnit, toCLI, toCLIByProfile, toShipVerdict, toProTable, toHTML, toSummary, exitCodeFor, normalizeFindings } from '../src/report/index.js';
+import { toJSON, toMarkdown, toSARIF, toSTIX, toCSV, toJUnit, toCLI, toCLIByProfile, toShipVerdict, toProTable, toHTML, toSummary, exitCodeFor, normalizeFindings } from '../src/report/index.js';
 import { toCycloneDX, toSPDX } from '../src/posture/sbom.js';
 import { toPBOM } from '../src/sast/pipeline.js';
 import { buildAIBOM, aibomToMarkdown } from '../src/posture/aibom.js';
@@ -61,15 +61,17 @@ Commands:
   validator-cache stats|gc     Inspect / prune .agentic-security/llm-cache/ (use --older-than <days> --dry-run)
   verify [--finding <id>]      Re-run the verifier loop on last-scan findings (use --live --target <url> to execute PoCs)
   reset [--yes] [--keep ...]   Right-to-delete: wipe accumulated learned state under .agentic-security/ (preserves operator-authored config)
+  rule-synth [--dry-run]       Auto-synthesise suppression rules from repeated FP verdicts (proposes — does not activate)
   version                      Print version
 
 Options:
   --profile vibecoder|pro      Override profile for this run
   --only sast|sca|secrets      Limit scan to one pillar
-  --format <fmt>               cli | json | md | sarif | junit | csv | html | cyclonedx | spdx | pbom | aibom | aibom-md
+  --format <fmt>               cli | json | md | sarif | stix | junit | csv | html | cyclonedx | spdx | pbom | aibom | aibom-md
   --pack <name>                Focus on a curated rule pack (repeatable): owasp-top-10 | cwe-top-25 | llm-security | supply-chain
   --baseline <ref>             Diff against a git ref; only findings new vs. that ref count (ci subcommand)
   --fail-on critical|high|medium|low|none  ci-mode exit policy (default: critical)
+  --policy <file.rego>         ci-mode policy-as-code gate; deny[] rules fail the build (FR-SDLC-9)
   --columns standard|mitre|capec|owasp  Pro-mode column set (default: standard)
   --confidence <0..1>          Override per-profile confidence threshold
   --firehose                   Show ALL findings (ignore confidence threshold)
@@ -263,6 +265,7 @@ async function cmdScan(args) {
   if (format === 'json') body = JSON.stringify(toJSON(scan, meta, { includeSuppressed }), null, 2);
   else if (format === 'md' || format === 'markdown') body = toMarkdown(scan, meta);
   else if (format === 'sarif') body = JSON.stringify(toSARIF(scan, meta), null, 2);
+  else if (format === 'stix') body = JSON.stringify(toSTIX(scan, meta), null, 2);
   else if (format === 'junit') body = toJUnit(scan, meta);
   else if (format === 'csv')   body = toCSV(scan);
   else if (format === 'html') body = toHTML(scan, meta);
@@ -389,6 +392,24 @@ async function cmdCi(args) {
     `[ci] artifacts: .agentic-security/findings.{json,sarif,junit.xml}\n` +
     `[ci] fail-on=${failOn}  scan-exit=${scanCode}\n`
   );
+  // FR-SDLC-9: when --policy <file.rego> is supplied, evaluate against the
+  // findings and fail the gate if the policy denies anything. Policy runs
+  // ALONGSIDE the --fail-on threshold; either gate can fail the build.
+  const policyFile = args.flags.policy;
+  if (policyFile) {
+    const { evaluatePolicy } = await import('../src/posture/policy-gate.js');
+    const r = evaluatePolicy(path.resolve(policyFile), findings);
+    if (!r.ok) {
+      console.error(`[ci] policy gate error: ${r.reason || 'unknown'}`);
+      return 1;
+    }
+    if (r.denials.length) {
+      console.error(`[ci] policy gate FAILED (${r.runner}, ${r.denials.length} denial(s)):`);
+      for (const d of r.denials.slice(0, 20)) console.error(`  - ${d}`);
+      return 1;
+    }
+    process.stderr.write(`[ci] policy gate PASSED (${r.runner}, 0 denials)\n`);
+  }
   return ciExitCode(scanCode, failOn);
 }
 
@@ -754,11 +775,29 @@ async function cmdVerify(args) {
   }
   const last = JSON.parse(await fsp.readFile(lastScanPath, 'utf8'));
   const findings = last.findings || [];
-  const targetFlag = args.flags.target || process.env.AGENTIC_SECURITY_VERIFY_TARGET || null;
+  let targetFlag = args.flags.target || process.env.AGENTIC_SECURITY_VERIFY_TARGET || null;
   const liveFlag = !!args.flags.live || process.env.AGENTIC_SECURITY_VERIFY_LIVE === '1';
+  // FR-LIVE-HARNESS: if no --target was supplied, check the
+  // .agentic-security/verifier-target.yaml manifest. We don't bring up the
+  // target here (that's the operator's call); we surface the URL it declares.
   if (liveFlag && !targetFlag) {
-    console.error('--live requires --target <url> (or AGENTIC_SECURITY_VERIFY_TARGET).');
-    return 4;
+    const { loadTargetManifest, describeTarget, validateTarget } =
+      await import('../src/posture/verifier-target.js');
+    const m = loadTargetManifest(scanRoot);
+    if (m.ok) {
+      const v = validateTarget(m.target);
+      if (!v.ok) {
+        console.error(`Verifier target manifest rejected: ${v.reason}`);
+        return 4;
+      }
+      targetFlag = m.target.url;
+      console.error(`Verifier target: ${describeTarget(m.target)}`);
+      console.error(`(Read from .agentic-security/verifier-target.yaml; bring it up yourself before re-running --live.)`);
+    } else {
+      console.error('--live requires --target <url>, AGENTIC_SECURITY_VERIFY_TARGET, or a .agentic-security/verifier-target.yaml manifest.');
+      console.error(`  Manifest check: ${m.reason}`);
+      return 4;
+    }
   }
   if (liveFlag) {
     // Set the env so verifier.js picks it up. We don't permanently mutate
@@ -887,6 +926,31 @@ async function cmdReset(args) {
     }
   }
   console.log(`Reset ${targets.length} item(s). Operator-authored config preserved.`);
+  return 0;
+}
+
+// `agentic-security rule-synth [--dry-run] [--threshold N]`
+//
+// FR-LEARN-6: read triage-feedback.json, group repeated FP verdicts by
+// (family, dir prefix), and propose a suppression YAML when ≥ threshold
+// (default 5) verdicts cluster. Writes to .agentic-security/rules-proposed/.
+async function cmdRuleSynth(args) {
+  const scanRoot = path.resolve(args.flags.root || '.');
+  const { synthesizeRules } = await import('../src/posture/rule-synthesis.js');
+  const proposals = synthesizeRules(scanRoot, {
+    threshold: args.flags.threshold,
+    dryRun: !!args.flags['dry-run'],
+  });
+  if (!proposals.length) {
+    console.log('No proposals — either no triage feedback, or no shape clustered above threshold.');
+    return 0;
+  }
+  console.log(`Synthesised ${proposals.length} proposal(s) in .agentic-security/rules-proposed/:`);
+  for (const p of proposals) {
+    console.log(`  ${p.file}  (${p.count} FPs, family=${p.family || p.rule}, glob=${p.dirGlob})`);
+  }
+  console.log('');
+  console.log('Review each YAML before moving it to .agentic-security/rules/ to make it active.');
   return 0;
 }
 
@@ -1162,6 +1226,7 @@ async function main() {
       case 'validator-cache': process.exit(await cmdValidatorCache(args));
       case 'verify':   process.exit(await cmdVerify(args));
       case 'reset':    process.exit(await cmdReset(args));
+      case 'rule-synth': process.exit(await cmdRuleSynth(args));
       case 'digest':   process.exit(await cmdDigest(args));
       case 'setup':    process.exit(await cmdSetup(args));
       case 'mcp':      {
@@ -1170,7 +1235,7 @@ async function main() {
         runStdio({ sessionRoot: path.resolve(root) });
         return;
       }
-      case 'version':  console.log('agentic-security 0.50.0  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.51.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'help': case '--help': case '-h': case undefined:
         console.log(USAGE); process.exit(cmd ? 0 : 1);
       default:

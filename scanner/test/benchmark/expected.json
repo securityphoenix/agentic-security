@@ -392,6 +392,13 @@
         },
         {
           "file": "app.js",
+          "line": 15,
+          "family": "idor",
+          "severity": "high",
+          "_note": "AuthZ-matrix detector: DELETE /users/prisma/:id mutates by id without ownership/role check"
+        },
+        {
+          "file": "app.js",
           "line": 10,
           "family": "sql-injection",
           "severity": "high"

@@ -69,6 +69,7 @@ import { scanPhp } from './sast/php.js';
 import { annotateConfidence } from './posture/confidence.js';
 import { annotatePocs } from './posture/poc-generator.js';
 import { annotateVerifierVerdicts } from './posture/verifier.js';
+import { annotateRegressionTests } from './posture/regression-test-gen.js';
 import { annotateCalibratedConfidence } from './posture/calibration.js';
 import { annotateStableIds } from './posture/stable-id.js';
 import { clusterByRootCause } from './posture/clustering.js';
@@ -82,6 +83,10 @@ import { scanCrossLangGraphql } from './posture/cross-lang-graphql.js';
 import { scanCrossLangOrm } from './posture/cross-lang-orm.js';
 import { scanCrossLangQueues } from './posture/cross-lang-queues.js';
 import { scanIacReachability } from './posture/iac-reachability.js';
+import { scanIamPolicies } from './posture/iam-policy.js';
+import { scanContainerRuntime } from './posture/container-runtime.js';
+import { scanBusinessLogic as scanBusinessLogicV2 } from './posture/business-logic.js';
+import { annotateNarration } from './posture/flow-narration.js';
 import { applyPathConstraints } from './posture/path-predicates.js';
 // Phase 3 (Sentinel-parity Layer 1 + 2) — IR + interprocedural taint engine.
 import { buildProjectIR } from './ir/index.js';
@@ -6859,6 +6864,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   // Phase-1 next-gen P1.1 (FR-VER-2): attach a runnable PoC to each finding
   // when a CWE template covers it. Findings without coverage get f.poc=null.
   try { annotatePocs(finalFindings, { routes: aR }); } catch(_) {}
+  // FR-VER-3: regression-test generator (builds on the PoC artifact).
+  try { annotateRegressionTests(finalFindings); } catch(_) {}
   // Phase-1 next-gen P1.2 (FR-VER-3, FR-VER-6, FR-VER-7): per-finding
   // verifier verdict — verified-exploit (live PoC ran), verified-by-llm,
   // verified-sanitizer-absence, unverified-by-design, or cannot-verify.
@@ -6894,6 +6901,23 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
     const xl = scanIacReachability(_allXlangFiles, finalFindings);
     if (xl && xl.length) finalFindings.push(...xl);
   } catch(_) {}
+  // Phase-2.5 next-gen: IAM policy reachability (FR-XSAT-7).
+  try {
+    const ia = scanIamPolicies(_allXlangFiles, finalFindings);
+    if (ia && ia.length) finalFindings.push(...ia);
+  } catch(_) {}
+  // Phase-2.5 next-gen: container runtime config audit (FR-XSAT-8).
+  try {
+    const cr = scanContainerRuntime(_allXlangFiles);
+    if (cr && cr.length) finalFindings.push(...cr);
+  } catch(_) {}
+  // Phase-4 next-gen: business-logic analysis (FR-LOGIC-1, FR-LOGIC-2, FR-LOGIC-7).
+  try {
+    const bl = scanBusinessLogicV2(_allXlangFiles);
+    if (bl && bl.length) finalFindings.push(...bl);
+  } catch(_) {}
+  // FR-LOGIC-6: LLM-driven flow narration (template fallback when no LLM endpoint).
+  try { await annotateNarration(finalFindings); } catch(_) {}
   // Phase 3 (Sentinel-parity FR-L1, FR-L2) — IR + interprocedural taint.
   // Opt-in via AGENTIC_SECURITY_DEEP=1 because it's currently breadth-first,
   // not benchmark-tuned. Findings ride through the standard dedup/cluster/
