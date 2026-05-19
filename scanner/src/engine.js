@@ -17,6 +17,16 @@ import { scanMCP } from './sast/mcp-audit.js';
 import { scanClaudeSettings } from './sast/claude-settings.js';
 import { scanClaudeMdPromptInjection } from './sast/claude-md-prompt-injection.js';
 import { scanClaudeHookInjection } from './sast/claude-hook-injection.js';
+import { scanDjangoHardening } from './sast/django-hardening.js';
+import { scanDefiDeep } from './sast/defi-deep.js';
+import { scanSpringbootHardening } from './sast/springboot-hardening.js';
+import { scanLaravelHardening } from './sast/laravel-hardening.js';
+import { scanSwift } from './sast/swift.js';
+import { scanDartFlutter } from './sast/dart-flutter.js';
+import { scanLlmTradingAgent } from './sast/llm-trading-agent.js';
+import { scanMobileManifest } from './sast/mobile-manifest.js';
+import { scanQuarkusHardening } from './sast/quarkus-hardening.js';
+import { scanFastapiHardening } from './sast/fastapi-hardening.js';
 import { scanAuthZ } from './sast/authz.js';
 import { scanModelLoad } from './sast/model-load.js';
 import { scanPromptTemplate } from './sast/prompt-template.js';
@@ -500,7 +510,14 @@ function _isIaCFile(p){
   return false;
 }
 function getExt(n){const p=n.split(".");return p.length>1?p.pop().toLowerCase():"";}
-function shouldScan(p){if(/\.(test|spec|mock)\./i.test(p))return false;if(/_test\.go$/i.test(p))return false;if(/_spec\.rb$/i.test(p))return false;if(/Test\.(?:java|cs|kt|scala)$/i.test(p))return false;if(/\.min\.[mc]?js$/i.test(p))return false;for(const x of p.split("/"))if(IGNORE_DIRS.has(x))return false;return CODE_EXTS.has(getExt(p)) || _isIaCFile(p);}
+function shouldScan(p){if(/\.(test|spec|mock)\./i.test(p))return false;if(/_test\.go$/i.test(p))return false;if(/_spec\.rb$/i.test(p))return false;if(/Test\.(?:java|cs|kt|scala)$/i.test(p))return false;if(/\.min\.[mc]?js$/i.test(p))return false;for(const x of p.split("/"))if(IGNORE_DIRS.has(x))return false;
+  // Mobile + framework manifest files needed by the v4 detectors.
+  const base=p.split('/').pop();
+  if (/(?:^|[\\/])AndroidManifest\.xml$/i.test(p)) return true;
+  if (/(?:^|[\\/])Info\.plist$/i.test(p)) return true;
+  if (/(?:^|[\\/])module\.json5$/i.test(p)) return true;
+  if (/^\.env(?:\.[\w-]+)?$/.test(base)) return true;
+  return CODE_EXTS.has(getExt(p)) || _isIaCFile(p);}
 function lineAt(c,i){return c.substring(0,i).split("\n").length;}
 
 
@@ -6587,6 +6604,16 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanClaudeSettings(p,c));
       aF.push(...scanClaudeMdPromptInjection(p,c));
       aF.push(...scanClaudeHookInjection(p,c));
+      aF.push(...scanDjangoHardening(p,c));
+      aF.push(...scanDefiDeep(p,c));
+      aF.push(...scanSpringbootHardening(p,c));
+      aF.push(...scanLaravelHardening(p,c));
+      aF.push(...scanSwift(p,c));
+      aF.push(...scanDartFlutter(p,c));
+      aF.push(...scanLlmTradingAgent(p,c));
+      aF.push(...scanMobileManifest(p,c));
+      aF.push(...scanQuarkusHardening(p,c));
+      aF.push(...scanFastapiHardening(p,c));
       aF.push(...scanAuthZ(p,c));
       aF.push(...scanModelLoad(p,c));
       aF.push(...scanPromptTemplate(p,c));
