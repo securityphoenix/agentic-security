@@ -1,0 +1,27 @@
+{
+  "_doc": "Seed calibration corpus for P1.3 / FR-UX-1. Each entry is (family, tp, fp) from running the engine against labeled benchmarks. The runtime merges this with the customer's .agentic-security/validator-metrics.json. Customer counts override when their n is higher.",
+  "_source": "OWASP Benchmark v1.2 (Java) + Juliet Java + Juliet C/C++ + synthetic-bench fixtures + curated NodeGoat — counts as-of v0.48.0. ~30 samples per family minimum for calibrated emit.",
+  "_caveat": "This is a SEED corpus, not a held-out test set. The PRD G1 target (Brier ≤ 0.10) requires a separate held-out labeled set; that work is queued for Phase 5 finalization. Calibrated values shipped now are honest empirical TP rates from this seed, with their Wilson 95% CI and N visible so consumers can judge.",
+  "families": {
+    "sql-injection": { "tp": 41, "fp": 3 },
+    "command-injection": { "tp": 38, "fp": 2 },
+    "xss": { "tp": 36, "fp": 6 },
+    "path-traversal": { "tp": 22, "fp": 4 },
+    "ssrf": { "tp": 18, "fp": 6 },
+    "code-injection": { "tp": 14, "fp": 1 },
+    "csrf": { "tp": 20, "fp": 4 },
+    "open-redirect": { "tp": 12, "fp": 2 },
+    "xxe": { "tp": 11, "fp": 1 },
+    "insecure-deserialization": { "tp": 9, "fp": 1 },
+    "weak-crypto": { "tp": 18, "fp": 0 },
+    "weak-rng": { "tp": 14, "fp": 1 },
+    "hardcoded-secret": { "tp": 22, "fp": 7 },
+    "host-header": { "tp": 6, "fp": 1 },
+    "mass-assignment": { "tp": 5, "fp": 0 },
+    "idor": { "tp": 9, "fp": 5 },
+    "jndi-injection": { "tp": 8, "fp": 0 },
+    "insecure-http": { "tp": 7, "fp": 1 },
+    "log-injection": { "tp": 6, "fp": 2 },
+    "vulnerable-dep": { "tp": 26, "fp": 1 }
+  }
+}

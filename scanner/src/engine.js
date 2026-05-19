@@ -66,6 +66,8 @@ import { scanRuby } from './sast/ruby.js';
 import { scanPhp } from './sast/php.js';
 // Phase 1 — precision-engineering posture modules.
 import { annotateConfidence } from './posture/confidence.js';
+import { annotatePocs } from './posture/poc-generator.js';
+import { annotateCalibratedConfidence } from './posture/calibration.js';
 import { annotateStableIds } from './posture/stable-id.js';
 import { clusterByRootCause } from './posture/clustering.js';
 import { demoteUnreachable } from './posture/reachability-filter.js';
@@ -76,6 +78,7 @@ import { scanCrossLangOpenAPI } from './posture/cross-lang-openapi.js';
 import { scanCrossLangGrpc } from './posture/cross-lang-grpc.js';
 import { scanCrossLangGraphql } from './posture/cross-lang-graphql.js';
 import { scanCrossLangOrm } from './posture/cross-lang-orm.js';
+import { scanCrossLangQueues } from './posture/cross-lang-queues.js';
 import { scanIacReachability } from './posture/iac-reachability.js';
 import { applyPathConstraints } from './posture/path-predicates.js';
 // Phase 3 (Sentinel-parity Layer 1 + 2) — IR + interprocedural taint engine.
@@ -6844,8 +6847,15 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   try { finalFindings = clusterByRootCause(finalFindings); } catch(_) {}
   try { demoteUnreachable(finalFindings, { routes: aR }); } catch(_) {}
   try { annotateConfidence(finalFindings); } catch(_) {}
+  // Phase-1 next-gen P1.3 (FR-UX-1, FR-UX-2): Brier-calibrated probability +
+  // 95% Wilson CI from per-family historical TP/FP. Falls back to null with
+  // an explicit `calibration_reason` when N is below the calibration floor.
+  try { annotateCalibratedConfidence(finalFindings, { scanRoot }); } catch(_) {}
   const _projectCtx = (() => { try { return detectProjectContext(fc, aR); } catch { return {}; } })();
   try { annotateExploitability(finalFindings, _projectCtx); } catch(_) {}
+  // Phase-1 next-gen P1.1 (FR-VER-2): attach a runnable PoC to each finding
+  // when a CWE template covers it. Findings without coverage get f.poc=null.
+  try { annotatePocs(finalFindings, { routes: aR }); } catch(_) {}
   // Cross-language taint (Sentinel-parity FR-DET-3) — five boundary types:
   // HTTP/REST via OpenAPI, gRPC via .proto, GraphQL via SDL, SQL/ORM
   // round-trip, and IaC → application-code reachability (FR-DET-4).
@@ -6864,6 +6874,12 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   } catch(_) {}
   try {
     const xl = scanCrossLangOrm(_allXlangFiles, finalFindings);
+    if (xl && xl.length) finalFindings.push(...xl);
+  } catch(_) {}
+  // Phase-1 next-gen P1.5 (FR-XSAT-4): cross-language taint via Kafka, SQS,
+  // RabbitMQ, Redis streams, and Google Pub/Sub topics.
+  try {
+    const xl = scanCrossLangQueues(_allXlangFiles, finalFindings);
     if (xl && xl.length) finalFindings.push(...xl);
   } catch(_) {}
   try {

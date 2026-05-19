@@ -75,6 +75,24 @@ export function normalizeFindings(scan){
       _unsigned: f._unsigned === true,
       _passThroughSigning: f._passThroughSigning === true,
       signatureStatus: f._passThroughSigning ? 'pass-through' : (f._unsigned ? 'unsigned' : 'verified'),
+      // Phase-1 next-gen P1.1 (FR-VER-2): generated PoC, or null if the CWE
+      // family has no template in v1. `poc.code` is the runnable script;
+      // `poc.runHint` is the suggested invocation (e.g. `node poc.mjs`).
+      poc: f.poc && typeof f.poc === 'object' ? {
+        lang: f.poc.lang || null,
+        kind: f.poc.kind || null,
+        cwe: f.poc.cwe || null,
+        family: f.poc.family || null,
+        runHint: f.poc.runHint || null,
+        code: typeof f.poc.code === 'string' ? f.poc.code : null,
+      } : null,
+      // Phase-1 next-gen P1.3 (FR-UX-1, FR-UX-2): calibrated probability +
+      // 95% Wilson CI + sample size. Null when N < MIN_SAMPLES_FOR_CALIBRATION
+      // for this family; `calibration_reason` explains why.
+      calibrated_confidence: typeof f.calibrated_confidence === 'number' ? f.calibrated_confidence : null,
+      calibrated_confidence_ci: Array.isArray(f.calibrated_confidence_ci) ? f.calibrated_confidence_ci : null,
+      calibrated_n: typeof f.calibrated_n === 'number' ? f.calibrated_n : 0,
+      calibration_reason: f.calibration_reason || null,
     });
   }
   for (const s of (scan.secrets||[])) {

@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.49.0 — next-gen SAST Phase 1 (3 of 5 units)
+
+Implements 3 of the 5 Phase-1 shippable units from
+`docs/PRD-next-gen-sast-phase1.md` (parent `docs/PRD-next-gen-sast.md`).
+The two queued for the next session are noted at the end.
+
+### Shipped & wired
+
+- **P1.1 — PoC generator framework (FR-VER-2).** New module
+  `scanner/src/posture/poc-generator.js` ships runnable proof-of-concept
+  files for the top-10 CWE families from the parent PRD: SQL injection,
+  command injection, XSS, path traversal, SSRF, code injection, CSRF, open
+  redirect, XXE, and insecure deserialization. Each PoC is a self-contained
+  Node script with one `fetch()` call, evidence-pattern detection, and a
+  deterministic exit code (0 = exploit demonstrated, 1 = not demonstrated, 2
+  = error). Templates respect a safety policy: no destructive shell commands,
+  no real cloud-metadata IPs, no outbound network beyond localhost. Smoke:
+  scanning `test/fixtures/vulnerable-js` produces 8 PoCs across 6 distinct
+  CWE families. Findings get a new `f.poc = { lang, kind, cwe, family, runHint, code }`
+  field surfaced in normalizeFindings and SARIF. Families without v1 template
+  coverage get `f.poc = null` and a documented entry in
+  `poc-cwe-map.js::NO_POC_FAMILIES`.
+- **P1.3 — Brier-calibrated confidence (FR-UX-1, FR-UX-2).** New module
+  `scanner/src/posture/calibration.js` turns the ordinal `confidence` score
+  into a calibrated probability with 95% Wilson confidence interval. Per
+  finding: `calibrated_confidence`, `calibrated_confidence_ci`,
+  `calibrated_n`, `calibration_reason` (set when null — "insufficient-samples"
+  / "no-family" / "no-history"). Seed corpus in
+  `calibration-seed.json` covers 20 vuln families from the OWASP Benchmark +
+  Juliet labeled runs; the customer's `.agentic-security/validator-metrics.json`
+  overrides per-family when sample count is higher. Calibration is honest
+  about uncertainty: `MIN_SAMPLES_FOR_CALIBRATION = 30`. The PRD G1 target
+  (Brier ≤ 0.10 on a held-out labeled set) is queued for Phase 5; this ships
+  the framework, the math, and the seed data.
+- **P1.5 — Cross-language message queues (FR-XSAT-4).** New module
+  `scanner/src/posture/cross-lang-queues.js` indexes producer and consumer
+  call sites for Kafka (kafkajs, kafka-clients, confluent-kafka), AWS SQS
+  (aws-sdk, boto3), RabbitMQ (amqplib, pika, Spring `RabbitTemplate`), Redis
+  Streams (XADD / XREAD across Node, Python, Go), and Google Pub/Sub. When
+  producer and consumer agree on a topic name and the consumer file has a
+  high+ finding, we emit a `cross_language: true` chain back to the producer
+  (and vice-versa). Severity is demoted one tier so the chain doesn't double-
+  count in severity bucketing. Honest about uncertainty: only literal-string
+  topic matches; constant-folded names left for Phase 2.
+
+### Tests, bench, integrity
+
+- 14 new tests in `test/poc-generator.test.js` (PoC coverage + safety).
+- 9 new tests in `test/cross-lang-queues.test.js`.
+- 14 new tests in `test/calibration.test.js` (Wilson + Brier + annotation).
+- All 199 + 26 + 2 unit tests pass.
+- Synthetic-bench F1 still 100%.
+- No new dead exports; `test/no-dead-modules.test.js` both subtests pass.
+
+### Queued for next session
+
+- **P1.2 — Verifier sandbox loop (FR-VER-3, FR-VER-6, FR-VER-7).** Needs
+  Docker integration, network isolation, and a sandbox-escape test. The PoC
+  generator already produces files; the verifier executes them in isolation.
+- **P1.4 — Cross-language polyglot benchmark (G3).** Needs fixture builds
+  across Node → Python → Java → Postgres. Measures the cross-asset claims
+  we've now made for HTTP/gRPC/GraphQL/ORM/IaC/Queues.
+
+### Honesty correction
+
+The parent PRD claimed v1.0.0 ships at ~15 months. This release is one
+session of work; we're at ~v0.49.0 on a path to v0.50.0 (Phase-1 release).
+The PRD's G1 (Brier ≤ 0.10 on a held-out set) is not yet measured — the
+shipped calibration is on the SEED corpus, which is by definition not held
+out. We surface this in the `_caveat` field of `calibration-seed.json`.
+
 ## 0.48.0 — fourth-round premortem + CI bench failure
 
 ### Bench regression fix

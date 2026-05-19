@@ -10,6 +10,7 @@ scanner/node_modules/
 scanner/dist/*
 !scanner/dist/agentic-security.mjs
 !scanner/dist/agentic-security.mjs.sha256
+!scanner/dist/calibration-seed.json
 # Ignore all .agentic-security/ dirs at any depth. For the root one,
 # ignore all contents but un-ignore the config files that belong in VCS.
 **/.agentic-security/
