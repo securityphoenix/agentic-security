@@ -64,6 +64,13 @@ Commands:
   rule-synth [--dry-run]       Auto-synthesise suppression rules from repeated FP verdicts (proposes — does not activate)
   version                      Print version
   banner [--full]              Print the Patch-the-frog mascot + brand lockup
+  harness [path] [--include-home]   Multi-harness config audit: scans .claude/,
+                               .cursor/, .codex/, .gemini/, .kiro/, .opencode/,
+                               .trae/, .qwen/, .zed/, .continue/, .aider/ at the
+                               project root. --include-home also sweeps ~/.
+  scan-baseline --current <f> --previous <f>
+                               Finding-level diff between two scan JSON outputs.
+                               Reports added / removed / changed findings.
 
 Options:
   --profile vibecoder|pro      Override profile for this run
@@ -130,7 +137,7 @@ function printBanner(args) {
     BOLD:  '\x1b[1m',
     RESET: '\x1b[0m',
   } : { FROG:'', DEEP:'', CREAM:'', DIM:'', BOLD:'', RESET:'' };
-  const v = '0.55.0';
+  const v = '0.56.0';
   const compact = !args.flags.full;
   if (compact) {
     const lines = [
@@ -794,6 +801,104 @@ async function cmdRules(args) {
 
 // `agentic-security secure [--launch]` — smart router. One command picks the
 // right next step based on project state.
+// `agentic-security harness [path] [--include-home] [--format ...]`
+// Multi-harness sweep — discovers .claude/ .cursor/ .codex/ .gemini/ .kiro/
+// .opencode/ .trae/ .qwen/ etc. at the project root (and optionally under ~/)
+// and runs the harness-config detectors directly on each file. Bypasses
+// runScan's shouldScan filter (which excludes .json / .md by default) so
+// the harness-config files actually get inspected.
+async function cmdHarness(args) {
+  const root = path.resolve(args._[1] || '.');
+  const includeHome = !!args.flags['include-home'];
+  const { discoverHarnessConfigs, summarizeHarnessPresence } = await import('../src/posture/harness-discovery.js');
+  const { scanClaudeSettings } = await import('../src/sast/claude-settings.js');
+  const { scanClaudeMdPromptInjection } = await import('../src/sast/claude-md-prompt-injection.js');
+  const { scanClaudeHookInjection } = await import('../src/sast/claude-hook-injection.js');
+  const { scanMCP } = await import('../src/sast/mcp-audit.js');
+  const { scanCredentials } = await import('../src/secrets/index.js');
+
+  const fileContents = await discoverHarnessConfigs(root, { includeHome });
+  const present = summarizeHarnessPresence(fileContents);
+  const fileCount = Object.keys(fileContents).length;
+  process.stderr.write(`[harness] discovered harnesses: ${present.length ? present.join(', ') : '(none found)'}\n`);
+  process.stderr.write(`[harness] scanning ${fileCount} config file(s)${includeHome ? ' (incl. ~/)' : ''}\n`);
+  if (fileCount === 0) {
+    process.stdout.write('No harness configuration files found.\n');
+    return 0;
+  }
+
+  const findings = [];
+  const secrets = [];
+  for (const [fp, content] of Object.entries(fileContents)) {
+    try { findings.push(...scanClaudeSettings(fp, content)); } catch {}
+    try { findings.push(...scanClaudeMdPromptInjection(fp, content)); } catch {}
+    try { findings.push(...scanClaudeHookInjection(fp, content)); } catch {}
+    try { findings.push(...scanMCP(fp, content)); } catch {}
+    try { secrets.push(...scanCredentials(fp, content)); } catch {}
+  }
+
+  // Annotate each finding with a stable id and confidence default so the
+  // ship verdict has something to render.
+  for (const f of findings) {
+    if (!f.confidence) f.confidence = 0.9;
+  }
+
+  const scan = {
+    findings,
+    secrets,
+    logicVulns: [],
+    supplyChain: [],
+    routes: [],
+    components: [],
+    suppressions: [],
+    filesScanned: fileCount,
+    fc: fileContents,
+  };
+  const meta = { startedAt: new Date().toISOString(), durationMs: 0, mode: 'harness' };
+
+  const format = args.flags.format || 'cli';
+  let body;
+  if (format === 'json') body = JSON.stringify(toJSON(scan, meta), null, 2);
+  else if (format === 'sarif') body = JSON.stringify(toSARIF(scan, meta), null, 2);
+  else if (format === 'md' || format === 'markdown') body = toMarkdown(scan, meta);
+  else if (format === 'ship') body = toShipVerdict(scan, { profile: { profile: 'vibecoder', confidenceMin: 0 } });
+  else body = toCLIByProfile(scan, { profile: { profile: 'pro', confidenceMin: 0 } });
+  // Append a one-line harness-presence footer to CLI output.
+  if ((format === 'cli' || format === 'ship') && present.length) {
+    body += `\n\nHarnesses discovered: ${present.join(', ')}${includeHome ? ' (project + ~/)' : ' (project only)'}\n`;
+  }
+  if (args.flags.output) await fsp.writeFile(args.flags.output, body);
+  else process.stdout.write(body + '\n');
+  return exitCodeFor(scan);
+}
+
+// `agentic-security scan-baseline --previous a.json --current b.json [--format cli|json]`
+// Finding-level diff between two scan JSON outputs. Independent of scanner
+// version (use the dedicated `agentic-security-diff` bin for that).
+async function cmdScanBaseline(args) {
+  const prevPath = args.flags.previous;
+  const currPath = args.flags.current;
+  if (!prevPath || !currPath) {
+    console.error('Usage: agentic-security scan-baseline --previous <a.json> --current <b.json> [--format cli|json]');
+    return 2;
+  }
+  let prev, curr;
+  try { prev = JSON.parse(fs.readFileSync(prevPath, 'utf8')); }
+  catch (e) { console.error(`Cannot read previous scan: ${e.message}`); return 2; }
+  try { curr = JSON.parse(fs.readFileSync(currPath, 'utf8')); }
+  catch (e) { console.error(`Cannot read current scan: ${e.message}`); return 2; }
+  const { diffScans, renderDiff } = await import('../src/posture/baseline-compare.js');
+  const diff = diffScans(prev, curr);
+  if (args.flags.format === 'json') {
+    process.stdout.write(JSON.stringify({ summary: { added: diff.added.length, removed: diff.removed.length, changed: diff.changed.length, unchanged: diff.unchanged }, diff }, null, 2));
+  } else {
+    process.stdout.write(renderDiff(diff));
+  }
+  // Exit 0 if no delta, 1 if delta — useful for CI gating.
+  const hasDelta = diff.added.length || diff.removed.length || diff.changed.length;
+  return hasDelta ? 1 : 0;
+}
+
 async function cmdSecure(args) {
   const scanRoot = path.resolve(args._[1] || '.');
   const intent = args.flags.launch ? 'launch' : (args.flags.deploy ? 'deploy' : null);
@@ -1409,8 +1514,10 @@ async function main() {
         runStdio({ sessionRoot: path.resolve(root) });
         return;
       }
-      case 'version':  console.log('agentic-security 0.55.0  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.56.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'banner':   { printBanner(args); process.exit(0); }
+      case 'harness':  process.exit(await cmdHarness(args));
+      case 'scan-baseline': process.exit(await cmdScanBaseline(args));
       case 'help': case '--help': case '-h': case undefined:
         console.log(USAGE); process.exit(cmd ? 0 : 1);
       default:

@@ -841,6 +841,53 @@ function _sevToEmoji(sev) {
   return { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵', info: '⚪' }[sev] || '•';
 }
 
+// Per-category 0..100 score (Secrets / Permissions / Hooks / MCP / Agents).
+// Each category starts at 100 and loses points by category-weighted severity.
+// Used by the ship verdict to show a graded breakdown alongside the verdict.
+export function categoryScores(findings) {
+  const cats = {
+    Secrets:     { score: 100, hits: 0 },
+    Permissions: { score: 100, hits: 0 },
+    Hooks:       { score: 100, hits: 0 },
+    MCP:         { score: 100, hits: 0 },
+    Agents:      { score: 100, hits: 0 },
+  };
+  const weight = { critical: 25, high: 15, medium: 6, low: 2, info: 0 };
+  const classify = (f) => {
+    const fam = String(f.family || '').toLowerCase();
+    const vuln = String(f.vuln || '').toLowerCase();
+    if (fam.includes('harness-config-secrets') || fam.includes('hardcoded') || /\bsecret\b|\bcredential\b|\bapi[-_ ]?key\b|\btoken\b/.test(vuln)) return 'Secrets';
+    if (fam.includes('harness-config-permissions') || /\ballow.list\b|\bdeny.list\b|\bpermission\b|\bdangerouslySkipPermissions\b/i.test(vuln)) return 'Permissions';
+    if (fam.includes('hook-command-injection') || /\bhook\b/i.test(vuln)) return 'Hooks';
+    if (fam.includes('mcp') || /\bmcp\b/i.test(vuln)) return 'MCP';
+    if (fam.includes('agent') || fam.includes('prompt-injection') || /\bagent\b|\bprompt[-\s]?injection\b/i.test(vuln)) return 'Agents';
+    return null;
+  };
+  for (const f of findings) {
+    const cat = classify(f);
+    if (!cat) continue;
+    const w = weight[(f.severity || 'low').toLowerCase()] ?? 2;
+    cats[cat].score = Math.max(0, cats[cat].score - w);
+    cats[cat].hits += 1;
+  }
+  return cats;
+}
+
+function _renderCategoryBars(cats, color) {
+  const c = (s, code) => color ? `${code}${s}${RESET}` : s;
+  const BAR_W = 20;
+  const lines = [];
+  for (const [name, info] of Object.entries(cats)) {
+    if (info.hits === 0 && info.score === 100) continue;          // skip uncontributed categories in compact mode
+    const filled = Math.round((info.score / 100) * BAR_W);
+    const empty = BAR_W - filled;
+    const tier = info.score >= 90 ? SEV_COLOR.low : info.score >= 60 ? '\x1b[33m' : info.score >= 30 ? SEV_COLOR.high : SEV_COLOR.critical;
+    const bar = c('█'.repeat(filled), tier) + c('░'.repeat(empty), DIM);
+    lines.push(`  ${name.padEnd(14)} ${bar} ${String(info.score).padStart(3)}  ${c(`(${info.hits} finding${info.hits === 1 ? '' : 's'})`, DIM)}`);
+  }
+  return lines;
+}
+
 export function toShipVerdict(scan, options = {}) {
   const profile = options.profile || { confidenceMin: CONF_DEFAULT_VIB, showTaxonomy: false };
   const color = options.color !== false;
@@ -852,6 +899,7 @@ export function toShipVerdict(scan, options = {}) {
   for (const f of findings) sev[f.severity] = (sev[f.severity] || 0) + 1;
   const kevCount = findings.filter(f => f.kev === true).length;
   const confirmedCount = findings.filter(f => f.validated === true || f.confirmed === true).length;
+  const cats = categoryScores(findings);
 
   const lines = [];
   const bar = '─────────────────────────────────────────';
@@ -865,6 +913,15 @@ export function toShipVerdict(scan, options = {}) {
   }
   lines.push(bar);
   lines.push(`  • ${sev.critical} critical · ${sev.high} high · ${advisoryCount} advisory`);
+  // Per-category 0..100 score bars — Secrets / Permissions / Hooks / MCP / Agents.
+  // Only render when at least one category has been contributed to (skip the
+  // 100/100/100/100/100 baseline on pure application-code scans).
+  const hasCategoryFindings = Object.values(cats).some(c => c.hits > 0);
+  if (hasCategoryFindings) {
+    lines.push('');
+    lines.push(c('  Category breakdown', BOLD));
+    for (const ln of _renderCategoryBars(cats, color)) lines.push(ln);
+  }
   // KEV: surface "being exploited now" — more visceral than $-cost framing alone.
   // Only show when at least one finding is in CISA KEV (known-exploited).
   if (kevCount > 0) {

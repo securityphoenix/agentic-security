@@ -21,7 +21,7 @@ EXTRA=""
 PASSTHROUGH=""
 for arg in "$@"; do
   case "$arg" in
-    --all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff|--uncommitted|--concurrency|--spec-drift) FLAG="$arg" ;;
+    --all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff|--uncommitted|--concurrency|--spec-drift|--harness) FLAG="$arg" ;;
     --exposed-only|--mitigated-only|--unreachable-only|\
     --show-personas|--show-bounty|--show-playbook|--show-spof|\
     --show-trust-boundary|--show-threat-model|--show-drift|--firehose|--honest)
@@ -46,6 +46,13 @@ case "$FLAG" in
     ec=$?; [ $ec -le 3 ] && exit 0 || exit $ec ;;
   --mcp)
     node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs scan "$PATH_ARG" --format cli $PASSTHROUGH
+    ec=$?; [ $ec -le 3 ] && exit 0 || exit $ec ;;
+  --harness)
+    # Multi-harness sweep: audit .claude/.cursor/.codex/.gemini/.kiro/...
+    # config files at the project root. Add --include-home to also sweep ~/.
+    INCLUDE_HOME=""
+    case " $@ " in *" --include-home "*) INCLUDE_HOME="--include-home" ;; esac
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs harness "$PATH_ARG" $INCLUDE_HOME
     ec=$?; [ $ec -le 3 ] && exit 0 || exit $ec ;;
   --concurrency)
     # v3 next-gen: surface only concurrency-bug family findings.
@@ -164,6 +171,8 @@ esac
 **`/scan --concurrency`** *(v3)* — Surface only concurrency-bug findings: missed unlocks, unguarded locks on early-return paths, fire-and-forget async, 2-lock deadlock cycles. Covers Go (`sync.Mutex`, channels), Java (`synchronized`, `Lock`), JS/TS (workers, promises), and Python (`asyncio.Lock`, `with`).
 
 **`/scan --spec-drift`** *(v3)* — Surface only specification-drift findings: functions whose names claim a behavior the body doesn't deliver (e.g., `validateOwnership()` whose body never references `req.user.id`). Catches the bug class no pattern matcher reaches.
+
+**`/scan --harness [--include-home]`** *(v4)* — Multi-harness configuration audit. Scans `.claude/`, `.cursor/`, `.codex/`, `.gemini/`, `.kiro/`, `.opencode/`, `.trae/`, `.qwen/`, `.zed/`, `.continue/`, `.aider/` at the project root. Catches: `Bash(*)` allow-rules, missing deny-lists, `dangerouslySkipPermissions` flags, hardcoded API keys in `CLAUDE.md` / `AGENTS.md`, prompt-injection / auto-run directives in instruction files, `${file}` / `${args}` interpolation in shell hooks, silent-error-suppression in security hooks, outbound HTTP from hooks. Add `--include-home` to also sweep `~/.claude/`, `~/.cursor/`, etc. for org-level hygiene.
 
 ## v3 production-aware filters
 
