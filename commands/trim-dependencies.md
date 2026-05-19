@@ -1,22 +1,24 @@
 ---
-description: Find and remove installed dependencies that are never imported in source code — reduces attack surface and package bloat.
-argument-hint: "[path] [--dry-run] [--include-dev] [--apply]"
+description: Find and remove installed dependencies that are never imported in source code — reduces attack surface and package bloat. Pass --include-dead-code to also surface unused source code (exports, files, wrapper functions) via /trim-dead-code.
+argument-hint: "[path] [--dry-run] [--include-dev] [--include-dead-code] [--apply]"
 ---
 
-Identify installed packages that are never imported anywhere in source code, measure their on-disk footprint, surface any CVEs they carry, and generate removal commands.
+Identify installed packages that are never imported anywhere in source code, measure their on-disk footprint, surface any CVEs they carry, and generate removal commands. With `--include-dead-code`, the report is interleaved with unused source-code findings (unused exports, unused files, wrapper functions) so a single pass cleans up both dependency bloat AND code bloat.
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null || true
 PATH_ARG="."
 DRY_RUN=false
 INCLUDE_DEV=false
+INCLUDE_DEAD_CODE=false
 APPLY=false
 
 for arg in "$@"; do
   case "$arg" in
-    --dry-run)     DRY_RUN=true ;;
-    --include-dev) INCLUDE_DEV=true ;;
-    --apply)       APPLY=true ;;
+    --dry-run)            DRY_RUN=true ;;
+    --include-dev)        INCLUDE_DEV=true ;;
+    --include-dead-code)  INCLUDE_DEAD_CODE=true ;;
+    --apply)              APPLY=true ;;
     -*) ;;
     *) PATH_ARG="$arg" ;;
   esac
@@ -25,7 +27,48 @@ done
 node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs scan "$PATH_ARG" \
   --format json \
   --output .agentic-security/last-scan.json
-```
+
+# Optional dead-code pass — uses the same IR + dynamic-ref filter as /trim-dead-code.
+if [ "$INCLUDE_DEAD_CODE" = "true" ]; then
+  echo ""
+  echo "── Dead-code pass (--include-dead-code) ──"
+  node --input-type=module -e "
+  import { scanDeadCode, groupByTier } from '${CLAUDE_PLUGIN_ROOT}/scanner/src/posture/dead-code.js';
+  import { buildProjectIR } from '${CLAUDE_PLUGIN_ROOT}/scanner/src/ir/index.js';
+  import * as fs from 'node:fs';
+  import * as path from 'node:path';
+  const root = path.resolve('${PATH_ARG}');
+  function walk(dir, out = new Map()) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name.startsWith('.')) continue;
+        if (/^(node_modules|dist|build|coverage|__pycache__|target|vendor|fixtures|benchmarks|samples|examples|__fixtures__|__snapshots__)$/.test(e.name)) continue;
+        walk(p, out);
+      } else if (e.isFile() && /\\.(js|ts|jsx|tsx|mjs|cjs)$/.test(e.name)) {
+        try { out.set(path.relative(root, p), fs.readFileSync(p, 'utf8')); } catch {}
+      }
+    }
+    return out;
+  }
+  const fc = walk(root);
+  const { callGraph: cg } = buildProjectIR(Object.fromEntries(fc));
+  const dead = scanDeadCode(root, { callgraph: cg, fileContents: fc });
+  const g = groupByTier(dead);
+  console.log('  SAFE:    ' + g.safe.length + '  (clear to delete)');
+  console.log('  CAUTION: ' + g.caution.length + '  (needs review — dynamic ref or public API)');
+  console.log('  DANGER:  ' + g.danger.length + '  (entry point or framework callback)');
+  if (g.safe.length) {
+    console.log('');
+    console.log('  Top SAFE-tier items:');
+    for (const f of g.safe.slice(0, 10)) {
+      console.log('    ' + f.kind + '  ' + (f.name || '') + '  →  ' + f.file + ':' + f.line);
+    }
+    console.log('');
+    console.log('  Run /trim-dead-code --apply to clean these up via the refactor-cleaner agent.');
+  }
+  " 2>&1
+fi
 
 After the scan completes:
 

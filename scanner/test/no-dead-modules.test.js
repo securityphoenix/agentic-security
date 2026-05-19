@@ -90,6 +90,11 @@ const ALLOWLIST = new Set([
   // Phase-8 — numeric-domain lattice ordering. Standard lattice API; future
   // widening operators will need it. Kept for API symmetry.
   'numeric-domain.js::leq',
+  // dead-code: runExternalDeadCodeTool is the extension point for shelling
+  // out to a specific language native tool (vulture/deadcode/cargo-udeps).
+  // Called internally by scanDeadCode; kept exported so /trim-dead-code can
+  // force a specific tool in --language mode.
+  'dead-code.js::runExternalDeadCodeTool',
 ]);
 
 function listJsFiles(dir) {
