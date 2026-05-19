@@ -1,5 +1,5 @@
 ---
-description: Pre-incident archaeology — given a finding, walks git history to answer "when did this codebase first become vulnerable to this?" Essential for post-mortems, root-cause analysis, and regulatory due-diligence.
+description: Pre-incident archaeology — walks git history to answer "when did this codebase first become vulnerable?"
 argument-hint: "--finding <id-or-stableId> | --cwe <CWE-NNN>"
 ---
 

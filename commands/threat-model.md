@@ -1,5 +1,5 @@
 ---
-description: Auto-derived STRIDE threat model from the last scan — assets, trust boundaries, per-category finding counts, and top findings per attacker objective. Pairs with /personas for attacker-persona ranking.
+description: Auto-derived STRIDE threat model from last scan — assets, trust boundaries, per-category counts, top findings.
 argument-hint: "[--full] [--rebuild]"
 ---
 

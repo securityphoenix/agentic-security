@@ -1,5 +1,5 @@
 ---
-description: Route every Not-Compliant control from /compliance-report to the agentic-security command that closes it, in a deduped/ordered plan. Flags controls that are not patchable by tooling.
+description: Route every Not-Compliant control from /compliance-report to the command that closes it. Ordered, deduped.
 argument-hint: "[nist|asvs|llm] [path] [--json]"
 ---
 

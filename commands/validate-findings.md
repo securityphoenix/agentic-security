@@ -1,6 +1,6 @@
 ---
-description: For a finding the scanner produced from THIS working directory, build a PoC (proof-of-concept) input + a regression test, OPTIONALLY EXECUTE THE TEST to prove the finding is real, and surface a full risk-context bundle. Refuses to operate on findings whose `file` resolves outside the current scan root. Emits PROBABLE_FP when no PoC can be constructed from the local code shape, INDETERMINATE_BY_CLASS for vuln classes the validator cannot reliably prove. Supports batch validation (`--all`), JUnit XML output (`--junit`), and a verdict cache. Intended for pre-remediation validation under authorized security review of code the user owns.
-argument-hint: "<finding-id> | --all [--severity critical|high] [--junit <path>] [--no-execute] [--no-cache]"
+description: Validate a finding: build a PoC + regression test, optionally execute, emit a risk-context bundle. Refuses off-tree.
+argument-hint: "[--finding <id>] [--all] [--junit] [--execute]"
 ---
 
 Build a proof-of-concept (or refusal / FP verdict) for finding `${1}` against code in the **current working directory only**.

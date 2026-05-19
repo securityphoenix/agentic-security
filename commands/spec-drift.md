@@ -1,5 +1,5 @@
 ---
-description: Specification-drift detector — functions whose names claim a behavior the body doesn't deliver. Catches `validateOwnership()` that doesn't check user identity, `sanitize()` that doesn't escape, `verifySignature()` that doesn't verify.
+description: Spec-drift detector — functions whose names claim behavior the body doesn't deliver. validateOwnership(), sanitize().
 argument-hint: "[path]"
 ---
 

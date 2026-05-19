@@ -1,5 +1,5 @@
 ---
-description: Three-agent adversarial review for ONE finding — red team (attack), blue team (hardening), auditor (final verdict). Composes the existing adversary-agent with defender + auditor. Produces a hash-chained transcript trio.
+description: Three-agent review of ONE finding — red (attack) / blue (hardening) / auditor. Hash-chained transcript trio.
 argument-hint: "--finding <id> [--target <url>] [--max-calls 30] [--max-wall-ms 480000]"
 ---
 

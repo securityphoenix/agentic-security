@@ -8,7 +8,7 @@
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.39.2-blue)]()
+[![Version](https://img.shields.io/badge/version-0.62.0-blue)]()
 
 ---
 
@@ -179,7 +179,7 @@ Runs `/scan --all` then immediately `/fix --all --low` — finds and fixes every
 
 **`/agentic-security:scan --uncommitted`** — "what did I just break?" Scans only the files you've changed since your last commit (staged + unstaged + untracked). No git-ref vocabulary, no full-repo wait — same one-screen verdict, scoped to your current edit.
 
-**`/agentic-security:supply-chain-check`** — "is `npm install` safe?" One-screen roll-up across six dep audits (CVE, KEV, pinning, install scripts, vendored code, freshness). Replaces having to remember which of `/dep-pinning`, `/dep-freshness`, `/install-script-audit`, `/vendor-audit`, `/trim-dependencies`, `/dep-alternatives` to run.
+**`/agentic-security:supply-chain-check`** — "is `npm install` safe?" One-screen roll-up across the dep-audit surface (CVE, KEV, pinning, install scripts, vendored code, freshness, alternatives). Pass `--show pinning|freshness|alternatives|install-scripts|vendored` for the per-check view. Replaces the prior six-command surface.
 
 ### Why findings are different here
 

@@ -1,5 +1,5 @@
 ---
-description: Single letter-grade snapshot (A–F) of your project's security posture, with one sentence explaining why and one concrete next action. For non-technical builders.
+description: Single letter-grade (A–F) of your project's security posture, with one explanation + one next action.
 ---
 
 Compute and print a project-wide security letter grade from the last scan.

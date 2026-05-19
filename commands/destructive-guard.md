@@ -1,5 +1,5 @@
 ---
-description: Intercept destructive Bash commands before they run. Catches rm -rf, DROP TABLE, supabase db reset, git push --force to main, curl|bash, chmod 777, aws s3 rm --recursive, docker system prune -a, and 10+ other foot-guns vibe-coders most often regret.
+description: Intercept destructive Bash before it runs. Catches rm -rf, DROP TABLE, supabase db reset, force-push, more.
 argument-hint: "[on | off | warn | block | status]"
 ---
 

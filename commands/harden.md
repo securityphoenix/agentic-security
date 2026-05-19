@@ -1,5 +1,5 @@
 ---
-description: One-command security hardening — automatically applies safe infrastructure fixes to your project (security headers, .gitignore, cookie flags, npm audit hook).
+description: One-command security hardening — safe infra fixes (security headers, .gitignore, cookie flags, npm audit).
 ---
 
 Apply a curated set of safe, automated security improvements to the project. Unlike `/fix` (which patches specific findings), `/harden` proactively adds best-practice scaffolding that isn't a finding yet: security headers, environment protection, and CI hooks.

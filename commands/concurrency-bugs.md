@@ -1,5 +1,5 @@
 ---
-description: Surface concurrency-bug findings — missed unlocks, unguarded locks on early-return paths, fire-and-forget async, 2-lock deadlock cycles. Covers Go, Java, JS/TS, Python.
+description: Surface concurrency bugs — missed unlocks, fire-and-forget async, 2-lock deadlock cycles. Go/Java/JS-TS/Py.
 argument-hint: "[path]"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Test an LLM endpoint against the most-effective known jailbreak families (DAN, base64, role-play, authority-claim, hypothetical-framing, multilingual, chained-context). Quick yes/no per family.
+description: Test an LLM endpoint against known jailbreak families (DAN, base64, role-play, authority, multilingual).
 argument-hint: "--endpoint URL [--api-key KEY] [--families dan,base64,role-play,authority,hypothetical,multilingual,chained]"
 ---
 

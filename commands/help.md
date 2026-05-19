@@ -1,5 +1,5 @@
 ---
-description: List every agentic-security command, ICP-segmented (Vibecoder lane / Pro lane / Both). For builders or security engineers — pick the lane that matches what you do all day.
+description: List every command, ICP-segmented (Vibecoder / Pro / Both). Pick the lane that matches your role.
 ---
 
 Print the full agentic-security command catalog, segmented by ICP.
@@ -38,9 +38,9 @@ fixes, and bodyguards that prevent foot-guns BEFORE they hit production.
     /risk-in-dollars           Each finding's $ exposure (best/likely/worst)
 
   Understand it
-    /story-explain             4-act attack story (vibecoder default)
-    /attack-surface            3-5 realistic attack scenarios as narrative
     /explain                   Plain-English explanation of one finding
+    /explain --narrative       4-act attack story (was /story-explain)
+    /attack-surface            3-5 realistic attack scenarios as narrative
 
   Bodyguards (set once, run forever)
     /ai-bodyguard              Intercept insecure AI code BEFORE it hits disk
@@ -49,8 +49,8 @@ fixes, and bodyguards that prevent foot-guns BEFORE they hit production.
     /cve-alerts                Daily Slack/Discord ping on new CVE in your deps
 
   Secrets (the panic button)
-    /rotate-key-auto           Revokes + scrubs + pushes replacement
     /rotate-secret             Provider-aware rotation guide
+    /rotate-secret --auto      Revoke + scrub + push replacement (was /rotate-key-auto)
     /vault-wizard              Migrate .env to Doppler / Infisical / platform
 
   Stack-specific
@@ -68,9 +68,9 @@ fixes, and bodyguards that prevent foot-guns BEFORE they hit production.
     /launch-check              10 things builders typically miss
 
   Customer / investor artifacts
-    /security-badge            Shields.io badge + posture paragraph
-    /security-onepager         "How we keep your data safe" PDF-ready
-    /trust-page                /.well-known/security.txt + /security page
+    /security-attestation                    Default: README badge (was /security-badge)
+    /security-attestation --format onepager  "How we keep your data safe" doc (was /security-onepager)
+    /security-attestation --format page      /.well-known/security.txt + /security page (was /trust-page)
     /privacy-docs              PRIVACY.md + cookie banner from your stack
     /disaster-playbook         DISASTER.md with the commands you'll need
     /social-media              X / LinkedIn / Discord posts about progress
@@ -126,8 +126,8 @@ you already run, customization, and audit-defensible output.
     /compliance-report [nist|asvs|llm]   Auditor-ready attestation
 
   Pro framing of dual-ICP commands
-    /story-explain --post-mortem   Past-tense narrative for incident write-ups
-    /rotate-key-auto --scrub-history   git filter-repo / BFG history rewrite
+    /explain --narrative --post-mortem    Past-tense narrative for incident write-ups
+    /rotate-secret --auto --scrub-history git filter-repo / BFG history rewrite
 
   LLM red-teaming
     /llm-redteam               30+ adversarial prompts × 7 mutations
@@ -168,18 +168,43 @@ The v3 PRD additions. These read .agentic-security/last-scan.json — run /scan 
 ═══════════════════════════════════════════════════════════════
 
   Dependency depth
-    /supply-chain-check        Roll-up verdict across six dep audits
-    /dep-pinning               Loose ranges (^, ~, *) allowing silent injection
-    /dep-freshness             Score how stale your direct deps are
-    /install-script-audit      postinstall / preinstall hooks
-    /vendor-audit              Copy-pasted third-party code (invisible to SCA)
-    /trim-dependencies         Installed but never imported
-    /dep-alternatives          Lighter / safer replacements
+    /supply-chain-check                       Roll-up verdict across six dep audits
+    /supply-chain-check --show pinning        Was /dep-pinning
+    /supply-chain-check --show freshness      Was /dep-freshness
+    /supply-chain-check --show alternatives   Was /dep-alternatives
+    /install-script-audit                     postinstall / preinstall hooks
+    /vendor-audit                             Copy-pasted third-party code (invisible to SCA)
+    /trim                                     deps + dead code in one pass (was /trim-dependencies + /trim-dead-code)
+    /trim --what deps                         deps only
+    /trim --what code                         dead code only
+
+  CI integration
+    /ci-gate                                  GitHub Actions workflow + SARIF upload
+    /ci-gate --provider gitlab|circleci|buildkite|jenkins   Other providers (was /ci-gate-multi)
 
   Project meta
     /status                    Plugin & project health snapshot
     /help                      This command
     /find-and-fix-everything   The "I have 10 min" mode
+
+═══════════════════════════════════════════════════════════════
+🪦 RENAMED / MERGED COMMANDS
+═══════════════════════════════════════════════════════════════
+Eleven commands have been folded into their canonical forms. The old slashes
+still work for one release as deprecated aliases so muscle memory doesn't
+break — but the lines above use the new forms.
+
+  /ci-gate-multi      →  /ci-gate --provider <name>
+  /rotate-key-auto    →  /rotate-secret --auto
+  /trim-dead-code     →  /trim --what code
+  /trim-dependencies  →  /trim --what deps (or just /trim for both)
+  /story-explain      →  /explain --narrative
+  /security-badge     →  /security-attestation                       (default)
+  /security-onepager  →  /security-attestation --format onepager
+  /trust-page         →  /security-attestation --format page
+  /dep-pinning        →  /supply-chain-check --show pinning
+  /dep-freshness      →  /supply-chain-check --show freshness
+  /dep-alternatives   →  /supply-chain-check --show alternatives
 
 USAGE NOTES
   - Every command works as /agentic-security:<name> too (the long form).

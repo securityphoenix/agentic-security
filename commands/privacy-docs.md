@@ -1,5 +1,5 @@
 ---
-description: Generate a privacy policy template + cookie consent banner from YOUR actual stack. Detects every third-party data processor in your dependencies (Stripe, Supabase, Clerk, PostHog, Sentry, OpenAI, ...) and emits a tailored PRIVACY.md plus an optional React consent component.
+description: Generate a privacy-policy template + cookie banner from YOUR stack. Detects every third-party processor.
 argument-hint: "[--company NAME] [--contact EMAIL] [--jurisdiction EU|US-CA|UK|OTHER] [--generate-banner]"
 ---
 

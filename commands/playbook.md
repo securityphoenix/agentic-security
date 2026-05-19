@@ -1,5 +1,5 @@
 ---
-description: Show pre-built attack playbooks for high+ findings — copy-paste curl one-liners, Nuclei YAML templates, multi-step exploit probes. Every playbook includes an authorized-use ethics header.
+description: Pre-built attack playbooks for high+ findings — curl one-liners, Nuclei templates, multi-step probes.
 argument-hint: "[--finding <id>] [--cwe <cwe>] [--all]"
 ---
 

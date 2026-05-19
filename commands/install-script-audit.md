@@ -1,5 +1,5 @@
 ---
-description: Audit every npm package (direct and transitive) for postinstall/preinstall scripts — the primary supply-chain attack vector in the npm ecosystem.
+description: Audit every npm package (direct + transitive) for postinstall / preinstall scripts — the supply-chain vector.
 argument-hint: "[path] [--transitive] [--json]"
 ---
 

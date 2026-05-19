@@ -1,5 +1,5 @@
 ---
-description: Run the multi-step adversary-agent (FR-ADV-1) — a bounded-budget LLM agent that simulates a real attacker against ONE finding. Produces a hash-chained transcript showing what data was reached, what permissions were obtained, what business actions were performed.
+description: Run the bounded-budget adversary-agent against ONE finding. Produces a hash-chained transcript of the attack run.
 argument-hint: "--finding <id> --target <url> [--max-calls 20] [--max-wall-ms 300000]"
 ---
 

@@ -1,9 +1,32 @@
 ---
-description: Guide for rotating a leaked secret — detects the provider from the key format, lists every file that references it, and gives platform-specific rotation steps. Add --scrub-history to also rewrite git history with git filter-repo / BFG.
-argument-hint: "[secret-value-or-finding-id] [--scrub-history]"
+description: Rotate a leaked secret — guided steps for the detected provider. --auto runs the revoke + scrub end-to-end.
+argument-hint: "[--auto] [--scrub-history]"
 ---
 
 Rotate a leaked secret. Detects which provider the secret belongs to (Stripe, OpenAI, Anthropic, GitHub, Supabase, etc.), finds every file that references it, and gives exact rotation steps for your deployment platform.
+
+## `--auto` — non-guided, end-to-end rotation
+
+Default behavior is **guided** — print the steps for the user to execute. Pass `--auto` to invoke the active rotation script that:
+
+1. Detects the provider from the leaked value's format.
+2. Prints (and optionally executes) the revoke command for that provider.
+3. Scrubs the value from every text file in the repo (with backups under `.agentic-security/rotation-backups/<ts>/`).
+4. Pushes the replacement to your deployment platform's env vars (Vercel/Fly/Railway/Cloudflare/Netlify) when their CLI is installed.
+
+Add `--scrub-history` to also rewrite git history (uses `git filter-repo` or `bfg`).
+
+The `--auto` path shells to the backing Python script that handles the provider matrix:
+
+```bash
+if [ "${1:-}" = "--auto" ] || [ "${2:-}" = "--auto" ]; then
+  # Strip --auto from the arg list and forward the rest.
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rotate-key-auto.py "${@/--auto/}"
+  exit $?
+fi
+```
+
+## Default (guided) path
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null || true

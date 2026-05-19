@@ -1,5 +1,5 @@
 ---
-description: First-time-user walkthrough. Picks ONE real finding from the user's project, explains it in plain English, walks the user through fixing it, and applies the fix together. Reduces "I just installed this and don't know what to do" paralysis.
+description: First-time-user walkthrough. Picks ONE real finding, explains, walks through fixing it together.
 argument-hint: ""
 ---
 

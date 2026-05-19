@@ -1,5 +1,5 @@
 ---
-description: Single-point-of-failure defensive controls — counterfactual analysis of which auth / sanitizer / rate-limit / CSRF middleware, if removed or bypassed, would expose the most high+ findings. Prioritizes hardening BEFORE the attacker tests it.
+description: Single-point-of-failure analysis — which auth / sanitizer / CSRF middleware, if removed, exposes the most.
 argument-hint: "[--threshold <N>]"
 ---
 

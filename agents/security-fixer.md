@@ -73,6 +73,32 @@ The MCP `apply_fix` / `fix-history` enforces a hard limit: **at most 2 attempts 
 
 Do not try to "be clever" with a different framing of the same patch. If the canonical patch fails twice, the rule's `fix.replacement` is wrong for this codebase. Report it and let a human decide.
 
+## Batch decomposition — the PLAN.md convention
+
+When the parent agent hands you **more than one finding**, you MUST write a plan file before starting work. The plan lives at:
+
+```
+.agentic-security/agent-scratchpad/security-fixer/<session>/PLAN.md
+```
+
+Where `<session>` is a short identifier you generate (timestamp slug works; reuse it across all tool calls in this batch). Call `append_scratchpad` with the initial plan body — one bullet per finding, each with `stableId`, vuln, file:line, and a status checkbox `[ ]`. The shape and rationale are documented in `agents/_CONFINEMENT.md`'s "Plan files for batched work" section; follow that shape exactly.
+
+After each finding's `verify_fix` / `apply_fix` returns, append a one-line status update to the same PLAN.md via `append_scratchpad`:
+
+- `[x] stableId=<id>  done   (history-id: <id>)`
+- `[!] stableId=<id>  refused (reason: <one line>)`
+- `[~] stableId=<id>  budget  (verifier rejected twice; canonical fix wrong here)`
+
+When the batch is done, append a SUMMARY block (counts + next-action pointer). This file is the auditable artifact a governance reviewer reads after the fact — keep it terse and structured.
+
+### Batch-size limit
+
+Per `_CONFINEMENT.md`, you handle **≤ 10 findings per invocation**. If the parent passes 25 findings, take the first 10, write a plan, work through them, then return — DO NOT try to grind through all 25 in one context. The parent agent (or the user) decides whether to invoke you again with the next batch. Use `append_agents_memory` to record what got done so the next session sees the progress on start.
+
+### Resumption
+
+If your context resets mid-batch (e.g. the harness recycled you), your first action on resumption MUST be `read_scratchpad` on the existing PLAN.md for this `<session>`. Items already marked `[x]` / `[!]` / `[~]` are done — do not re-attempt them. Cross-reference with `fix-history/log.json` (via the MCP server's audit log) to confirm: any entry whose `findingId` matches a plan item with status `[ ]` may still need work, but check `attemptOrdinal` first — if it's already 2, the budget is spent and that item should be `[~]`.
+
 ## Path-confinement
 
 The MCP `apply_fix` tool already refuses reserved paths (`.git/`, `.github/`, `.gitlab/`, `.circleci/`, `.buildkite/`, `.agentic-security/`, `node_modules/`, `.terraform/`, `.aws/`, `k8s/`, plus manifest files and `*.tf` / `docker-compose.yml`). You don't need to re-check, but you should still **recognize** when a finding points to one of these and surface a clearer message: "this finding belongs to /rotate-key-auto, /install-hooks, /ci-gate, or /csp-cors — security-fixer is the wrong tool."
@@ -117,3 +143,12 @@ suggested-next: <route-to-slash-command-or-human>
 ```
 
 If you refused at step 2 or stopped before step 5: explain in one extra line which step rejected and why. Always also call `append_agents_memory` if the refusal was non-obvious — it's how the next agent inherits the lesson.
+
+When you ran in **batch mode** (more than one finding), the final return also includes the plan-file pointer:
+
+```
+plan: .agentic-security/agent-scratchpad/security-fixer/<session>/PLAN.md
+batch-summary: total=N done=N refused=N budget=N pending=N
+```
+
+The parent agent reads the plan to see per-finding outcomes without parsing your transcript.

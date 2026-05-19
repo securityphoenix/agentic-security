@@ -1,5 +1,5 @@
 ---
-description: Audit environment variable hygiene — NEXT_PUBLIC_ leaks, .env.example with real values, hardcoded fallbacks, and missing .gitignore entries.
+description: Audit env-var hygiene — NEXT_PUBLIC_ leaks, real values in .env.example, hardcoded fallbacks, .gitignore.
 ---
 
 Check environment variable hygiene across the project. Detects client-side exposure of secrets via NEXT_PUBLIC_, real credentials in example env files, hardcoded fallback values in source, and .env files not protected by .gitignore.

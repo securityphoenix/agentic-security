@@ -1,5 +1,5 @@
 ---
-description: Generate copy-paste-ready posts (Twitter/X, LinkedIn, Discord/Slack) about your security progress — current grade, streak, achievements. One command, three formats.
+description: Copy-paste social posts about security progress (Twitter/X, LinkedIn, Discord/Slack). One command, three formats.
 argument-hint: "[twitter|linkedin|discord|recap|all]"
 ---
 

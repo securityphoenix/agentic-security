@@ -1,5 +1,5 @@
 ---
-description: Run a full scan then immediately fix every finding at every severity — the one-command equivalent of /scan --all followed by /fix --all --low.
+description: Full /scan --all then /fix --all --low in one command. The vibecoder "just make it safe" path.
 argument-hint: "[path]"
 ---
 

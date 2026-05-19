@@ -1,5 +1,5 @@
 ---
-description: Platform-specific security checklist for Vercel, Railway, Fly.io, Render, Netlify, and Cloudflare Workers — catches the infra-layer issues code scanners miss.
+description: Platform-specific deploy checklist — Vercel / Railway / Fly.io / Render / Netlify / Cloudflare Workers.
 ---
 
 Run a deployment-platform security audit. Detects your hosting platform from config files and checks for platform-specific issues: missing security headers, public preview deployments, no health checks, missing HTTPS redirect, and more.

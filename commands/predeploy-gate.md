@@ -1,5 +1,5 @@
 ---
-description: Block production deploys (vercel --prod, fly deploy, wrangler publish, netlify deploy --prod, railway up) when critical findings or KEV-listed dependencies are present. Vibe-coders skip CI gates; intercept at the deploy command instead — both in Claude's Bash tool (via destructive-guard) AND in their own terminal (via sourced shell wrapper).
+description: Block production deploys when critical findings or KEV-listed deps are present. Wraps vercel/fly/wrangler.
 argument-hint: "[install | check | status | off]"
 ---
 

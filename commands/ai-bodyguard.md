@@ -1,5 +1,5 @@
 ---
-description: Real-time AI-coding bodyguard. Intercepts insecure code AS THE AI WRITES IT — before it hits disk — with high-precision rules for the bugs vibe-coders most often ship by accident (SQLi via concat, NEXT_PUBLIC_ secrets, dangerouslySetInnerHTML, JWT without verify, Supabase service-role on the client, LLM call with no max_tokens, etc.).
+description: Real-time AI-coding bodyguard. Intercepts insecure code AS the AI writes it, before disk. High-precision rules.
 argument-hint: "[on | off | warn | block | status]"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Generate a plain-English narrative of your app's top attack scenarios — written for builders, not security engineers. No CVE IDs, just stories.
+description: Plain-English narrative of your app's top attack scenarios. Written for builders, not security engineers.
 ---
 
 Synthesise the scan findings into a plain-English threat narrative. Instead of a list of finding IDs, you get 3–5 realistic attack stories: what an attacker does, in what order, and what they walk away with.

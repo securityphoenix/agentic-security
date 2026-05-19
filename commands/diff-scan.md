@@ -1,5 +1,5 @@
 ---
-description: Differential scanner (FR-SDLC-10) — run two versions of the agentic-security scanner side-by-side and report the delta. Catches regressions in the scanner itself and lets you safely preview a scanner upgrade.
+description: Differential scanner — run two scanner versions on the same tree and report the delta. Catches regressions.
 argument-hint: "--baseline <bin-path> --candidate <bin-path> [--root <dir>] [--format cli|json]"
 ---
 

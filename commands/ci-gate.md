@@ -1,9 +1,13 @@
 ---
-description: Generate a GitHub Actions security gate that runs the scanner on every PR and fails the build on critical/high findings.
-argument-hint: "[--severity critical|high|medium] [--comment] [--apply]"
+description: Generate a CI security gate that fails the build on critical/high findings. --provider for non-GitHub CI.
+argument-hint: "[--provider github|gitlab|circleci|buildkite|jenkins] [--apply]"
 ---
 
-Generate a `.github/workflows/security.yml` that integrates the scanner into your CI pipeline. PRs with critical findings fail the build before merge.
+Generate a CI security gate that fails the build on critical/high findings.
+
+Default (no `--provider`): writes `.github/workflows/security.yml` for GitHub Actions.
+
+With `--provider gitlab|circleci|buildkite|jenkins`: writes the matching template from `scripts/ci-templates/`. Auto-detects the provider when the file shape is unambiguous (`.gitlab-ci.yml` present, etc.); pass `--provider` to override.
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null || true
@@ -16,6 +20,55 @@ const args = process.argv.slice(1);
 const severity = args.find(a => /^(critical|high|medium)$/.test(a)) || 'high';
 const shouldApply = args.includes('--apply');
 const addComment = args.includes('--comment');
+
+// Provider dispatch (merged from former /ci-gate-multi).
+const providerExplicit = (args.find(a => a.startsWith('--provider=')) || '').split('=')[1]
+                       || (args.indexOf('--provider') >= 0 ? args[args.indexOf('--provider') + 1] : null);
+const detected = providerExplicit
+  || (fs.existsSync('.gitlab-ci.yml') ? 'gitlab' : null)
+  || (fs.existsSync('.circleci/config.yml') ? 'circleci' : null)
+  || (fs.existsSync('.buildkite/pipeline.yml') ? 'buildkite' : null)
+  || (fs.existsSync('Jenkinsfile') ? 'jenkins' : null)
+  || 'github';
+
+if (detected !== 'github') {
+  const ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.dirname(path.dirname(__filename));
+  const TEMPLATES = {
+    gitlab:   { src: path.join(ROOT, 'scripts/ci-templates/.gitlab-ci.yml'),       dest: '.gitlab-ci.yml',           merge: 'extend existing or include via local:' },
+    circleci: { src: path.join(ROOT, 'scripts/ci-templates/.circleci-config.yml'), dest: '.circleci/config.yml',     merge: 'merge into existing workflows section' },
+    buildkite:{ src: path.join(ROOT, 'scripts/ci-templates/buildkite.yml'),         dest: '.buildkite/pipeline.yml',  merge: 'append to steps:' },
+    jenkins:  { src: path.join(ROOT, 'scripts/ci-templates/Jenkinsfile'),           dest: 'Jenkinsfile',              merge: 'merge stages: into existing pipeline' },
+  };
+  const t = TEMPLATES[detected];
+  if (!t) {
+    console.error('Unknown provider: ' + detected + '. Try: github | gitlab | circleci | buildkite | jenkins');
+    process.exit(2);
+  }
+  const content = fs.readFileSync(t.src, 'utf8');
+  console.log('');
+  console.log(W('Detected provider: ' + detected, '1'));
+  console.log('Target file:  ' + t.dest);
+  console.log('');
+  if (shouldApply) {
+    if (fs.existsSync(t.dest)) {
+      console.log(W('  ⚠  ' + t.dest + ' already exists.', '33'));
+      console.log('  ' + t.merge);
+      console.log('');
+      console.log('  Template content (copy the relevant block):');
+    } else {
+      fs.mkdirSync(path.dirname(t.dest), { recursive: true });
+      fs.writeFileSync(t.dest, content);
+      console.log(W('  ✓  Wrote ' + t.dest, '32'));
+      process.exit(0);
+    }
+  }
+  console.log(content.split('\\n').map(l => '  ' + l).join('\\n'));
+  console.log('');
+  console.log(W('  Pass --apply to write the file (or its template, when one already exists).', '33'));
+  process.exit(0);
+}
+
+// GitHub Actions path (default, preserved from the original /ci-gate body).
 
 // Detect project type
 const pkg = (() => { try { return JSON.parse(fs.readFileSync('package.json','utf8')); } catch { return null; } })();

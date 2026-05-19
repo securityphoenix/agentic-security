@@ -1,5 +1,5 @@
 ---
-description: Post a daily security digest to Slack / Discord / a generic webhook. Tells you what's new since yesterday, what got resolved, and which KEV (known-exploited) packages are in your tree. Designed for indie builders who want async security awareness without opening a dashboard.
+description: Post a daily security digest to Slack / Discord / webhook. Async indie-builder security awareness.
 argument-hint: "[--setup | --slack <url> | --discord <url> | --webhook <url> | --crontab]"
 ---
 

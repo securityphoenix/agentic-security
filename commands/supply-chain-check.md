@@ -1,6 +1,6 @@
 ---
-description: One-screen supply-chain verdict. Rolls up dependency-CVE scan + KEV-listed deps + dep pinning + install-script audit + vendored-code audit + freshness into a single "is npm install safe?" answer. Replaces having to remember six separate /dep-* commands.
-argument-hint: "[path] [--fix] [--strict]"
+description: One-screen supply-chain verdict. Rolls up dep CVE + KEV + pinning + install scripts + vendored code + freshness.
+argument-hint: "[--show pinning|freshness|alternatives|install-scripts|vendored]"
 ---
 
 # Supply-chain check
@@ -14,12 +14,51 @@ node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null 
 PATH_ARG="${1:-.}"
 STRICT=""
 DO_FIX=""
+SHOW=""
 for a in "$@"; do
   case "$a" in
     --strict) STRICT=1 ;;
     --fix)    DO_FIX=1 ;;
+    --show)   NEXT_IS_SHOW=1 ;;
+    --show=*) SHOW="${a#*=}" ;;
+    *)
+      if [ "${NEXT_IS_SHOW:-}" = "1" ]; then SHOW="$a"; unset NEXT_IS_SHOW; fi
+      ;;
   esac
 done
+
+# --show <surface> short-circuits to one per-check view (replaces the former
+# /dep-pinning, /dep-freshness, /dep-alternatives slashes). Each delegates to
+# the corresponding scanner subcommand and exits — no full roll-up.
+case "$SHOW" in
+  pinning)
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs dep-pinning "$PATH_ARG"
+    exit $?
+    ;;
+  freshness)
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs dep-freshness "$PATH_ARG"
+    exit $?
+    ;;
+  alternatives)
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs dep-alternatives "$PATH_ARG"
+    exit $?
+    ;;
+  install-scripts)
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs install-script-audit "$PATH_ARG"
+    exit $?
+    ;;
+  vendored)
+    node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs vendor-audit "$PATH_ARG"
+    exit $?
+    ;;
+  "")
+    # No --show — fall through to the full roll-up.
+    ;;
+  *)
+    echo "supply-chain-check: --show must be one of: pinning | freshness | alternatives | install-scripts | vendored" >&2
+    exit 2
+    ;;
+esac
 
 W() { if [ -t 1 ]; then printf '\033[%sm%s\033[0m' "$2" "$1"; else printf '%s' "$1"; fi; }
 BOLD=1; RED=31; YELLOW=33; GREEN=32; DIM=2; CYAN=36

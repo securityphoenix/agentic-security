@@ -1,5 +1,5 @@
 ---
-description: Deep-audit your auth provider configuration — Clerk, NextAuth, Auth0, Lucia, and generic OAuth for dangerous flags, missing secrets, and CSRF gaps.
+description: Deep-audit your auth provider — Clerk / NextAuth / Auth0 / Lucia / generic OAuth for flags, secrets, CSRF gaps.
 ---
 
 Audit the authentication layer for provider-specific misconfigurations. Covers: dangerous email account linking, trustHost CSRF bypass, missing NEXTAUTH_SECRET, weak session secrets, hardcoded OAuth client secrets, Clerk public route misconfig, and insecure cookie flags.

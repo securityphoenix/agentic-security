@@ -1,5 +1,5 @@
 ---
-description: Predicted bug-bounty USD payouts per finding — what HackerOne / Bugcrowd / Immunefi would likely pay. Sourced from public disclosure data; scaled down for findings already mitigated in production.
+description: Predicted bug-bounty USD per finding (HackerOne / Bugcrowd / Immunefi shape). Scaled down for mitigations.
 argument-hint: "[--top <N>] [--web3]"
 ---
 

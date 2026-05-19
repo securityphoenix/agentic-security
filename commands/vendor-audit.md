@@ -1,5 +1,5 @@
 ---
-description: Find copy-pasted or bundled third-party code vendored directly into the repo — these never receive security updates and are invisible to dependency scanners.
+description: Find copy-pasted / bundled third-party code vendored into the repo. Never updates; invisible to dep scanners.
 argument-hint: "[path] [--json]"
 ---
 

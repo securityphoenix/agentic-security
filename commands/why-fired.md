@@ -1,5 +1,5 @@
 ---
-description: Show the provenance graph for ONE finding — exactly which detector fired, which rule matched, what evidence was present, and which suppressions / mitigations were considered. No black boxes.
+description: Provenance graph for ONE finding — which detector, which rule, what evidence, which suppressions considered.
 argument-hint: "--finding <id-or-stableId>"
 ---
 

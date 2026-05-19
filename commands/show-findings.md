@@ -1,6 +1,6 @@
 ---
-description: Triage findings for false positives then view results. Default (--all) opens an interactive HTML report. Use --kev for weaponized CVEs, --chains for attack chains, or --threat-model [--stride|--llm] for a threat model table.
-argument-hint: "[path] [--all] [--kev] [--chains [--severity critical|high|all]] [--threat-model [--stride|--llm]]"
+description: Triage + view findings. --all opens HTML report; --kev for weaponized CVEs; --chains for attack chains.
+argument-hint: "[--all|--kev|--chains|--threat-model [--stride|--llm]]"
 ---
 
 Triage findings from `.agentic-security/last-scan.json` for false positives, suppress confirmed FPs, then render the requested view.

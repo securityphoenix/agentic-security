@@ -1,5 +1,5 @@
 ---
-description: Generate a security playbook tailored to your exact tech stack — opinionated, copy-paste-ready steps for the libraries you actually use.
+description: Security playbook for your exact stack — opinionated copy-paste steps for the libraries you actually use.
 ---
 
 Detect the project's tech stack and generate a targeted security checklist. Unlike generic security guides, this playbook is specific to the frameworks, ORMs, auth providers, and services this project uses.

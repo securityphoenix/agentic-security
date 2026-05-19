@@ -1,5 +1,5 @@
 ---
-description: Audit LLM/AI app security — user input in system prompts, missing max_tokens, LLM output used as SQL/code, and missing output validation.
+description: Audit LLM/AI app security — user input in system prompts, missing max_tokens, LLM output → SQL / code.
 ---
 
 Deep audit of AI feature security. Covers the four most dangerous gaps in LLM-powered apps: prompt injection via system prompt contamination, cost explosion from missing token caps, second-order injection when model output feeds into SQL/shell, and missing output schema validation.

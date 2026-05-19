@@ -1,5 +1,5 @@
 ---
-description: Remediate security findings. Use --one <id> to patch a single finding, --all to batch-fix by severity, or --pr to bundle fixes into a pull request.
+description: Remediate findings. --one <id> patches one, --all batch-fixes by severity, --pr bundles into a pull request.
 argument-hint: "[--one <finding-id>] | [--all [--critical|--high|--medium|--low]] | [--pr [--severity critical|high|all] [--apply] [--branch <name>]]"
 ---
 

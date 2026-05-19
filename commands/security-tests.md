@@ -1,5 +1,5 @@
 ---
-description: Generate failing security tests for each finding and passing tests that prove fixes work — in your project's test framework.
+description: Generate failing security tests per finding + passing tests that prove the fix. In your project's framework.
 argument-hint: "[--finding <id>] | [--all] | [--critical]"
 ---
 

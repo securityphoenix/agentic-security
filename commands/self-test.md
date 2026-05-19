@@ -1,5 +1,5 @@
 ---
-description: Adversarial self-test (FR-LEARN-8) — the scanner attacks itself. Mutates known-vuln fixtures with renaming / wrapping / API-swap strategies, runs the scanner against each variant, surfaces detector gaps.
+description: Adversarial self-test — scanner attacks itself. Mutates known-vuln fixtures and surfaces detector gaps.
 argument-hint: "[--fixtures <dir>] [--output <file>]"
 ---
 

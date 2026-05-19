@@ -1,5 +1,5 @@
 ---
-description: One-command security router — inspects your project state and tells you the single best next action (scan, fix, launch-check, report-card).
+description: Security router — inspects project state and routes to the single best next action. Vibecoder entry point.
 argument-hint: "[path] [--launch]"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Interactive triage mode. Walk through the latest scan's ranked findings and mark each as true-positive, false-positive, or won't-fix. Decisions feed the active-learning loop so the next scan suppresses learned FPs.
+description: Interactive triage. Mark each finding TP / FP / wontfix. Feeds the active-learning loop for next scan.
 argument-hint: "[<finding-id>]"
 ---
 

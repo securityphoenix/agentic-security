@@ -78,7 +78,7 @@ SYNOPSIS
        /cve-alerts [--slack <url>|--discord <url>] [--apply]
        /vault-wizard [doppler|infisical|vercel|railway]
        /security-trend
-       /security-badge
+       /security-attestation [--format badge|onepager|page]
 
        Real-time bodyguards:
        /ai-bodyguard [on|off|warn|block|status]
@@ -86,31 +86,33 @@ SYNOPSIS
        /predeploy-gate [install|check|status|off]
 
        Active rotation & cost control:
-       /rotate-key-auto <value|--scan> [--yes]
+       /rotate-secret --auto <value|--scan> [--yes]
        /llm-cost-ceiling [--apply] [--generate-middleware]
                          [--generate-tracker --daily-cap-dollars N]
 
        Translate the jargon:
        /risk-in-dollars [--top N] [--json]
-       /story-explain <finding-id|--random|--worst>
+       /explain --narrative <finding-id|--random|--worst>
        /daily-checkin [--setup|--slack <url>|--discord <url>|--crontab]
 
-       Customer-facing artifacts:
-       /security-onepager [--company NAME] [--contact EMAIL]
+       Customer-facing artifacts (all from one command — picks format by flag):
+       /security-attestation                            (badge — default)
+       /security-attestation --format onepager [--company NAME] [--contact EMAIL]
+       /security-attestation --format page --contact <email> [--pgp <url>]
        /privacy-docs [--jurisdiction EU|US-CA|UK|OTHER] [--generate-banner]
-       /trust-page --contact <email> [--pgp <url>] [--canonical-url <url>]
 
        Resilience & onboarding:
        /disaster-playbook [--stack supabase,stripe,vercel,...]
        /tutorial
 
-       Dependency & supply chain:
-       /trim-dependencies [path] [--dry-run] [--include-dev]
-       /dep-freshness
-       /dep-pinning
-       /dep-alternatives
-       /install-script-audit
-       /vendor-audit
+       Dependency & supply chain (one command, per-check views via --show):
+       /supply-chain-check                              (full rollup)
+       /supply-chain-check --show pinning               (was /dep-pinning)
+       /supply-chain-check --show freshness             (was /dep-freshness)
+       /supply-chain-check --show alternatives          (was /dep-alternatives)
+       /supply-chain-check --show install-scripts       (was /install-script-audit)
+       /supply-chain-check --show vendored              (was /vendor-audit; both still standalone)
+       /trim [--what code|deps]                         (was /trim-dead-code + /trim-dependencies)
 
        Posture & compliance:
        /posture-management [--sbom|--aibom|--api|--license|--drift|--mttr]
@@ -679,7 +681,7 @@ Custom rules ship findings exactly like built-ins, with the prefix
                 highs open           → `/show-findings`
                 mediums only         → `/report-card`
                 last scan > 7 days   → re-scan
-                clean                → `/security-badge`
+                clean                → `/security-attestation`
                 --launch + criticals → BLOCK
                 --launch + clean     → `/launch-check`
               --run auto-executes the recommended `agentic-security ...`
@@ -1305,7 +1307,7 @@ Every scan writes to `.agentic-security/` in the project root:
        last-scan.json   Live state consumed by /fix, /show-findings,
                         /posture-management, /db-audit, /auth-audit,
                         /rate-limit-check, /webhook-audit, /attack-surface,
-                        /prompt-firewall, /deploy-check, /security-badge,
+                        /prompt-firewall, /deploy-check, /security-attestation,
                         /security-tests, /security-trend.
        scan-history.json  Rolling window (30 scans) for /security-trend.
                           Appended automatically on every scan.
@@ -1323,7 +1325,7 @@ Every scan writes to `.agentic-security/` in the project root:
        predeploy-gate.json     /predeploy-gate config (block_on, KEV, freshness).
        daily-checkin.json      /daily-checkin webhook destinations + min severity.
        daily-checkin-last.json  Fingerprint store for digest deltas.
-       rotation-backups/<ts>/   Backups created by /rotate-key-auto before scrub.
+       rotation-backups/<ts>/   Backups created by /rotate-secret --auto before scrub.
        poc-cache/        Per-finding PoC verdicts from /validate-findings.
        poc/<id>/         Generated PoC tests, variants.json, etc.
 ```
@@ -2174,7 +2176,7 @@ introduced and posting a review comment with the summary.
 
 Outputs an auditor-ready mapping of scan findings to NIST AI 600-1 controls.
 Also available: `/compliance-report asvs` (OWASP ASVS Level 1+2) and
-`/compliance-report llm` (OWASP LLM Top 10). Use `/security-badge` to
+`/compliance-report llm` (OWASP LLM Top 10). Use `/security-attestation` to
 generate the investor-ready paragraph and README badge.
 
 ---
@@ -2240,8 +2242,8 @@ When an enterprise prospect asks "are you secure?" you want three
 artifacts ready:
 
 ```
-/trust-page --contact security@myapp.com --canonical-url https://myapp.com
-/security-onepager --company "My App Inc." --contact security@myapp.com
+/security-attestation --format page --contact security@myapp.com --canonical-url https://myapp.com
+/security-attestation --format onepager --company "My App Inc." --contact security@myapp.com
 /privacy-docs --jurisdiction US-CA --generate-banner
 ```
 

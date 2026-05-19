@@ -1,5 +1,5 @@
 ---
-description: Auto-generated Mermaid diagram of your architecture's trust boundaries — HTTP routes, queue producers/consumers, gRPC endpoints, DB edges, IaC-exposed assets — with findings rendered ON the diagram.
+description: Auto-generated Mermaid diagram of trust boundaries — routes, queues, gRPC, DB edges, IaC, with findings overlaid.
 argument-hint: "[--output <file.svg|file.md>] [--inline]"
 ---
 

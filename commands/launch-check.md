@@ -1,5 +1,5 @@
 ---
-description: Pre-deploy checklist of the 10 things beginners typically miss before going live. Each item is green, yellow, or red with a one-line explanation.
+description: Pre-deploy checklist of the 10 things beginners typically miss. Each item: green / yellow / red + one line.
 ---
 
 Run a pre-launch checklist against your project. Designed for builders shipping their first production app.

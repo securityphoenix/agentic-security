@@ -1,6 +1,6 @@
 ---
-description: Run the agentic-security scanner. Default (--all) gives a one-screen "safe to deploy?" verdict. Focused modes include SCA, secrets, authZ, MCP, pipeline, logic, diff, uncommitted, plus v3 production-aware filters (--exposed-only) and supplementary blocks (--show-personas / --show-bounty / --show-playbook / --show-spof / --show-trust-boundary / --show-threat-model).
-argument-hint: "[path] [--all|--sca|--secrets|--authz|--mcp|--pipeline [--format pbom|cli|json]|--logic [--max <N>]|--diff [--since <git-ref>]|--uncommitted|--concurrency|--spec-drift] [--exposed-only|--mitigated-only|--unreachable-only] [--persona <name>] [--show-personas|--show-bounty|--show-playbook|--show-spof|--show-trust-boundary|--show-threat-model|--show-drift]"
+description: Run the scanner. --all gives a one-screen verdict. Focused modes per surface; --show-X for supplementary blocks.
+argument-hint: "[path] [--all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff|--uncommitted] [--show-personas|--show-bounty|--show-playbook]"
 ---
 
 ## Step 0 — (Optional, user-initiated) Plugin update

@@ -1,5 +1,5 @@
 ---
-description: SentQL prompt — write a custom security check in natural language; the assistant translates it to the project's YAML rule DSL and previews before saving to .agentic-security/rules/.
+description: SentQL prompt — write a security check in natural language; assistant emits the YAML rule + preview.
 argument-hint: "<natural-language description, OR raw YAML>"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Guided migration from scattered env vars to a proper secrets vault — Doppler, Infisical, or platform-native secrets management.
+description: Guided migration from scattered env vars to a secrets vault (Doppler / Infisical / platform-native).
 argument-hint: "[doppler|infisical|vercel|railway]"
 ---
 

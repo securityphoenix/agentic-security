@@ -1,5 +1,5 @@
 ---
-description: Translate every scanner finding into $ exposure (best-/likely-/worst-case). Replaces CVSS jargon with the language non-technical builders actually care about — money. Sources: public incident settlements + provider billing data.
+description: Translate every finding into $ exposure (low / likely / high). Money language, not CVSS jargon.
 argument-hint: "[--top N] [--json]"
 ---
 

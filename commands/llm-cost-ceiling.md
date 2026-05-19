@@ -1,5 +1,5 @@
 ---
-description: Audit every LLM API call in your codebase, auto-patch missing max_tokens caps, generate rate-limit middleware, and emit a daily $-spend tracker. Vibe-coder protection against the worst LLM-app failure mode — prompt injection on an uncapped endpoint that drains thousands of dollars in hours.
+description: Audit LLM calls, auto-patch missing max_tokens, generate rate-limit middleware, emit daily $-spend tracker.
 argument-hint: "[--audit | --apply | --generate-middleware | --generate-tracker --daily-cap 50]"
 ---
 

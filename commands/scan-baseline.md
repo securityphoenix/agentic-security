@@ -1,5 +1,5 @@
 ---
-description: Finding-level diff between two scan JSON outputs. Independent of scanner version (use /diff-scan for scanner-vs-scanner). Useful for "what did this PR introduce?" or "did yesterday's fix actually close it?".
+description: Finding-level diff between two scan JSON outputs. Independent of scanner version. "What did this PR break?"
 argument-hint: "[--previous <a.json>] [--current <b.json>] [--format cli|json]"
 ---
 

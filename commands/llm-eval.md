@@ -1,5 +1,5 @@
 ---
-description: Generate a promptfoo-style YAML eval suite for an LLM endpoint. Drops in CI-ready test files with red-team prompts pre-loaded so you can run via `promptfoo eval` or our built-in runner.
+description: Generate a promptfoo-style YAML eval suite for an LLM endpoint. CI-ready with red-team prompts pre-loaded.
 argument-hint: "[--endpoint URL] [--out promptfoo.yaml] [--corpus full|jailbreak|bias|harmful]"
 ---
 

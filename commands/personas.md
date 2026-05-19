@@ -1,5 +1,5 @@
 ---
-description: Per-attacker-persona prioritization of findings — what each adversary class (script kiddie / opportunistic / APT / supply-chain / insider) would target first in your codebase.
+description: Per-attacker-persona prioritization — what script-kiddie / opportunistic / APT / insider would target first.
 argument-hint: "[--persona <name>] [--top <N>]"
 ---
 

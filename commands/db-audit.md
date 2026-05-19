@@ -1,5 +1,5 @@
 ---
-description: Audit database security — Supabase RLS, raw SQL injection, exposed admin APIs, and direct DB connections that bypass row-level policies.
+description: Audit DB security — Supabase RLS, raw SQL injection, exposed admin APIs, RLS-bypassing direct connections.
 ---
 
 Run a targeted database security audit. Covers Supabase Row-Level Security, service-role key exposure, admin API misuse, raw PostgreSQL connections that bypass RLS, and SQL files with tables that lack RLS policies.

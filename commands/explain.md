@@ -1,6 +1,6 @@
 ---
-description: Explain a specific finding in plain English — what it means, how an attacker would abuse it, the worst case, and how to fix it. Designed for non-technical builders.
-argument-hint: "<finding-id-or-CWE-or-vuln-name>"
+description: Explain a finding in plain English — what, how attackers abuse it, worst case, fix. --narrative for story shape.
+argument-hint: "[--finding <id>] [--narrative]"
 ---
 
 Explain a security finding in plain English. The user can pass:
@@ -118,3 +118,71 @@ if (finding) {
 ```
 
 Print the output verbatim. The user wants the explanation as a single self-contained card.
+
+---
+
+## `--narrative` mode (formerly `/story-explain`)
+
+When the user passes `--narrative`, do NOT run the bash block above. Instead,
+generate a short attack-story rendering. The post-mortem variant is the same
+shape with past-tense + remediation footer.
+
+### Audience
+
+- **Vibecoders** building first intuition for what an attack actually looks like.
+- **Security pros** writing the exec readout, post-mortem narrative, or customer-incident communication where CWE jargon will lose the reader.
+
+### Tone rules
+
+- **Present tense, third-person.** "Mallory opens", not "an attacker would open".
+- **Specific, not abstract.** If the bug is in `GET /api/users/:id`, name that URL.
+- **Concrete values.** Show an actual payload like `?id=2`, not `?id=<some-other-id>`.
+- **Costs in $.** Tie consequences to money where possible.
+- **No "could" — say "does".** Past conditional is for legal disclaimers.
+- **No security acronyms in the story body.** Save "IDOR / CWE-639 / OWASP A01" for the footer.
+
+### Structure
+
+```
+─── Story: <Vuln> at <file>:<line> ─────────────────────────────
+
+Setup           — 2 sentences: what this app does, where the vuln sits.
+Meet <Name>     — 1 sentence on attacker motivation (bored teen / fraudster / competitor / etc.)
+The attack     — numbered, present-tense steps with concrete payloads
+The aftermath  — first ticket / first media post / regulatory clock / cost estimate
+What stops this — the literal 2–3 line code change
+
+─── /explain --narrative ──────────────────────────────────────
+  CWE: <X>   |   OWASP: <Y>   |   Severity: <Z>
+  Run /fix --one <id> to apply the fix.
+```
+
+### Persona × vuln-class table
+
+| Vuln class | Attacker persona | Story arc |
+|---|---|---|
+| SQL Injection | competitor doing recon | finds login → injects → dumps users → leak site |
+| IDOR | curious user, then fraudster | changes ID → reads others → builds scraper |
+| XSS (stored) | griefer, then phisher | posts script → logs every viewer's session |
+| Open Redirect | phisher | victim → real domain → fake login → creds |
+| Hardcoded API key | bot scraping github | bot finds key in minutes → racks bill |
+| Prompt Injection | researcher, then competitor | review/PDF payload → agent leaks system prompt |
+| Missing rate limit | scaling bug, then abuse | one buggy client → 50k req/min → DoS |
+| Path Traversal | attacker hunting secrets | reads `../../../.env` → AWS keys → cloud bill |
+| SSRF | researcher | hits 169.254.169.254 → IAM creds → GPU instances |
+| Service-role on client | curious user | inspects bundle → admin DB from a browser tab |
+
+### `--post-mortem`
+
+Adds `--narrative --post-mortem`. Renders in past tense ("Mallory opened…"),
+suppresses the CLI mascot footer, and appends a **"What we shipped"** block
+reading from `.agentic-security/fix-history/` (most recent commit touching
+the affected file) plus any matching `/validate-findings` cache entry.
+Output is clean enough to paste into a Notion doc or a customer email.
+
+### Don't
+
+- No generic boilerplate. Mention THIS file, THIS function, THIS endpoint.
+- No moralizing. The reader knows it's bad. Show why.
+- No mustache-twirling attackers. Bots and bored teenagers are the realistic ones.
+- No cliffhangers. End with the fix.

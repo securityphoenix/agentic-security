@@ -1,6 +1,6 @@
 ---
 name: agentic-security:add-scan-rule
-description: Walk through the canonical six-step recipe for adding a new SAST detector to this plugin — pick the right module, export a `scan*()` function, wire it into the engine, add a vulnerable/clean fixture pair, cover it in the right scoped test script, and verify with smoke + bundle build. Use this when the user says "add a rule for X", "detect Y", or "the scanner should catch Z" and we're inside this repo.
+description: Walk through the six-step recipe for adding a new SAST detector — pick the module, export scan*(), wire, fixture, test.
 ---
 
 # Adding a new scan rule

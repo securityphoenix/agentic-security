@@ -1,5 +1,5 @@
 ---
-description: Audit all webhook handlers for missing signature verification — Stripe, GitHub, Clerk, Svix, Resend, and generic providers.
+description: Audit webhook handlers for missing signature verification — Stripe, GitHub, Clerk, Svix, Resend, generic.
 ---
 
 Find webhook endpoint handlers that process payloads without verifying the provider's cryptographic signature. An unverified webhook endpoint accepts requests from anyone who knows the URL.

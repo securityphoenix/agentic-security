@@ -1,6 +1,6 @@
 ---
-description: Posture management — SBOM, AI-BOM, API inventory, license policy, drift analysis, and SLA tracking. Use --sbom, --aibom, --api, --license, --drift, or --mttr.
-argument-hint: "[--sbom [--format cyclonedx|spdx] [--output <file>]] | [--aibom [--format aibom|aibom-md] [--output <file>]] | [--api [--format md|json|openapi] [--output <file>]] | [--license [--init]] | [--drift [--from <scan-a.json>] [--to <scan-b.json>]] | [--mttr [--sla-days '{\"critical\":7,\"high\":30}']]"
+description: Posture management — SBOM, AI-BOM, API inventory, license policy, drift, MTTR. One flag per surface.
+argument-hint: "[--sbom | --aibom | --api | --license | --drift | --mttr]"
 ---
 
 Run posture management commands against the current project.

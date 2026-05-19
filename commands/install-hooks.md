@@ -1,5 +1,5 @@
 ---
-description: Install pre-commit and pre-push git hooks that run scoped scans on every commit and full diff scans before push. Blocks on new critical findings by default.
+description: Install pre-commit + pre-push git hooks that run scoped scans. Blocks on new critical findings by default.
 argument-hint: "[--threshold critical|high|medium] [--uninstall]"
 ---
 

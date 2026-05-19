@@ -1,5 +1,5 @@
 ---
-description: Generate exact Content-Security-Policy and CORS headers for your stack — reads your actual dependencies and config, outputs copy-paste-ready header blocks.
+description: Generate exact CSP and CORS headers for your stack — reads your deps + config, outputs copy-paste headers.
 ---
 
 Generate a working Content-Security-Policy and CORS configuration tailored to this project's actual stack and domains.

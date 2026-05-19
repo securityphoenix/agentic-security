@@ -1,5 +1,5 @@
 ---
-description: Security regression scorecard — shows finding counts over time, what was introduced vs fixed since the last scan, and which files regressed.
+description: Regression scorecard — finding counts over time, intro vs fixed since last scan, which files regressed.
 ---
 
 Show a trend line of your security posture across scans. Tracks what was fixed, what was introduced, and whether you're improving or regressing.

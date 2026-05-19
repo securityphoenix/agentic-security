@@ -1,5 +1,5 @@
 ---
-description: Print a one-screen project & plugin health snapshot — version, last scan time + counts, cache size, hook activation, suppression rules.
+description: One-screen project + plugin health snapshot — version, last scan, cache size, hook activation, suppressions.
 ---
 
 Print the agentic-security project health snapshot.

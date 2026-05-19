@@ -1,5 +1,179 @@
 # Changelog
 
+## 0.62.0 — agent-harness hardening + slash-command consolidation
+
+Five rounds of analysis applied to the plugin's scanner + MCP server + sub-agent
+harness across this release. Each section corresponds to one external source;
+in-source comments tag the originating thread (`premortem #N`, `post-rec #N`,
+`harness-anatomy #N`) for cross-reference.
+
+### Security & integrity (premortem hardening)
+
+- **Per-install HMAC key** for `last-scan.json` integrity (was hostname-derived
+  and publicly forgeable in CI / containers). Stored at
+  `$XDG_CONFIG_HOME/agentic-security/scan-key`; override via
+  `$AGENTIC_SECURITY_HMAC_KEY`. Legacy hostname key verified for one release
+  to migrate existing signed scans.
+- **MCP reserved-write list expanded** to `.github/`, `.gitlab/`, `.circleci/`,
+  `.buildkite/`, `.terraform/`, IaC dirs, every common manifest basename
+  (`Dockerfile`, `Jenkinsfile`, `package.json`, lockfiles, `pom.xml`,
+  `Cargo.toml`, …) and `*.tf` / `docker-compose.yml`. Closes the
+  forged-finding-rewrites-CI-workflow attack path.
+- **`rules.yml disable:` requires signature.** `applyOverrides` now refuses
+  the `disable:` list unless `.agentic-security/rules.yml.sig` verifies
+  under the per-install HMAC. `severityOverrides`, `custom:`, `ignorePaths`
+  are not gated (they don't reduce coverage). Override via
+  `$AGENTIC_SECURITY_RULES_UNSIGNED=1`.
+- **MCP `SERVER_VERSION`** reads `package.json` at module load (was a
+  hardcoded literal that rotted).
+- **MCP `find_rule_module` tool** for codebase navigation (CWE / family →
+  detector file) without grep-and-pray.
+- **MCP `apply_fix`** now passes patch text through unredacted (the prior
+  redact-on-output behavior silently corrupted valid patches whose content
+  matched a secret-shape).
+- **Per-stableId attempt budget** (default 2) on `apply_fix`. Refuses a
+  third attempt with structured `{ budgetExceeded, attempts, maxAttempts }`.
+- **Optional remote audit-log sink.** Set
+  `$AGENTIC_SECURITY_AUDIT_WEBHOOK=<url>` and every MCP tool call is
+  fire-and-forget POSTed to the witness. Closes the full-file-rewrite
+  blind spot of the local-only hash chain.
+
+### Scanner correctness
+
+- **`SummaryCache` wired** into the taint engine (k=1 monovariant
+  return-taint). Was dead code; now the assign-from-call lattice consults
+  cached summaries for resolved callees.
+- **Per-flow source attribution** in IR-TAINT (was first-source-globally-
+  seen; produced misattributed evidence in findings).
+- **`finding-defaults` backfill** stamps `parser` + `family` on every
+  finding before calibration / confidence run. Closes the "0 parser /
+  20 family null on a smoke run" silent-no-op.
+- **Tautological Brier removed.** `computeBrierFromHistory` (always
+  returned 0) replaced with `computeBrierOnHeldOut(samples)` taking real
+  labels. New `posture/holdout-eval.js` evaluator: Brier + ECE + per-family
+  TP/FP + Wilson CI.
+- **PoC param-key inference** reads the actual handler file window;
+  surfaces `paramKey`, `paramKeyConfidence`, `paramKeyInferred`. Low-
+  confidence PoCs trigger `regression-test-gen` to refuse rather than
+  ship a fake-passing test.
+- **CVE-replay scoring fixed.** TN branch reachable; pre/post scored
+  independently. Per-slice F1 (by CWE, language, source-quality tier).
+  Wilson 95% CI on the aggregate TP-rate.
+- **Python parser** switched to a balanced-paren scanner for calls + def
+  signatures (was a `[^()]*` regex that rejected `db.execute(sanitize(x))`
+  and `def f(x=Foo(1,2))`).
+
+### Agent harness
+
+- **`security-fixer` writes via MCP, not Edit.** Tool list stripped to
+  `Read, Bash, Grep`. The deterministic toolchain (`synthesize_fix` →
+  `verify_fix` → `apply_fix`) is the only write path. The LLM is the
+  intent layer; the MCP server is the execution layer.
+- **Subagent path-confinement schema** (`agents/_CONFINEMENT.md`) shared
+  with the MCP reserved-write list.
+- **`security-fixer` consumes structured `verify_fix.introduced[]`** to
+  diagnose template-incomplete vs codebase-prior vs lint-failed outcomes.
+- **PLAN.md decomposition convention** for batched runs:
+  `.agentic-security/agent-scratchpad/<agent>/<session>/PLAN.md`. Survives
+  context resets; auditable artifact for governance.
+- **AGENTS.md continual learning.** `.agentic-security/AGENTS.md` is the
+  append-only narrative file the agent writes to at session end. The
+  SessionStart hook reads it; the Stop hook nudges the agent to record an
+  entry when work happened.
+- **MCP scratchpad pair** (`append_scratchpad`, `read_scratchpad`)
+  confined to `.agentic-security/agent-scratchpad/<agent>/<session>/`.
+  Strict path validation; 2 MB / file, 50 MB total caps.
+- **MCP tool-output offloading.** `scan_diff` and `explain_finding`
+  results exceeding `OFFLOAD_THRESHOLD` (default 10) write the full payload
+  to the scratchpad; the response shrinks to `{ head, tail, total,
+  scratchpadPath, pagingHint }`. The agent pages through with
+  `read_scratchpad`.
+- **MCP `lookup_cve`** tool: read-only access to local OSV / KEV / EPSS
+  caches with staleness tiers. Closes the knowledge-cutoff gap for SCA
+  reasoning without triggering a network fetch.
+- **MCP `append_agents_memory` / `read_agents_memory`** tools wrap the
+  AGENTS.md surface.
+
+### Evals + benches
+
+- **CVE-replay corpus tiered** into `regression/` (CI gates here — F1=1.0
+  required) and `capability/` (frontier; failure informational).
+  Graduation policy: 5 consecutive passes → promote.
+- **`npm run bench:cve-replay:ci`** new CI gate.
+- **Agent-task corpus** at `bench/agent-tasks/security-fixer/`: end-to-end
+  eval of the deterministic toolchain (synth → verify → apply) against
+  fresh temp copies of fixtures. 7 graders per task; pass@1 reporting.
+- **`llm-validator` consistency harness** (`scanner/src/llm-validator/
+  consistency.js` + `agentic-security-consistency` bin): pass^k stability
+  measurement across N trials on the same fixture set.
+- **Human ↔ LLM grader calibration** (`posture/grader-calibration.js`):
+  Cohen's κ between `/triage` human verdicts and validator verdicts on
+  the stableId overlap. Alarm when κ < 0.6 with n ≥ 10.
+- **`agentic-security-audit` CLI**: `review`, `metrics`, `verify`
+  subcommands for the MCP audit log. `--by-session` aggregation with
+  outlier flagging (default ≥20 calls per tool).
+- **`audit.js`** stamps `sessionId` on every entry.
+
+### Repo structure (Claude-Code-at-scale)
+
+- **`.claude/settings.json`** with team-committed read-deny list
+  (generated bundle, bench caches, scan-state JSON) to keep noise out of
+  context.
+- **Subdirectory `CLAUDE.md` files** added: `scanner/`,
+  `scanner/src/{sast,posture,dataflow,mcp}/`. Root `CLAUDE.md` trimmed
+  253 → 115 lines (pointers + gotchas only).
+- **`npm test` split into scoped scripts**: `test:smoke / sast / posture /
+  dataflow / mcp / report / bench-modules / lifecycle`. Full suite chains
+  them.
+- **Stop hook (`hooks/session-stop-drift-check.js`)** flags new modules
+  in `scanner/src/{sast,posture,dataflow,mcp}/` not yet indexed in the
+  matching subdir CLAUDE.md, plus prompts for an AGENTS.md entry when
+  the session touched tracked files.
+- **SessionStart self-check (`hooks/session-start-self-check.js`)**
+  validates every command/agent frontmatter shape; surfaces malformed
+  surfaces.
+- **`skills/add-scan-rule/SKILL.md`** holds the "add a new SAST rule"
+  workflow as an on-demand skill (was in root CLAUDE.md).
+- **`docs/POSITIONING.md`** — explicit ICP statement (vibecoder-first;
+  pro follow-on).
+
+### Slash-command consolidation (LangChain harness-anatomy #5)
+
+The 77-command surface was the exact "tool proliferation" anti-pattern the
+post warned about. Always-paid frontmatter (description + argument-hint)
+trimmed **20.3 KB → 11.3 KB (44% reduction)**.
+
+- **Description cap of 120 chars** + argument-hint cap of 200 chars,
+  enforced by `scripts/lint-command-descriptions.mjs` in
+  `npm run test:lifecycle`. 76 surfaces trimmed.
+- **Eleven commands folded into canonical forms**, with deprecated
+  aliases kept one release for muscle memory:
+
+  | Old | New |
+  |-----|-----|
+  | `/ci-gate-multi` | `/ci-gate --provider <name>` |
+  | `/rotate-key-auto` | `/rotate-secret --auto` |
+  | `/trim-dead-code` | `/trim --what code` |
+  | `/trim-dependencies` | `/trim --what deps` |
+  | `/story-explain` | `/explain --narrative` |
+  | `/security-badge` | `/security-attestation` (default) |
+  | `/security-onepager` | `/security-attestation --format onepager` |
+  | `/trust-page` | `/security-attestation --format page` |
+  | `/dep-pinning` | `/supply-chain-check --show pinning` |
+  | `/dep-freshness` | `/supply-chain-check --show freshness` |
+  | `/dep-alternatives` | `/supply-chain-check --show alternatives` |
+
+- **Skipped on purpose:** `/secure` (vibecoder entry point — kept
+  untouched); the LLM-sec cluster (each command serves a distinct
+  workflow). Tier 3 demote-to-skills also skipped after investigation —
+  Claude Code today loads both commands and skills' descriptions in the
+  always-paid surface, so the move wouldn't actually save context.
+
+### Tests
+
+600/600 tests passing. CVE-replay CI gate green (regression F1=1.0 on
+3 entries). Lint gate green (all 80 surfaces within caps).
+
 ## 0.51.0 — 11 of 16 PRD-missing features (5 research items deferred)
 
 This release lands all 11 tractable FRs from the v2 PRD audit. The 5

@@ -1,5 +1,5 @@
 ---
-description: Red-team your LLM endpoint or LLM-using code — promptfoo-style adversarial testing across 30+ harm categories with attack-strategy mutations (base64, role-play, authority-claim, hypothetical, multilingual, chained-context).
+description: Red-team your LLM endpoint — promptfoo-style adversarial tests across 30+ harm categories + 7 mutations.
 argument-hint: "[--endpoint URL] [--api-key KEY] [--categories security,privacy,harmful,bias,misinformation,agentic,coding-agent] [--strategies base64-encode,role-play-dan,authority-claim,...] [--scan]"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: Find API endpoints missing rate limiting — auth, AI generation, payment, and contact endpoints that can be abused or cost you money.
+description: Find API endpoints missing rate-limiting — auth / AI / payment / contact routes that can be abused.
 ---
 
 Audit all API endpoints for missing rate limiting. Checks auth (brute-force risk), AI generation (cost explosion risk), payment (card-testing risk), and contact/form (spam risk) endpoints.

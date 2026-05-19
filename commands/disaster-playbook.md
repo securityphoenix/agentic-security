@@ -1,5 +1,5 @@
 ---
-description: Generate a stack-specific incident response playbook BEFORE you get hacked. Detects Supabase / Stripe / Vercel / Auth0 / Clerk / AWS / npm in your project and writes a DISASTER.md with the exact commands and URLs you'll need to rotate creds, take backups, save logs, and recover — so when something bad happens you're not panic-Googling.
+description: Generate a stack-specific incident-response playbook BEFORE you get hacked. DISASTER.md with the right URLs.
 argument-hint: "[--output PATH] [--stack supabase,stripe,vercel,...]"
 ---
 

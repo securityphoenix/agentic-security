@@ -1,5 +1,5 @@
 ---
-description: Recall spot-check for a CWE — show which sources, sinks, and sanitizers the engine considered for that CWE in the current scan, and explain why no finding was reported. Surfaces gaps in the catalog.
+description: Recall spot-check for a CWE — show what the engine considered and why nothing fired. Surfaces catalog gaps.
 argument-hint: "<CWE> (e.g. CWE-89, or just 89, or 'sql-injection')"
 ---
 
