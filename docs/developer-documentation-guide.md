@@ -199,7 +199,9 @@ DESCRIPTION
        ┌──────────────────────────────────▼──────────────────────────────────┐
        │  Phase-1/2/3/4 Deep Engine  (opt-in: AGENTIC_SECURITY_DEEP=1)       │
        │                                                                     │
-       │  ir/       parser-js · parser-py · parser-java · ssa · callgraph    │
+       │  ir/       Intermediate Representation — normalized CFG + cross-    │
+       │            file callgraph emitted by per-language frontends, walked │
+       │            by dataflow/. parser-js · parser-py · parser-java · ssa  │
        │            class-hierarchy (CHA + RTA) · function-as-value registry │
        │                                                                     │
        │  dataflow/ engine (interprocedural taint, k=1 monovariant)          │
@@ -246,6 +248,19 @@ DESCRIPTION
                  and VS Code plugins via textDocument/publishDiagnostics.
 ```
 
+> **What is `ir/`?** **IR** stands for **Intermediate Representation** — the
+> normalized in-memory graph between raw source code and analysis. It's the
+> standard compiler / static-analysis layer (LLVM has "LLVM IR", CodeQL has
+> "QL", Semgrep has "Generic AST"; ours is plain `ir/`). Per-language frontends
+> (`parser-js`, `parser-py`, `parser-java`) walk the source AST and emit one
+> shared shape: a per-function CFG with typed nodes (`entry`, `exit`, `assign`,
+> `call`, `return`, `if`, `loop-header`, `throw`, `noop`), a cross-file call
+> graph keyed by stable function `qid`, a class hierarchy (CHA + RTA) for
+> virtual-dispatch narrowing, and SSA form (Cytron/Ferrante φ-placement) so
+> each variable redefinition is a distinct name. Having an IR is what lets
+> `dataflow/` be language-agnostic: the taint engine never has to know whether
+> the code was originally JS, Python, or Java — it walks IR.
+
 ### Data flow at a glance
 
 1. `runScan()` walks the tree under `--changed-since` / `--pr` filters; yields `{ fileContents, depFileContents }` to the engine.
@@ -270,7 +285,9 @@ DESCRIPTION
          src/sast/                   # 40+ language/family modules
          src/sca/                    # OSV/KEV reachability, container, dep-confusion
          src/secrets/                # 60+ pattern matchers + entropy
-         src/ir/                     # Phase-1/2 IR (opt-in via AGENTIC_SECURITY_DEEP=1):
+         src/ir/                     # Phase-1/2 IR — Intermediate Representation,
+                                     # the normalized graph the dataflow engine walks
+                                     # (opt-in via AGENTIC_SECURITY_DEEP=1):
                                      #   parser-js (Babel) · parser-py · parser-java
                                      #   callgraph · class-hierarchy (CHA + RTA)
                                      #   ssa (Cytron/Ferrante φ-placement)

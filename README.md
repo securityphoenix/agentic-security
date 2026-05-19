@@ -300,7 +300,7 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 
 ### What sets it apart
 
-- **Commercial-grade taint engine.** Field-sensitive access-path lattice + object/receiver sensitivity (CHA + RTA) + higher-order callback propagation + backward slicing + implicit-flow + RHS demand-driven tabulation + SSA + bounded symbolic execution with numeric range domain. Multi-language IR (JS/TS, Python, Java). Opt-in via `AGENTIC_SECURITY_DEEP=1`. Honest blind-bench: 88.0% F1 on OWASP Benchmark v1.2 strict-blind (no label leakage, identifier-scramble verified).
+- **Commercial-grade taint engine.** Field-sensitive access-path lattice + object/receiver sensitivity (CHA + RTA) + higher-order callback propagation + backward slicing + implicit-flow + RHS demand-driven tabulation + SSA + bounded symbolic execution with numeric range domain. Multi-language **Intermediate Representation** — IR is the normalized in-memory graph between source code and analysis, the standard compiler/static-analysis layer; ours covers JS/TS, Python, and Java with one shared shape (CFG + cross-file call graph + class hierarchy + SSA) so the dataflow engine is language-agnostic. Opt-in via `AGENTIC_SECURITY_DEEP=1`. Honest blind-bench: 88.0% F1 on OWASP Benchmark v1.2 strict-blind (no label leakage, identifier-scramble verified).
 - **Function-level reachability.** Drops SCA findings whose vulnerable function isn't reachable from any route — kills your noisiest bucket.
 - **EPSS-aware prioritization.** Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% get tagged `exploited-now` and bumped one severity tier so they sort to the top. KEV layered on top.
 - **Cross-language taint.** Schema-aware bridges follow flows across HTTP/gRPC/GraphQL/queues/ORM round-trips — OpenAPI + proto + SDL fields paired by structural identity (with synonym detection: `email` ↔ `emailAddress`), not name match.
@@ -344,7 +344,7 @@ npx @clearcapabilities/agentic-security-scanner scan . --format aibom > ai-bom.j
 | Command | What it does |
 |---|---|
 | `/agentic-security:scan` | Full SAST + SCA + secrets sweep. Focused modes: `--sca`, `--secrets`, `--authz`, `--mcp`, `--pipeline`, `--logic`, `--diff`. SARIF + JSON + CSV written every scan. |
-| `AGENTIC_SECURITY_DEEP=1 agentic-security scan` | Engage the interprocedural taint engine: IR + access-paths + receiver-context + higher-order + backward slicing + RHS tabulation + SSA + symbolic-exec + polyglot embeddings. |
+| `AGENTIC_SECURITY_DEEP=1 agentic-security scan` | Engage the interprocedural taint engine: IR (Intermediate Representation — the normalized CFG + cross-file callgraph the analyzer walks) + access-paths + receiver-context + higher-order + backward slicing + RHS tabulation + SSA + symbolic-exec + polyglot embeddings. |
 | `agentic-security scan --pr [ref]` | Diff-aware: only scan files changed since the PR base. Auto-detects GitHub / GitLab / Buildkite / Bitbucket env vars. |
 | `agentic-security scan --deterministic` | Reproducible mode: stable-sorts findings, zeros timing/scanId, forces `--no-network`, verifies `rules.lock.json`. Required for byte-stable CI baselines. |
 | `agentic-security rules lock` | Pin the active rule-pack hash + scanner version in `.agentic-security/rules.lock.json`. |
@@ -450,7 +450,9 @@ The full reference lives in the **[Developer Documentation](https://github.com/C
        ┌──────────────────────────────────▼──────────────────────────────────┐
        │  Deep Engine — opt-in via AGENTIC_SECURITY_DEEP=1                    │
        │                                                                      │
-       │  ir/        JS/TS · Python · Java IR + CFG + cross-file callgraph +  │
+       │  ir/        Intermediate Representation — normalized graph between  │
+       │             source and analysis. JS/TS · Python · Java frontends     │
+       │             emit shared CFG + cross-file callgraph +                 │
        │             SSA + class-hierarchy (CHA + RTA)                        │
        │  dataflow/  forward + backward interproc taint · access-paths ·      │
        │             receiver-context · higher-order · implicit-flow ·        │
