@@ -26,6 +26,7 @@
 
 import * as crypto from 'node:crypto';
 import { canonicalize as canonicalizeAccessSet } from './access-paths.js';
+import { hashReceiverType } from './receiver-context.js';
 
 function _hashState(taintedParams) {
   if (!taintedParams || taintedParams.size === 0) return 'empty';
@@ -44,20 +45,24 @@ export class SummaryCache {
     this._maxIter = 5000;
   }
 
-  _key(qid, taintedParams) {
-    return `${qid}::${_hashState(taintedParams)}`;
+  _key(qid, taintedParams, receiverType) {
+    // P1.2: when a receiver type is provided, extend the cache key with
+    // its hash. Backward-compatible: no receiverType → same key as before.
+    const base = `${qid}::${_hashState(taintedParams)}`;
+    if (!receiverType) return base;
+    return `${base}::${hashReceiverType(receiverType)}`;
   }
 
-  get(qid, taintedParams) {
-    return this._cache.get(this._key(qid, taintedParams));
+  get(qid, taintedParams, receiverType) {
+    return this._cache.get(this._key(qid, taintedParams, receiverType));
   }
 
-  set(qid, taintedParams, summary) {
-    this._cache.set(this._key(qid, taintedParams), summary);
+  set(qid, taintedParams, summary, receiverType) {
+    this._cache.set(this._key(qid, taintedParams, receiverType), summary);
   }
 
-  has(qid, taintedParams) {
-    return this._cache.has(this._key(qid, taintedParams));
+  has(qid, taintedParams, receiverType) {
+    return this._cache.has(this._key(qid, taintedParams, receiverType));
   }
 
   // Compute the summary for a function (or return cached). The `analyze`

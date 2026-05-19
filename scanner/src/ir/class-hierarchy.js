@@ -116,3 +116,80 @@ export function resolveMethod(cha, className, methodName) {
   }
   return null;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// P4.5 — Rapid Type Analysis (RTA)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// CHA over-approximates virtual dispatch: a call on a receiver of type
+// Animal resolves to EVERY method named `speak` on EVERY subclass — even
+// subclasses that are never instantiated. RTA narrows this by tracking
+// which classes are actually instantiated in the program.
+
+/**
+ * Walk the IR for `new ClassName(...)` expressions and return the set of
+ * instantiated class names.
+ */
+export function collectInstantiatedClasses(perFileIR) {
+  const live = new Set();
+  if (!perFileIR) return live;
+  for (const ir of Object.values(perFileIR)) {
+    for (const fn of (ir.functions || [])) {
+      const cfg = fn.cfg;
+      if (!cfg || !cfg.nodes) continue;
+      for (const id of Object.keys(cfg.nodes)) {
+        const n = cfg.nodes[id];
+        if (!n) continue;
+        if (n.kind === 'assign' && n.source && n.source.kind === 'call' && n.source.isNew) {
+          const callee = n.source.callee;
+          if (callee && typeof callee === 'object' && callee.kind === 'ident') live.add(callee.name);
+          else if (typeof callee === 'string') live.add(callee);
+        }
+        if (n.kind === 'call' && n.isNew && typeof n.callee === 'string') live.add(n.callee);
+      }
+    }
+  }
+  return live;
+}
+
+/**
+ * RTA-refined virtual-call resolution. Narrows a virtual-call candidate set
+ * to actually-live (instantiated) classes.
+ *
+ *   cha:           class hierarchy
+ *   methodName:    the method being dispatched
+ *   liveClasses:   output of collectInstantiatedClasses
+ *   rootClass:     the declared/inferred receiver type (or null = any class)
+ */
+export function resolveMethodRTA(cha, methodName, liveClasses, rootClass) {
+  if (!cha || !methodName || !liveClasses) return [];
+  const out = [];
+  for (const [cn, cls] of cha.classes) {
+    if (!liveClasses.has(cn)) continue;
+    if (!cls.methods || !cls.methods.has(methodName)) continue;
+    if (rootClass) {
+      // cn must be rootClass or a transitive subclass.
+      let cur = cn;
+      let inHierarchy = false;
+      const seen = new Set();
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        if (cur === rootClass) { inHierarchy = true; break; }
+        cur = cha.classes.get(cur)?.extends || null;
+      }
+      if (!inHierarchy) continue;
+    }
+    out.push({ className: cn, methodName });
+  }
+  return out;
+}
+
+/**
+ * Annotate an existing CHA with the live-class set so consumers don't have
+ * to recompute it.
+ */
+export function annotateRTA(cha, perFileIR) {
+  if (!cha) return cha;
+  cha.liveClasses = collectInstantiatedClasses(perFileIR);
+  return cha;
+}

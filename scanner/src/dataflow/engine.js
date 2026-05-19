@@ -104,7 +104,7 @@ function step(node, stateIn, callContext) {
         newState = addPath(newState, target);
         const sourcePath = accessPathOf(node.source);
         if (sourcePath) newState = addPath(newState, sourcePath);
-        callContext._taintSources.push({ varName: target, sourceId: src.id, sourceLabel: src.label, line: node.line });
+        callContext._taintSources.push({ varName: target, sourceId: src.id, sourceLabel: src.label, provenance: src.provenance || null, line: node.line });
       } else if (exprTaint(node.source, newState)) {
         // P1.1: when the source IS a pure access path (e.g., RHS is `obj.foo.bar`),
         // taint the TARGET as well as transitively propagate the source path so
@@ -146,6 +146,10 @@ function step(node, stateIn, callContext) {
               line: node.line,
               argIndex: taintedArgIdx,
               callee: node.callee,
+              // P4.6 — stamp source provenance on the finding so downstream
+              // severity scaling can dial up http-body / url-param sources
+              // and dial down env / file-read.
+              sourceProvenance: (callContext._taintSources[0]?.provenance) || null,
               // The trace is best-effort: we cite the source label from the
               // first source we saw in this analysis run.
               trace: callContext._taintSources.slice(0, 5),

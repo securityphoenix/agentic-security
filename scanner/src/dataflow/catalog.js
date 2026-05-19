@@ -27,21 +27,23 @@
 
 export const CATALOG = [
   // ─── SOURCES (JS/TS) ───────────────────────────────────────────────────────
+  // P4.6 — every source carries a `provenance` label so findings can be
+  // severity-scaled by where the input actually came from.
   // Express / common Node HTTP shapes.
-  { kind: 'source', id: 'js-req-body',     language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'body'    }, label: 'req.body' },
-  { kind: 'source', id: 'js-req-query',    language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'query'   }, label: 'req.query' },
-  { kind: 'source', id: 'js-req-params',   language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'params'  }, label: 'req.params' },
-  { kind: 'source', id: 'js-req-headers',  language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'headers' }, label: 'req.headers' },
-  { kind: 'source', id: 'js-req-cookies',  language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'cookies' }, label: 'req.cookies' },
-  { kind: 'source', id: 'js-request-body', language: 'js', framework: 'express', match: { type: 'member', object: 'request', prop: 'body'    }, label: 'request.body' },
-  { kind: 'source', id: 'js-ctx-request',  language: 'js', framework: 'koa',     match: { type: 'member', object: 'ctx',     prop: 'request' }, label: 'ctx.request' },
+  { kind: 'source', id: 'js-req-body',     language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'body'    }, label: 'req.body',     provenance: 'http-body' },
+  { kind: 'source', id: 'js-req-query',    language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'query'   }, label: 'req.query',    provenance: 'url-param' },
+  { kind: 'source', id: 'js-req-params',   language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'params'  }, label: 'req.params',   provenance: 'path-param' },
+  { kind: 'source', id: 'js-req-headers',  language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'headers' }, label: 'req.headers',  provenance: 'header' },
+  { kind: 'source', id: 'js-req-cookies',  language: 'js', framework: 'express', match: { type: 'member', object: 'req',     prop: 'cookies' }, label: 'req.cookies',  provenance: 'cookie' },
+  { kind: 'source', id: 'js-request-body', language: 'js', framework: 'express', match: { type: 'member', object: 'request', prop: 'body'    }, label: 'request.body', provenance: 'http-body' },
+  { kind: 'source', id: 'js-ctx-request',  language: 'js', framework: 'koa',     match: { type: 'member', object: 'ctx',     prop: 'request' }, label: 'ctx.request',  provenance: 'http-body' },
   // Browser DOM-derived (XSS sources).
-  { kind: 'source', id: 'js-location',     language: 'js', framework: 'dom', match: { type: 'global', name: 'location' }, label: 'window.location' },
-  { kind: 'source', id: 'js-doc-cookie',   language: 'js', framework: 'dom', match: { type: 'member', object: 'document', prop: 'cookie' }, label: 'document.cookie' },
-  { kind: 'source', id: 'js-loc-search',   language: 'js', framework: 'dom', match: { type: 'member', object: 'location', prop: 'search' }, label: 'location.search' },
-  { kind: 'source', id: 'js-loc-hash',     language: 'js', framework: 'dom', match: { type: 'member', object: 'location', prop: 'hash'   }, label: 'location.hash' },
+  { kind: 'source', id: 'js-location',     language: 'js', framework: 'dom', match: { type: 'global', name: 'location' },                       label: 'window.location', provenance: 'url-fragment' },
+  { kind: 'source', id: 'js-doc-cookie',   language: 'js', framework: 'dom', match: { type: 'member', object: 'document', prop: 'cookie' },     label: 'document.cookie', provenance: 'cookie' },
+  { kind: 'source', id: 'js-loc-search',   language: 'js', framework: 'dom', match: { type: 'member', object: 'location', prop: 'search' },     label: 'location.search', provenance: 'url-param' },
+  { kind: 'source', id: 'js-loc-hash',     language: 'js', framework: 'dom', match: { type: 'member', object: 'location', prop: 'hash'   },     label: 'location.hash',   provenance: 'url-fragment' },
   // process.env is a fixed but partially attacker-controllable surface for some apps.
-  { kind: 'source', id: 'js-process-env',  language: 'js', framework: 'node', match: { type: 'member', object: 'process', prop: 'env' }, label: 'process.env' },
+  { kind: 'source', id: 'js-process-env',  language: 'js', framework: 'node', match: { type: 'member', object: 'process', prop: 'env' }, label: 'process.env', provenance: 'env' },
 
   // ─── SINKS (JS/TS) ─────────────────────────────────────────────────────────
   // SQL.
@@ -335,6 +337,139 @@ export const CATALOG = [
   // ─── SANITIZERS (Go) ──────────────────────────────────────────────────────
   { kind: 'sanitizer', id: 'go-html-escape',  language: 'go', match: { type: 'call', callee: 'EscapeString' }, effect: 'strip', appliesTo: ['xss'] },
   { kind: 'sanitizer', id: 'go-strconv-atoi', language: 'go', match: { type: 'call', callee: 'Atoi' },         effect: 'strip', appliesTo: ['*'] },
+
+  // ─── SOURCES (Python) ──────────────────────────────────────────────────────
+  // Flask request object — request is module-imported, properties are sources.
+  { kind: 'source', id: 'py-flask-form',     language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'form'   }, label: 'flask.request.form',   provenance: 'http-body' },
+  { kind: 'source', id: 'py-flask-args',     language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'args'   }, label: 'flask.request.args',   provenance: 'url-param' },
+  { kind: 'source', id: 'py-flask-json',     language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'json'   }, label: 'flask.request.json',   provenance: 'http-body' },
+  { kind: 'source', id: 'py-flask-values',   language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'values' }, label: 'flask.request.values', provenance: 'http-body' },
+  { kind: 'source', id: 'py-flask-cookies',  language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'cookies'}, label: 'flask.request.cookies',provenance: 'cookie' },
+  { kind: 'source', id: 'py-flask-headers',  language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'headers'}, label: 'flask.request.headers',provenance: 'header' },
+  { kind: 'source', id: 'py-flask-data',     language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'data'   }, label: 'flask.request.data',   provenance: 'http-body' },
+  { kind: 'source', id: 'py-flask-files',    language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'files'  }, label: 'flask.request.files',  provenance: 'http-body' },
+  { kind: 'source', id: 'py-flask-stream',   language: 'py', framework: 'flask', match: { type: 'member', object: 'request', prop: 'stream' }, label: 'flask.request.stream', provenance: 'http-body' },
+  // Django request object.
+  { kind: 'source', id: 'py-django-post',    language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'POST'    }, label: 'django.request.POST',    provenance: 'http-body' },
+  { kind: 'source', id: 'py-django-get',     language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'GET'     }, label: 'django.request.GET',     provenance: 'url-param' },
+  { kind: 'source', id: 'py-django-body',    language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'body'    }, label: 'django.request.body',    provenance: 'http-body' },
+  { kind: 'source', id: 'py-django-meta',    language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'META'    }, label: 'django.request.META',    provenance: 'header' },
+  { kind: 'source', id: 'py-django-files',   language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'FILES'   }, label: 'django.request.FILES',   provenance: 'http-body' },
+  { kind: 'source', id: 'py-django-headers', language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'headers' }, label: 'django.request.headers', provenance: 'header' },
+  { kind: 'source', id: 'py-django-cookies', language: 'py', framework: 'django', match: { type: 'member', object: 'request', prop: 'COOKIES' }, label: 'django.request.COOKIES', provenance: 'cookie' },
+  // FastAPI / Starlette — Request object.
+  { kind: 'source', id: 'py-fastapi-query',     language: 'py', framework: 'fastapi', match: { type: 'member', object: 'request', prop: 'query_params'  }, label: 'fastapi.request.query_params',  provenance: 'url-param' },
+  { kind: 'source', id: 'py-fastapi-path',      language: 'py', framework: 'fastapi', match: { type: 'member', object: 'request', prop: 'path_params'   }, label: 'fastapi.request.path_params',   provenance: 'path-param' },
+  { kind: 'source', id: 'py-fastapi-headers',   language: 'py', framework: 'fastapi', match: { type: 'member', object: 'request', prop: 'headers'       }, label: 'fastapi.request.headers',       provenance: 'header' },
+  { kind: 'source', id: 'py-fastapi-cookies',   language: 'py', framework: 'fastapi', match: { type: 'member', object: 'request', prop: 'cookies'       }, label: 'fastapi.request.cookies',       provenance: 'cookie' },
+  // Tornado RequestHandler.
+  { kind: 'source', id: 'py-tornado-get-arg',   language: 'py', framework: 'tornado', match: { type: 'call', callee: 'get_argument'      }, argIndex: 0, label: 'tornado.get_argument', provenance: 'http-body' },
+  { kind: 'source', id: 'py-tornado-get-args',  language: 'py', framework: 'tornado', match: { type: 'call', callee: 'get_arguments'     }, argIndex: 0, label: 'tornado.get_arguments', provenance: 'http-body' },
+  { kind: 'source', id: 'py-tornado-get-body',  language: 'py', framework: 'tornado', match: { type: 'call', callee: 'get_body_argument' }, argIndex: 0, label: 'tornado.get_body_argument', provenance: 'http-body' },
+  // os.environ / sys.argv — config + CLI input sources.
+  { kind: 'source', id: 'py-os-environ',    language: 'py', framework: 'std', match: { type: 'member', object: 'os', prop: 'environ' }, label: 'os.environ', provenance: 'env' },
+  { kind: 'source', id: 'py-sys-argv',      language: 'py', framework: 'std', match: { type: 'member', object: 'sys', prop: 'argv'   }, label: 'sys.argv', provenance: 'cli' },
+  // File reads.
+  { kind: 'source', id: 'py-open',          language: 'py', framework: 'std', match: { type: 'call', callee: 'open' }, argIndex: 0, label: 'open()', provenance: 'file-read' },
+  // input() — interactive CLI.
+  { kind: 'source', id: 'py-input',         language: 'py', framework: 'std', match: { type: 'call', callee: 'input' }, argIndex: 0, label: 'input()', provenance: 'stdin' },
+
+  // ─── SINKS (Python) ────────────────────────────────────────────────────────
+  // SQL.
+  { kind: 'sink', id: 'py-cursor-execute', language: 'py', framework: 'db', match: { type: 'call', callee: 'execute' },     argIndex: 0,
+    vuln: { name: 'SQL Injection (cursor.execute)', severity: 'critical', cwe: 'CWE-89',
+            remediation: 'Use parameterized queries: cursor.execute("SELECT * FROM t WHERE id = %s", (id,)). Never %-format or f-string the SQL with untrusted input.' } },
+  { kind: 'sink', id: 'py-cursor-executemany', language: 'py', framework: 'db', match: { type: 'call', callee: 'executemany' }, argIndex: 0,
+    vuln: { name: 'SQL Injection (executemany)', severity: 'critical', cwe: 'CWE-89',
+            remediation: 'Use parameterized queries with executemany; never concatenate user input.' } },
+  { kind: 'sink', id: 'py-sqlalchemy-text', language: 'py', framework: 'sqlalchemy', match: { type: 'call', callee: 'text' }, argIndex: 0,
+    vuln: { name: 'SQL Injection (sqlalchemy.text)', severity: 'critical', cwe: 'CWE-89',
+            remediation: 'sqlalchemy.text() does not parameterize. Use bindparam() or Core expressions for any untrusted input.' } },
+  { kind: 'sink', id: 'py-django-raw', language: 'py', framework: 'django', match: { type: 'call', callee: 'raw' }, argIndex: 0,
+    vuln: { name: 'SQL Injection (Model.objects.raw)', severity: 'critical', cwe: 'CWE-89',
+            remediation: 'Use Django ORM Q-objects or parameterized raw(): Model.objects.raw("SELECT ... %s", [val]).' } },
+  // Command execution.
+  { kind: 'sink', id: 'py-os-system',     language: 'py', framework: 'std', match: { type: 'call', callee: 'system'     }, argIndex: 0,
+    vuln: { name: 'Command Injection (os.system)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'Replace os.system with subprocess.run([...]) using an argv array; never feed untrusted strings to a shell.' } },
+  { kind: 'sink', id: 'py-os-popen',      language: 'py', framework: 'std', match: { type: 'call', callee: 'popen'      }, argIndex: 0,
+    vuln: { name: 'Command Injection (os.popen)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'os.popen is a shell wrapper; use subprocess.run with argv array.' } },
+  { kind: 'sink', id: 'py-subprocess-call', language: 'py', framework: 'std', match: { type: 'call', callee: 'call'      }, argIndex: 0,
+    vuln: { name: 'Command Injection (subprocess.call)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'Pass argv as a list and ensure shell=False (the default). If shell=True is required, escape with shlex.quote.' } },
+  { kind: 'sink', id: 'py-subprocess-run', language: 'py', framework: 'std', match: { type: 'call', callee: 'run'       }, argIndex: 0,
+    vuln: { name: 'Command Injection (subprocess.run with shell=True)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'Pass argv as a list and ensure shell=False.' } },
+  { kind: 'sink', id: 'py-subprocess-Popen', language: 'py', framework: 'std', match: { type: 'call', callee: 'Popen'   }, argIndex: 0,
+    vuln: { name: 'Command Injection (subprocess.Popen)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'Pass argv as a list and shell=False.' } },
+  { kind: 'sink', id: 'py-commands-getoutput', language: 'py', framework: 'std', match: { type: 'call', callee: 'getoutput' }, argIndex: 0,
+    vuln: { name: 'Command Injection (commands.getoutput)', severity: 'critical', cwe: 'CWE-78',
+            remediation: 'commands module is deprecated and shell-based; switch to subprocess with argv.' } },
+  // Code evaluation.
+  { kind: 'sink', id: 'py-eval', language: 'py', framework: 'std', match: { type: 'call', callee: 'eval' }, argIndex: 0,
+    vuln: { name: 'Code Injection (eval)', severity: 'critical', cwe: 'CWE-95',
+            remediation: 'Never eval user input. Use ast.literal_eval for trusted literal forms; reject otherwise.' } },
+  { kind: 'sink', id: 'py-exec', language: 'py', framework: 'std', match: { type: 'call', callee: 'exec' }, argIndex: 0,
+    vuln: { name: 'Code Injection (exec)', severity: 'critical', cwe: 'CWE-95',
+            remediation: 'Never exec user-controlled code.' } },
+  { kind: 'sink', id: 'py-compile', language: 'py', framework: 'std', match: { type: 'call', callee: 'compile' }, argIndex: 0,
+    vuln: { name: 'Code Injection (compile)', severity: 'high', cwe: 'CWE-95',
+            remediation: 'compile() followed by exec is equivalent to eval. Avoid on untrusted input.' } },
+  // Deserialization.
+  { kind: 'sink', id: 'py-pickle-loads', language: 'py', framework: 'std', match: { type: 'call', callee: 'loads' }, argIndex: 0,
+    vuln: { name: 'Unsafe Deserialization (pickle.loads)', severity: 'critical', cwe: 'CWE-502',
+            remediation: 'pickle.loads on untrusted data is RCE. Use JSON / msgpack with explicit schema.' } },
+  { kind: 'sink', id: 'py-pickle-load', language: 'py', framework: 'std', match: { type: 'call', callee: 'load' }, argIndex: 0,
+    vuln: { name: 'Unsafe Deserialization (pickle.load)', severity: 'critical', cwe: 'CWE-502',
+            remediation: 'pickle.load on untrusted streams is RCE.' } },
+  { kind: 'sink', id: 'py-yaml-load', language: 'py', framework: 'yaml', match: { type: 'call', callee: 'load' }, argIndex: 0,
+    vuln: { name: 'Unsafe Deserialization (yaml.load)', severity: 'high', cwe: 'CWE-502',
+            remediation: 'Use yaml.safe_load instead of yaml.load on untrusted YAML.' } },
+  // SSRF / HTTP-out.
+  { kind: 'sink', id: 'py-requests-get',  language: 'py', framework: 'requests', match: { type: 'call', callee: 'get'  }, argIndex: 0,
+    vuln: { name: 'SSRF (requests.get)', severity: 'high', cwe: 'CWE-918',
+            remediation: 'Resolve the host first, reject 169.254.169.254 / RFC1918 / localhost; or proxy through a server-side allow-list.' } },
+  { kind: 'sink', id: 'py-requests-post', language: 'py', framework: 'requests', match: { type: 'call', callee: 'post' }, argIndex: 0,
+    vuln: { name: 'SSRF (requests.post)', severity: 'high', cwe: 'CWE-918',
+            remediation: 'Resolve the host first and reject metadata-endpoint addresses.' } },
+  { kind: 'sink', id: 'py-urllib-urlopen', language: 'py', framework: 'std', match: { type: 'call', callee: 'urlopen' }, argIndex: 0,
+    vuln: { name: 'SSRF (urllib.urlopen)', severity: 'high', cwe: 'CWE-918',
+            remediation: 'Resolve and validate the URL host before opening.' } },
+  // File system sinks.
+  { kind: 'sink', id: 'py-send-file', language: 'py', framework: 'flask', match: { type: 'call', callee: 'send_file' }, argIndex: 0,
+    vuln: { name: 'Path Traversal (send_file)', severity: 'high', cwe: 'CWE-22',
+            remediation: 'Use flask.send_from_directory with a strict base dir, or canonicalize the path and assert it stays within the allowed root.' } },
+  { kind: 'sink', id: 'py-send-from-directory', language: 'py', framework: 'flask', match: { type: 'call', callee: 'send_from_directory' }, argIndex: 1,
+    vuln: { name: 'Path Traversal (send_from_directory)', severity: 'medium', cwe: 'CWE-22',
+            remediation: 'send_from_directory protects against trivial traversal but verify the filename argument has no ".." or absolute prefix.' } },
+  // Template injection.
+  { kind: 'sink', id: 'py-jinja2-from-string', language: 'py', framework: 'jinja2', match: { type: 'call', callee: 'from_string' }, argIndex: 0,
+    vuln: { name: 'Server-Side Template Injection (jinja2.Environment.from_string)', severity: 'critical', cwe: 'CWE-1336',
+            remediation: 'Never compile a template from user input. If user-supplied substitution is required, use a strict allow-listed sandboxed environment.' } },
+  // Crypto / hash sinks (weak hash + plaintext compare are covered elsewhere).
+  // XML — XXE.
+  { kind: 'sink', id: 'py-etree-fromstring', language: 'py', framework: 'xml', match: { type: 'call', callee: 'fromstring' }, argIndex: 0,
+    vuln: { name: 'XXE (xml.etree.fromstring)', severity: 'high', cwe: 'CWE-611',
+            remediation: 'Use defusedxml.ElementTree.fromstring instead.' } },
+  // Redirects.
+  { kind: 'sink', id: 'py-flask-redirect', language: 'py', framework: 'flask', match: { type: 'call', callee: 'redirect' }, argIndex: 0,
+    vuln: { name: 'Open Redirect (flask.redirect)', severity: 'medium', cwe: 'CWE-601',
+            remediation: 'Validate redirect target against an allow-list; never pass req-derived strings straight to redirect.' } },
+
+  // ─── SANITIZERS (Python) ───────────────────────────────────────────────────
+  { kind: 'sanitizer', id: 'py-shlex-quote',         language: 'py', match: { type: 'call', callee: 'quote' },          effect: 'strip', appliesTo: ['cmd'] },
+  { kind: 'sanitizer', id: 'py-html-escape',         language: 'py', match: { type: 'call', callee: 'escape' },         effect: 'strip', appliesTo: ['xss','url'] },
+  { kind: 'sanitizer', id: 'py-markupsafe-escape',   language: 'py', match: { type: 'call', callee: 'Markup' },         effect: 'strip', appliesTo: ['xss'] },
+  { kind: 'sanitizer', id: 'py-bleach-clean',        language: 'py', match: { type: 'call', callee: 'clean' },          effect: 'strip', appliesTo: ['xss'] },
+  { kind: 'sanitizer', id: 'py-urllib-quote',        language: 'py', match: { type: 'call', callee: 'quote_plus' },     effect: 'strip', appliesTo: ['url'] },
+  { kind: 'sanitizer', id: 'py-int',                 language: 'py', match: { type: 'call', callee: 'int' },            effect: 'strip', appliesTo: ['*'] },
+  { kind: 'sanitizer', id: 'py-float',               language: 'py', match: { type: 'call', callee: 'float' },          effect: 'strip', appliesTo: ['*'] },
+  { kind: 'sanitizer', id: 'py-ast-literal-eval',    language: 'py', match: { type: 'call', callee: 'literal_eval' },   effect: 'strip', appliesTo: ['*'] },
+  { kind: 'sanitizer', id: 'py-yaml-safe-load',      language: 'py', match: { type: 'call', callee: 'safe_load' },      effect: 'strip', appliesTo: ['deserial'] },
+  { kind: 'sanitizer', id: 'py-pathlib-resolve',     language: 'py', match: { type: 'call', callee: 'resolve' },        effect: 'taintIf-not-pinned', appliesTo: ['path'] },
+  { kind: 'sanitizer', id: 'py-defusedxml',          language: 'py', match: { type: 'call', callee: 'fromstring' },     effect: 'strip', appliesTo: ['xxe'] },     // when called from defusedxml namespace
 ];
 
 // Provenance defaults (Sentinel-parity audit P1-10):
