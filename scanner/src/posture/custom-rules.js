@@ -270,6 +270,18 @@ function toFinding(rule, file, m) {
 // Returns only non-shadow findings. Shadow findings (rule.shadow=true) are
 // written to .agentic-security/shadow-findings.json so they can be reviewed
 // without blocking CI gates or polluting the main findings list.
+// Premortem 4R-12: the deadline is now per-scanRoot, accumulating across
+// `applyCustomRules()` calls within a single process. A long-running scanner
+// (LSP server, MCP daemon) that calls applyCustomRules per file would
+// otherwise get a fresh 30s budget per call, defeating the global cap.
+// Call `resetCustomRulesBudget(scanRoot)` between scan sessions.
+const _customRulesBudget = new Map();   // scanRoot → { startedAt, exhausted }
+
+export function resetCustomRulesBudget(scanRoot) {
+  if (scanRoot) _customRulesBudget.delete(scanRoot);
+  else _customRulesBudget.clear();
+}
+
 export function applyCustomRules(scanRoot, fileContents) {
   const rules = loadCustomRules(scanRoot);
   if (!rules.length) return [];
@@ -280,14 +292,20 @@ export function applyCustomRules(scanRoot, fileContents) {
   // worst case (100 files × N rules × 200ms ReDoS), the wall time blows up.
   // Cap the total at 30s by default, configurable via env. Surfaces an audit
   // line when exhausted so an operator can spot the runaway rule.
-  const startedAt = Date.now();
   const globalDeadlineMs = parseInt(process.env.AGENTIC_SECURITY_CUSTOM_RULES_BUDGET_MS || '30000', 10);
-  let exhausted = false;
+  let state = _customRulesBudget.get(scanRoot);
+  if (!state) {
+    state = { startedAt: Date.now(), exhausted: false };
+    _customRulesBudget.set(scanRoot, state);
+  }
+  const startedAt = state.startedAt;
+  let exhausted = state.exhausted;
   for (const [file, content] of Object.entries(fileContents)) {
     if (Date.now() - startedAt > globalDeadlineMs) {
       if (!exhausted) {
         console.error(`agentic-security: custom-rules global deadline (${globalDeadlineMs}ms) exhausted — skipping remaining files. Investigate slow rules or raise AGENTIC_SECURITY_CUSTOM_RULES_BUDGET_MS.`);
         exhausted = true;
+        state.exhausted = true;
       }
       break;
     }

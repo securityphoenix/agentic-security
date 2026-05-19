@@ -704,8 +704,14 @@ async function cmdValidatorCache(args) {
     const olderThanDays = parseInt(args.flags['older-than'] || '30', 10);
     const dryRun = !!args.flags['dry-run'];
     const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-    const { _internal } = await import('../src/llm-validator/index.js');
-    const wantedPromptVersion = _internal && _internal.PROMPT_VERSION;
+    // Premortem 4R-15: use the public PROMPT_VERSION export rather than
+    // reaching through the underscore-prefixed _internal API.
+    const { PROMPT_VERSION } = await import('../src/llm-validator/index.js');
+    if (!PROMPT_VERSION) {
+      console.error('agentic-security: validator module did not export PROMPT_VERSION — refusing to GC (would prune everything).');
+      return 4;
+    }
+    const wantedPromptVersion = PROMPT_VERSION;
     const entries = await fsp.readdir(cacheDir);
     let removed = 0, kept = 0, bytesFreed = 0;
     for (const f of entries) {
@@ -819,10 +825,13 @@ async function cmdFix(args) {
     return 0;
   }
 
-  // --apply
+  // --apply. Premortem 4R-8: pass stableId from the engine directly so the
+  // recover() cross-check is robust against line-number drift (f.id is
+  // `${file}:${line}:${rule}` and rotates when the user edits the file).
   const entry = await applyFix({
     scanRoot, file: f.file, originalContent, newContent,
-    findingId: f.id, ruleId: f.cwe || f.title, vuln: f.vuln || f.title,
+    findingId: f.id, stableId: f.stableId || null,
+    ruleId: f.cwe || f.title, vuln: f.vuln || f.title,
   });
   console.log(`✓ applied fix ${entry.id}  (file: ${entry.file})`);
   console.log(`  backup: ${entry.backupPath}`);
@@ -1003,7 +1012,7 @@ async function main() {
         runStdio({ sessionRoot: path.resolve(root) });
         return;
       }
-      case 'version':  console.log('agentic-security 0.47.0  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.48.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'help': case '--help': case '-h': case undefined:
         console.log(USAGE); process.exit(cmd ? 0 : 1);
       default:

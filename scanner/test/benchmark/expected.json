@@ -153,7 +153,8 @@
       "Cleartext HTTP": "insecure-http",
       "Sensitive cookie": "data-exposure",
       "Open Redirect (response.sendRedirect": "open-redirect",
-      "HTTP Response Splitting": "header-hardening"
+      "HTTP Response Splitting": "header-hardening",
+      "Missing CSRF protection on state-changing route": "csrf"
     }
   },
   "fixtures": {
@@ -166,6 +167,13 @@
           "family": "header-hardening",
           "severity": "low",
           "_note": "express() without helmet() or disable('x-powered-by')"
+        },
+        {
+          "file": "app.js",
+          "line": 12,
+          "family": "csrf",
+          "severity": "high",
+          "_note": "POST route without csurf / Bearer / SameSite"
         },
         {
           "file": "app.js",
@@ -318,6 +326,13 @@
         },
         {
           "file": "app.js",
+          "line": 7,
+          "family": "csrf",
+          "severity": "high",
+          "_note": "POST route in this fixture without CSRF defence — incidentally true"
+        },
+        {
+          "file": "app.js",
           "line": 8,
           "family": "command-injection",
           "severity": "critical"
@@ -370,6 +385,13 @@
         },
         {
           "file": "app.js",
+          "line": 15,
+          "family": "csrf",
+          "severity": "high",
+          "_note": "DELETE route without CSRF defence"
+        },
+        {
+          "file": "app.js",
           "line": 10,
           "family": "sql-injection",
           "severity": "high"
@@ -412,13 +434,6 @@
           "line": 28,
           "family": "sql-injection",
           "severity": "high"
-        },
-        {
-          "file": "app.js",
-          "line": 30,
-          "family": "data-exposure",
-          "severity": "high",
-          "_note": "res.json(users) returns full user objects"
         }
       ]
     },
@@ -590,6 +605,13 @@
           "line": 2,
           "family": "header-hardening",
           "severity": "low"
+        },
+        {
+          "file": "app.js",
+          "line": 5,
+          "family": "csrf",
+          "severity": "high",
+          "_note": "POST route without CSRF defence"
         },
         {
           "file": "app.js",
@@ -888,6 +910,13 @@
           "line": 3,
           "family": "header-hardening",
           "severity": "low"
+        },
+        {
+          "file": "app.js",
+          "line": 24,
+          "family": "csrf",
+          "severity": "high",
+          "_note": "POST route without CSRF defence"
         },
         {
           "file": "app.js",

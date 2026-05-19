@@ -1,10 +1,12 @@
 const express = require('express');
 const helmet = require('helmet');
+const csurf = require('csurf');
 const app = express();
 const db = require('./db');
 const { escapeHtml } = require('./util');
 
 app.use(helmet());
+app.use(csurf());
 
 // Parameterized SQL — no injection
 app.get('/users/:id', async (req, res) => {

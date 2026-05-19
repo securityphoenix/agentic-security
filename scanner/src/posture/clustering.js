@@ -12,11 +12,20 @@
 // "one bug, N expressions of it" view.
 
 function sinkKey(f) {
-  // Cluster by the rule that fired + the file + a normalized form of the sink
-  // expression. We INTENTIONALLY do not cluster across files — the existing
-  // fix-bundling pipeline does that (one buggy helper called from N routes →
-  // one bundle of N findings). Clustering here is for the narrower case where
-  // a single sink has multiple flows feeding it within the same file.
+  // Cluster by the detector that fired + rule + file + a normalized form of
+  // the sink expression. We INTENTIONALLY do not cluster across files — the
+  // existing fix-bundling pipeline does that (one buggy helper called from N
+  // routes → one bundle of N findings). Clustering here is for the narrower
+  // case where a single sink has multiple flows feeding it within the same
+  // file.
+  //
+  // The parser tag MUST be in the key (bench-regression May 2026). Without it,
+  // two distinct detectors that happen to share a CWE and target the same
+  // sink line (e.g. structural Open Redirect + host-header redirect detector
+  // both flag CWE-601 on the same res.redirect line) collapse into one,
+  // hiding real findings. Each parser asks its own question; their findings
+  // are not redundant flows of the same vuln.
+  const parser = f.parser || '';
   const rule = f.cwe || f.family || (f.vuln || '').slice(0, 40);
   const file = f.file || f.sink?.file || '';
   const sinkExpr = (f.sink?.label || f.sink?.snippet || f.snippet || '')
@@ -24,7 +33,11 @@ function sinkKey(f) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
-  return `${rule}::${file}::${sinkExpr}`;
+  // Empty sinkExpr keys cluster too eagerly (rate-limit findings that don't
+  // carry a snippet all land in the same bucket). Skip clustering entirely
+  // when we have no sink expression to compare.
+  if (!sinkExpr) return null;
+  return `${parser}::${rule}::${file}::${sinkExpr}`;
 }
 
 export function clusterByRootCause(findings) {
@@ -33,7 +46,7 @@ export function clusterByRootCause(findings) {
   for (const f of findings) {
     if (!f || typeof f !== 'object') continue;
     const k = sinkKey(f);
-    if (!k || k === '::') continue;
+    if (!k) continue;
     if (!buckets.has(k)) buckets.set(k, []);
     buckets.get(k).push(f);
   }

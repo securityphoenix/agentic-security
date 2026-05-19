@@ -93,10 +93,28 @@ async function _withLogLock(scanRoot, fn) {
       }
     } catch (e) {
       if (e && e.code === 'EEXIST') {
+        // Premortem 4R-9: stale-lock reap is now PID-aware. We read the PID
+        // from the lock file and check whether the process still exists. If
+        // the PID is dead OR the lock is older than 30s AND the PID isn't
+        // alive, only THEN do we unlink. This prevents racing the unlink
+        // against a fresh lock from another process on flaky filesystems.
         try {
-          const st = await fsp.stat(lockPath);
-          if (Date.now() - st.mtimeMs > 30000) {
-            try { await fsp.unlink(lockPath); } catch {}
+          const [st, pidStr] = await Promise.all([
+            fsp.stat(lockPath),
+            fsp.readFile(lockPath, 'utf8').catch(() => ''),
+          ]);
+          const pid = parseInt(pidStr.trim(), 10);
+          const pidAlive = Number.isFinite(pid) && _isProcessAlive(pid);
+          const old = Date.now() - st.mtimeMs > 30000;
+          if (!pidAlive || old) {
+            try {
+              // Atomic-ish reap: only unlink if the lockfile still contains
+              // the same PID we just read (i.e. nobody else replaced it).
+              const recheck = (await fsp.readFile(lockPath, 'utf8').catch(() => '')).trim();
+              if (recheck === pidStr.trim()) {
+                await fsp.unlink(lockPath);
+              }
+            } catch {}
             continue;
           }
         } catch {}
@@ -109,6 +127,13 @@ async function _withLogLock(scanRoot, fn) {
       throw e;
     }
   }
+}
+
+function _isProcessAlive(pid) {
+  // POSIX: process.kill(pid, 0) probes existence without sending a signal.
+  // EPERM also means the process exists; only ESRCH means dead.
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e && e.code === 'EPERM'; }
 }
 
 // Build a unified-diff-ish preview between two strings, with line numbers.

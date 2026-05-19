@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
 
 # Least-privilege GITHUB_TOKEN. Both jobs only need to read the repo;
-# actions/upload-artifact@v4 does not require any write scopes.
+# actions/upload-artifact does not require any write scopes.
 # (CodeQL actions/missing-workflow-permissions.)
 permissions:
   contents: read
@@ -38,15 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # Suppress the Node.js 20 deprecation warning on bundled actions
-    # (actions/checkout, actions/setup-node, actions/upload-artifact run
-    # their own internal Node runtime). Forcing Node 24 keeps them on a
-    # supported version. Mirror scan.yml.
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
       - name: Install scanner deps
         working-directory: scanner
@@ -62,7 +56,7 @@ jobs:
         run: node test/benchmark/bench.js --strict-no-unknown
       - name: Upload synthetic FP/FN registry
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bench-synthetic-${{ github.run_id }}
           path: |
@@ -75,11 +69,9 @@ jobs:
     needs: synthetic-bench
     permissions:
       contents: read
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: '22' }
       - name: Install scanner deps
         working-directory: scanner
@@ -125,7 +117,7 @@ jobs:
           '
       - name: Upload realworld results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bench-realworld-${{ github.run_id }}
           path: /tmp/realworld.json

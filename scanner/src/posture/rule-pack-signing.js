@@ -112,7 +112,31 @@ export function verifyRulePack(rulePackPath, trustedKeys) {
   if (!Array.isArray(trustedKeys) || trustedKeys.length === 0) {
     // Pass-through mode: empty bundled trust root + no project keys.
     // Issue ONE warning per process, then accept with passThrough flag.
+    //
+    // Premortem 4R-1: CI mode is fail-closed. CI environments are the place
+    // where supply-chain compromise gets weaponized, and the per-session stderr
+    // warning is invisible there. So when CI=true (or any common CI env-var is
+    // set), refuse pass-through entirely. Operators can opt-in by setting
+    // AGENTIC_SECURITY_ALLOW_PASSTHROUGH_IN_CI=1 — making the bypass an
+    // intentional, auditable decision rather than the silent default.
+    const inCi = !!(
+      process.env.CI ||
+      process.env.GITHUB_ACTIONS ||
+      process.env.GITLAB_CI ||
+      process.env.BUILDKITE ||
+      process.env.CIRCLECI ||
+      process.env.JENKINS_URL ||
+      process.env.TF_BUILD
+    );
+    const allowPassThroughInCi = process.env.AGENTIC_SECURITY_ALLOW_PASSTHROUGH_IN_CI === '1';
     if (BUNDLED_OFFICIAL_KEYS.length === 0 && process.env.AGENTIC_SECURITY_STRICT_SIGNING !== '1') {
+      if (inCi && !allowPassThroughInCi) {
+        return {
+          ok: false,
+          reason: 'pass-through-disabled-in-ci',
+          remediation: 'CI run detected with no signing keys configured. Either (a) set AGENTIC_SECURITY_ALLOW_PASSTHROUGH_IN_CI=1 to accept unsigned rule packs in this CI run, or (b) configure project keys in .agentic-security/trusted-keys.json and set AGENTIC_SECURITY_ALLOW_PROJECT_KEYS=1.',
+        };
+      }
       if (!_passThroughWarned) {
         _passThroughWarned = true;
         console.error('agentic-security: signed-rule-pack defense in PASS-THROUGH mode.');

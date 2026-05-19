@@ -68,12 +68,13 @@ export function normalizeFindings(scan){
       unvalidated: f.unvalidated === true,
       cross_language: f.cross_language === true,
       family: f.family || null,
-      // Premortem 3R-6: audit-provenance fields. Until now these lived on
-      // the finding but `normalizeFindings` dropped them — leaving SARIF /
-      // JSON consumers blind to whether a finding came from an unsigned
-      // rule pack or in pass-through signing mode.
+      // Premortem 3R-6 + 4R-10: audit-provenance fields. Collapse the two
+      // bool flags into one tri-state `signatureStatus` so consumers don't
+      // have to know that passThroughSigning supersedes unsigned. The legacy
+      // flags are kept on the normalized finding for one release of grace.
       _unsigned: f._unsigned === true,
       _passThroughSigning: f._passThroughSigning === true,
+      signatureStatus: f._passThroughSigning ? 'pass-through' : (f._unsigned ? 'unsigned' : 'verified'),
     });
   }
   for (const s of (scan.secrets||[])) {
@@ -304,16 +305,30 @@ export function toMarkdown(scan, meta={}){
   lines.push('');
   const bySev = {};
   for (const f of findings) (bySev[f.severity] ||= []).push(f);
+  // Premortem 4R-11: include a Validator column when at least one finding
+  // carries a verdict, so SCA findings tagged 'not-applicable' aren't
+  // invisible to a reader looking only at the report.
+  const showValidator = findings.some(f => f.validator_verdict);
   for (const sev of ['critical','high','medium','low','info']) {
     if (!bySev[sev]) continue;
     lines.push(`## ${sev.toUpperCase()} (${bySev[sev].length})`);
     lines.push('');
-    lines.push('| File:Line | Vulnerability | CWE | EPSS | Fix |');
-    lines.push('|---|---|---|---|---|');
+    if (showValidator) {
+      lines.push('| File:Line | Vulnerability | CWE | EPSS | Validator | Fix |');
+      lines.push('|---|---|---|---|---|---|');
+    } else {
+      lines.push('| File:Line | Vulnerability | CWE | EPSS | Fix |');
+      lines.push('|---|---|---|---|---|');
+    }
     for (const f of bySev[sev]) {
       const fix = f.fix?.description || '';
       const epss = f.epssScore != null ? `${Math.round(f.epssScore*100)}%` : '—';
-      lines.push(`| \`${f.file}:${f.line}\` | ${f.vuln} | ${f.cwe||'—'} | ${epss} | ${fix.replace(/\|/g,'\\|').slice(0,140)} |`);
+      if (showValidator) {
+        const v = f.validator_verdict || '—';
+        lines.push(`| \`${f.file}:${f.line}\` | ${f.vuln} | ${f.cwe||'—'} | ${epss} | ${v} | ${fix.replace(/\|/g,'\\|').slice(0,140)} |`);
+      } else {
+        lines.push(`| \`${f.file}:${f.line}\` | ${f.vuln} | ${f.cwe||'—'} | ${epss} | ${fix.replace(/\|/g,'\\|').slice(0,140)} |`);
+      }
     }
     lines.push('');
   }
@@ -398,8 +413,11 @@ export function toSARIF(scan, meta={}){
           ...(f.unvalidated ? { unvalidated: true } : {}),
           ...(f.cross_language ? { crossLanguage: true } : {}),
           ...(f.family ? { family: f.family } : {}),
-          // Premortem 3R-6: audit-provenance flags surface in SARIF so
-          // downstream consumers can filter / annotate.
+          // Premortem 3R-6 + 4R-10: emit the single signatureStatus tri-state
+          // (verified | unsigned | pass-through). The legacy bool flags are
+          // emitted alongside for one release of grace so existing dashboards
+          // don't break; new integrations should switch to signatureStatus.
+          signatureStatus: f.signatureStatus || (f._passThroughSigning ? 'pass-through' : (f._unsigned ? 'unsigned' : 'verified')),
           ...(f._unsigned ? { unsigned: true } : {}),
           ...(f._passThroughSigning ? { passThroughSigning: true } : {}),
         },
@@ -627,7 +645,13 @@ export function toCLI(scan, { verbose=false, color=true }={}){
     const sevTag = c(`[${f.severity.toUpperCase()}]`, SEV_COLOR[f.severity]||'');
     const epssTag = f.epssScore != null ? c(`  EPSS:${Math.round(f.epssScore*100)}%`, DIM) : '';
     const kevTag = f.kev ? c('  KEV', '\x1b[1;31m') : '';
-    lines.push(`${sevTag} ${c(f.cwe||'    ', DIM)}  ${f.file}:${f.line}  ${BOLD}${f.vuln}${RESET}${epssTag}${kevTag}`);
+    // Premortem 4R-11: surface the validator verdict so SCA findings (which
+    // get tagged 'not-applicable' deliberately) don't look like they slipped
+    // past validation. The dim tag is only rendered when verdict is set.
+    const verdictTag = f.validator_verdict
+      ? c(`  V:${f.validator_verdict}`, DIM)
+      : '';
+    lines.push(`${sevTag} ${c(f.cwe||'    ', DIM)}  ${f.file}:${f.line}  ${BOLD}${f.vuln}${RESET}${epssTag}${kevTag}${verdictTag}`);
     if (f.masked) lines.push(`        ${c('value:', DIM)} ${f.masked}`);
     if (verbose && f.fix?.description) {
       lines.push(`        ${c('fix:', DIM)} ${f.fix.description}`);

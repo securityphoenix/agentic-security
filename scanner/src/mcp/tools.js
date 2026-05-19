@@ -308,6 +308,7 @@ export const apply_fix = {
       originalContent,
       newContent: f.fix.replacement,
       findingId: f.id,
+      stableId: f.stableId || null,   // premortem 4R-8
       ruleId: f.rule || null,
       vuln: f.vuln || f.title || null,
     });

@@ -375,9 +375,25 @@ function isOfficialOnlyMode() {
   return process.env.AGENTIC_SECURITY_CATALOG_OFFICIAL_ONLY === '1';
 }
 
+// Premortem 4R-4: the per-match `filter()` allocated a fresh array on every
+// taint-engine lookup. On a 100-file Java codebase this was millions of
+// allocations. Memoize by entries-identity; bump a generation counter when
+// the env mode changes so a mid-process toggle invalidates cleanly.
+let _modeGeneration = 0;
+let _lastMode = null;
+const _filterCache = new WeakMap();
 function filterByProvenance(entries) {
-  if (!isOfficialOnlyMode()) return entries;
-  return entries.filter(e => e.source === 'official');
+  const mode = isOfficialOnlyMode();
+  if (!mode) return entries;
+  if (mode !== _lastMode) {
+    _modeGeneration++;
+    _lastMode = mode;
+  }
+  const cached = _filterCache.get(entries);
+  if (cached && cached.gen === _modeGeneration) return cached.list;
+  const list = entries.filter(e => e.source === 'official');
+  _filterCache.set(entries, { gen: _modeGeneration, list });
+  return list;
 }
 
 export function matchSource(memberExpr) {

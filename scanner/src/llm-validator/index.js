@@ -45,8 +45,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 
-// Bump on every prompt change so the cache invalidates.
-const PROMPT_VERSION = 'v2.0-hardened';
+// Bump on every prompt change so the cache invalidates. Exported as a
+// stable public symbol (premortem 4R-15) so the validator-cache GC subcommand
+// doesn't have to reach through the `_internal` underscore-prefixed export.
+export const PROMPT_VERSION = 'v2.0-hardened';
 const CACHE_DIR = '.agentic-security/llm-cache';
 
 // System preamble — embeds a per-request challenge token the model MUST

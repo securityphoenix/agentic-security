@@ -40,39 +40,19 @@ const SCAN_DIRS = [
 // added after v0.46.0 should be wired in (or explicitly allowlisted with a
 // reason) before merge.
 const ALLOWLIST = new Set([
-  // ── Bin-only entry points ───────────────────────────────────────────────
-  'rule-pack-signing.js::keygen',           // bin/agentic-security-rule.js
-  'rule-pack-signing.js::signRulePack',     // bin/agentic-security-rule.js
-  'lsp/server.js::startLspServer',           // bin/agentic-security-lsp.js
-  // ── Validator internal helpers — used via _internal export for tests ─
+  // ── Validator internal helpers — kept on the `_internal` export ──────────
+  // These are tested directly via `_internal` re-export, not imported by name.
   'llm-validator/index.js::sanitizeReasoning',
   'llm-validator/index.js::parseLastJsonObject',
   'llm-validator/index.js::validateResponse',
   'llm-validator/index.js::validateOne',
-  // ── Module-internal lookups — re-exported through index.js facade ───
-  'catalog.js::matchSource',
-  'catalog.js::matchSinkOrSanitizer',
-  'catalog.js::_catalogSize',
-  'catalog.js::CATALOG',
-  'catalog.js::applyPathFeasibility',
-  'ir/parser-js.js::parseJsFile',
-  'callgraph.js::buildCallGraph',
-  // ── MCP tool registration — each tool registers via the ALL_TOOLS array ──
-  'mcp/tools.js::scan_diff',
-  'mcp/tools.js::query_taint',
-  'mcp/tools.js::explain_finding',
-  'mcp/tools.js::apply_fix',
-  'mcp/tools.js::verify_fix',
-  'mcp/tools.js::synthesize_fix',
-  // ── Path-predicates internal name table — used by tests / debugging ──
   'path-predicates.js::_internalPredicateNames',
-  // ── posture/* future-API surface (pre-v0.46.0, kept for API symmetry) ──
+  // ── posture/* future-API surface (kept for API symmetry, no caller yet) ──
   'blast-radius.js::collectProjectSignals',
   'custom-rules.js::runRule',
   'deterministic.js::computeRulePackHash',
   'deterministic.js::buildLockfile',
   'deterministic.js::readLockfile',
-  'deterministic.js::SCANNER_VERSION',
   'epss.js::fetchEPSS',
   'fix-history.js::readLog',
   'fix-plan.js::countPatchBounds',
@@ -83,18 +63,14 @@ const ALLOWLIST = new Set([
   'learning.js::loadFeedback',
   'learning.js::recordVerdict',
   'learning.js::saveFeedback',
-  'llm-redteam.js::runActiveRedteam',
-  'llm-redteam.js::renderRedteamMarkdownReport',
   'material-change.js::parseDiff',
   'material-change.js::classifyHunk',
-  'material-change.js::classifyGitDiff',
   'profile.js::PROFILES',
   'rule-overrides.js::loadOverrides',
   'rule-overrides.js::runCustomRules',
   'rule-pack-signing.js::BUNDLED_OFFICIAL_KEYS',
   'ruleset-version.js::readPinned',
   'ruleset-version.js::effectiveVersion',
-  'ruleset-version.js::CURRENT_RULESET_VERSION',
   'security-trend.js::computeTrend',
   'stable-id.js::computeStableId',
   'streak.js::loadStreak',
@@ -106,13 +82,8 @@ const ALLOWLIST = new Set([
   'suppressions.js::validateProSuppression',
   'triage.js::loadTriage',
   'triage.js::STATES',
-  'validator-metrics.js::recordTriage',  // wired via commands/triage.md (not .js)
   'validator-metrics.js::getLatest',
   'validator-metrics.js::checkFloors',
-  'validator-metrics.js::saveFeedback',
-  // ── Summaries cache (k=1) — used internally; future-public surface ──
-  'summaries.js::SummaryCache',
-  'summaries.js::entryStateFromCall',
 ]);
 
 function listJsFiles(dir) {
@@ -210,4 +181,53 @@ test('every export in posture/llm-validator/dataflow/lsp/ir/mcp has a call site'
     `\n\nFix: either (a) wire the symbol into a production path, ` +
     `(b) add it to ALLOWLIST in test/no-dead-modules.test.js with justification, ` +
     `or (c) delete the export.`);
+});
+
+// Premortem 4R-6: an allowlist that never decays is worse than no allowlist —
+// it papers over real call sites that get added later and hides the next
+// "is this still actually dead?" question. This sister test asserts every
+// allowlisted symbol still has NO call site outside its own source file.
+// If an allowlisted symbol gets wired up after the fact, the allowlist entry
+// is misleading and must be removed.
+test('allowlisted symbols are still dead (no stale exceptions)', async () => {
+  const all = loadAllSources();
+  // Index source files by absolute path so we can correctly resolve the source
+  // for an allowlist key like "lsp/server.js::X" (distinct from "mcp/server.js").
+  const sourceByRel = new Map();
+  for (const d of SCAN_DIRS) {
+    const dir = path.join(SRC_ROOT, d);
+    if (!fs.existsSync(dir)) continue;
+    for (const fp of listJsFiles(dir)) {
+      const rel = path.relative(SRC_ROOT, fp);   // e.g. "lsp/server.js"
+      const baseRel = path.basename(rel);         // e.g. "server.js"
+      sourceByRel.set(rel, fp);
+      // Also accept the unqualified-basename form when the allowlist key
+      // is unambiguous about which directory it means (only one file matches).
+      if (!sourceByRel.has(baseRel)) sourceByRel.set(baseRel, fp);
+    }
+  }
+  const obsolete = [];
+  for (const key of ALLOWLIST) {
+    const sepIdx = key.indexOf('::');
+    if (sepIdx < 0) continue;
+    const fileKey = key.slice(0, sepIdx);
+    const name = key.slice(sepIdx + 2);
+    if (!name) continue;
+    // Skip checks against very short identifiers (high false-positive rate
+    // against common words like 'fn', 'id') and against ALL_CAPS constants
+    // that frequently collide with config names.
+    if (name.length < 5) continue;
+    const sourcePath = sourceByRel.get(fileKey);
+    const re = new RegExp(`\\b${name}\\b`);
+    const ref = all.find(s =>
+      s.path !== sourcePath &&
+      !/no-dead-modules\.test\.js$/.test(s.path) &&
+      re.test(s.content)
+    );
+    if (ref) {
+      obsolete.push(`${key} — now referenced from ${path.relative(process.cwd(), ref.path)}; remove from ALLOWLIST.`);
+    }
+  }
+  assert.equal(obsolete.length, 0,
+    `ALLOWLIST contains stale exceptions (4R-6):\n  ` + obsolete.join('\n  '));
 });

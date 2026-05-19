@@ -17,6 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
 import { runScan } from '../runScan.js';
+import { resetCustomRulesBudget } from '../posture/custom-rules.js';
 
 const PROTOCOL_VERSION = '3.17';
 const SERVER_NAME = 'agentic-security-lsp';
@@ -135,6 +136,11 @@ async function scanFile(uri) {
     const content = fs.readFileSync(filePath, 'utf8');
     const fileContents = { [rel]: content };
     const depFileContents = _loadDepFileContents(_rootDir);
+    // Premortem 4R-12 + 4R-15: reset the per-process custom-rules budget at
+    // the start of each LSP scan. Each save is a logical scan session; without
+    // the reset, a long-lived LSP server would accumulate budget across saves
+    // and eventually start skipping custom rules.
+    resetCustomRulesBudget(_rootDir);
     const { scan } = await runScan(_rootDir, { fileContents, depFileContents });
     const findings = (scan.findings || []).filter(f => f.file === rel);
     await publishDiagnostics(uri, findings);
@@ -184,15 +190,30 @@ async function handleMessage(msg) {
   if (msg.method === 'textDocument/didSave') {
     const uri = msg.params?.textDocument?.uri;
     if (uri) {
-      // Premortem 3R-9: when the user saves a manifest file, the dep-cache is
-      // stale. Without invalidation, the editor would keep firing scans
-      // against the old dependency snapshot and miss freshly-added vulnerable
-      // packages (or false-positive on ones the user just removed).
+      // Premortem 3R-9 / 4R-5: when the user saves a manifest file, the
+      // dep-cache entry for THAT file is stale. Granular invalidation (only
+      // re-read the saved file from disk) avoids the O(project) re-walk that
+      // 3R-9 introduced — important in monorepos where mass manifest edits
+      // would otherwise re-scan thousands of files per save.
       const savedPath = uriToPath(uri);
-      if (savedPath) {
+      if (savedPath && _depCache.rootDir === _rootDir) {
         const base = path.basename(savedPath);
         if (DEP_BASE_NAMES.has(base) || DEP_EXT_RE.test(base) || DEP_NAME_RE.test(base)) {
-          _depCache = { rootDir: null, depFileContents: {} };
+          try {
+            const rel = path.relative(_rootDir, savedPath);
+            const st = fs.statSync(savedPath);
+            if (st.size <= 500_000) {
+              _depCache.depFileContents[rel] = fs.readFileSync(savedPath, 'utf8');
+            } else {
+              delete _depCache.depFileContents[rel];
+            }
+          } catch {
+            // File vanished between save event and stat — drop from cache.
+            try {
+              const rel = path.relative(_rootDir, savedPath);
+              delete _depCache.depFileContents[rel];
+            } catch {}
+          }
         }
       }
       scanFile(uri);

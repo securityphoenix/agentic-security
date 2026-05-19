@@ -11,11 +11,32 @@
 
 import { createRequire } from 'node:module';
 
-let _version = 'unknown';
-try {
+// Premortem 4R-7: silently falling back to 'unknown' meant downstream
+// consumers (CI gate, telemetry, ruleset-version stamp) couldn't tell whether
+// they were looking at a real version or a packaging failure. We now read
+// the version eagerly and surface a clear stderr error when package.json
+// isn't readable, instead of poisoning every report with 'unknown'. Tests can
+// opt out of the eager assertion with AGENTIC_SECURITY_VERSION_UNCHECKED=1.
+function _readVersion() {
   const require = createRequire(import.meta.url);
   const pkg = require('../../package.json');
-  if (pkg && typeof pkg.version === 'string') _version = pkg.version;
-} catch (_) { /* fall through to 'unknown' */ }
+  if (!pkg || typeof pkg.version !== 'string' || !pkg.version) {
+    throw new Error('scanner/package.json has no `version` field');
+  }
+  return pkg.version;
+}
+
+let _version;
+try {
+  _version = _readVersion();
+} catch (e) {
+  _version = 'unknown';
+  if (process.env.AGENTIC_SECURITY_VERSION_UNCHECKED !== '1') {
+    process.stderr.write(
+      `agentic-security: WARNING — could not resolve scanner version (${e.message}). ` +
+      `Reports will carry version='unknown'. Set AGENTIC_SECURITY_VERSION_UNCHECKED=1 to silence.\n`
+    );
+  }
+}
 
 export const SCANNER_VERSION = _version;
