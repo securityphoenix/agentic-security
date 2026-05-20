@@ -12,6 +12,8 @@ import {
 } from './incremental.js';
 import { buildPointsTo } from './points-to.js';
 import { annotateSoftTaint } from './soft-taint.js';
+import { runIfdsTaintEngine } from './ifds.js';
+import { proveExploits } from './exploit-prover.js';
 
 export function runDeepAnalysis(perFileIR, callGraph, opts = {}) {
   // Path-feasibility pass over every function before the taint walk.
@@ -77,11 +79,25 @@ export function runDeepAnalysis(perFileIR, callGraph, opts = {}) {
     try { pointsToGraph = buildPointsTo(perFileIR, callGraph); }
     catch { pointsToGraph = null; }
   }
+  // v0.71 #3 — IFDS alternative analyzer (AGENTIC_SECURITY_IFDS=1).
+  // Runs the formal Reps-Horwitz-Sagiv tabulation in parallel with the
+  // worklist engine. We MERGE findings — the IFDS solver may catch
+  // context-sensitive flows the k=2 cache joined out. Deduped by sink+line.
   let findings = runTaintEngine(perFileIR, callGraph, {
     ...opts,
     summaryCache: preSeededCache || undefined,
     _pointsTo: pointsToGraph || undefined,
   });
+  if (process.env.AGENTIC_SECURITY_IFDS === '1') {
+    try {
+      const ifdsFindings = runIfdsTaintEngine(perFileIR, callGraph, opts);
+      const existing = new Set(findings.map(f => `${f.file}:${f.line}:${f.sink?.label || ''}`));
+      for (const f of ifdsFindings) {
+        const key = `${f.file}:${f.line}:${f.sink?.label || ''}`;
+        if (!existing.has(key)) findings.push(f);
+      }
+    } catch { /* IFDS failure should not fail the scan */ }
+  }
   for (const f of findings) f._pathFeasibilityPruned = totalPruned;
   if (preSeededCache) {
     Object.defineProperty(findings, '_incrementalStats', {
@@ -101,6 +117,26 @@ export function runDeepAnalysis(perFileIR, callGraph, opts = {}) {
   // below-threshold findings to lower severity (never drops).
   if (process.env.AGENTIC_SECURITY_SOFT_TAINT === '1') {
     findings = annotateSoftTaint(findings);
+  }
+  // v0.71 #9 — symbolic exploit proof. For each finding, run the SMT-lite
+  // infeasibility check (and optionally Z3 when AGENTIC_SECURITY_SYMEXEC_Z3=1
+  // AND z3-solver is installed). Attach _exploitInput / _provenUnreachable.
+  if (process.env.AGENTIC_SECURITY_SYMEXEC === '1') {
+    try {
+      const useZ3 = process.env.AGENTIC_SECURITY_SYMEXEC_Z3 === '1';
+      // proveExploits returns a Promise; we keep the deep pass synchronous
+      // by not awaiting — the prover runs eagerly with z3=null (sync path).
+      // For Z3 path, callers should use the async runDeepAnalysisAsync (TBD).
+      if (!useZ3) {
+        // Synchronous SMT-lite branch.
+        // proveExploits awaits z3 only when opts.useZ3=true; otherwise it
+        // returns synchronously through the same async function (Promise of
+        // sync result). We tolerate the Promise here since findings are
+        // mutated in place.
+        const p = proveExploits(findings, { useZ3: false });
+        if (p && typeof p.then === 'function') p.catch(() => {});
+      }
+    } catch { /* prover failure should not fail the scan */ }
   }
   // v0.69 — commit incremental state after a successful scan.
   if (incrementalEnabled && opts.scanRoot && currentFileHashes) {
