@@ -1,5 +1,91 @@
 # Changelog
 
+## 0.72.0 — viral features: shadowscan delta + advisor-tone PR comment + live badge + leaderboard backend
+
+Three viral-lever features built to compound: every PR generates a
+screenshotable advisor's note (not a wall of findings), every repo can
+wear a live security badge (pull-marketing), and every scan's data shape
+is ready for a public leaderboard.
+
+### #5 Shadowscan / security-DELTA on PR — `scanner/src/pr-delta.js`
+
+`computePrDelta(root, { baseRef, headRef })` scans both refs in-memory
+(no checkout, via `git show <ref>:<path>`), diffs by `stableId`, and
+emits:
+- `introduced` — findings in head not in base
+- `resolved`   — findings in base not in head
+- `persistent` — same stableId both sides
+- `shifted`    — same stableId but severity or CWE changed
+- `summary.net` — per-severity head − base delta
+
+New CLI:
+```
+agentic-security pr-delta --base origin/main [--head HEAD] [--json]
+                          [--fail-on-introduced]
+```
+
+### #1 Advisor-tone PR comment — `scanner/src/pr-comment.js`
+
+`renderPrComment(delta, { repoName, prNumber, prTitle })` produces a
+single Markdown comment that reads like a person, not a table. Three
+auto-detected modes:
+- **clean** (no delta) → "Safe to merge."
+- **resolves-only** → "This PR resolves N finding(s)... Nice cleanup."
+- **needs-work** → narrative + per-finding paragraph with CWE 'why'
+  text + remediation snippet + blocking-merge footer for critical/high.
+
+CWE narrative table covers 19 families with one-sentence "why does this
+matter" explanations. The mode is what gets **screenshotted** — security
+tool output that reads like an advisor, not a SARIF dump.
+
+New CLI:
+```
+agentic-security pr-comment [--in delta.json | --base <ref>]
+                            [--repo <slug>] [--pr <n>] [--title <text>]
+# Reads JSON delta from --in, --base (recomputes), or stdin.
+```
+
+### #2 Live SVG badge — `scanner/src/badge.js`
+
+`renderBadge({ format, style, scanRoot, scan })` emits a shields.io-style
+SVG (or JSON for frontend renderers) summarizing the latest scan:
+`agentic-security: crit 0 · high 2 · med 5 · 4h ago`. Color driven by
+highest non-zero severity. Two styles: `flat` (default) + `for-the-badge`.
+
+New CLI:
+```
+agentic-security badge [--format svg|json] [--style flat|for-the-badge]
+```
+
+Reads from `.agentic-security/last-scan.json`. The badge is intended as
+a README ornament that doubles as pull-marketing — every adopting repo
+becomes a billboard.
+
+### Leaderboard backend — `scanner/src/leaderboard.js`
+
+`leaderboardRowFor({ scanRoot, repo })` builds one row of the future
+public leaderboard data: posture grade A-F, severity counts, top CWE,
+last-scan age, delta trend (`improving`/`flat`/`regressing` from
+`scan-history.jsonl` if present), and the badge URL/Markdown snippet
+ready to paste. `rankRows(rows)` sorts by critical → high → grade.
+
+Public hosting of `agentic-security.dev/leaderboard` is deferred — this
+release ships the data side so the future site is a thin frontend.
+
+New CLI:
+```
+agentic-security leaderboard-row --repo owner/name [--root <dir>]
+```
+
+### Test totals
+**811 scanner tests pass / 0 fail** (up from 792).
+
+### Migration
+All four features are additive opt-in CLI subcommands. CI templates can
+adopt `pr-delta | pr-comment` to replace findings-dump comments without
+breaking the existing scan-and-comment flow. README badge adoption is
+manual (paste a Markdown snippet).
+
 ## 0.71.1 — dependency hygiene + CodeQL ignore-list for scanner/
 
 Patch release. No behavior change.

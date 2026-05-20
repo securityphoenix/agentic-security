@@ -137,7 +137,7 @@ function printBanner(args) {
     BOLD:  '\x1b[1m',
     RESET: '\x1b[0m',
   } : { FROG:'', DEEP:'', CREAM:'', DIM:'', BOLD:'', RESET:'' };
-  const v = '0.71.1';
+  const v = '0.72.0';
   const compact = !args.flags.full;
   if (compact) {
     const lines = [
@@ -1535,6 +1535,71 @@ async function main() {
         }
         process.exit(r.ok ? 0 : 1);
       }
+      case 'pr-delta': {
+        // Shadowscan: compute the security delta between two git refs.
+        // Useful in PR CI to show ONLY what changed, not the absolute
+        // finding count. Pairs with `pr-comment` to render the result.
+        const { computePrDelta, renderPrDeltaText } = await import('../src/pr-delta.js');
+        const root = args.flags.root || process.cwd();
+        const baseRef = args.flags.base || args.flags.b;
+        const headRef = args.flags.head || args.flags.h || 'HEAD';
+        if (!baseRef) { console.error('pr-delta: --base <ref> is required'); process.exit(2); }
+        const delta = await computePrDelta(path.resolve(root), { baseRef, headRef });
+        if (args.flags.json) console.log(JSON.stringify(delta, null, 2));
+        else console.log(renderPrDeltaText(delta));
+        // Exit non-zero if any critical/high introduced (useful as CI gate).
+        const i = delta.summary?.introduced || {};
+        const blocking = (i.critical || 0) + (i.high || 0);
+        process.exit(args.flags['fail-on-introduced'] && blocking > 0 ? 1 : 0);
+      }
+      case 'pr-comment': {
+        // Render the advisor-tone PR comment from a delta (stdin or
+        // pr-delta --json output). Reads JSON from --in <path> or stdin.
+        const { renderPrComment } = await import('../src/pr-comment.js');
+        const { computePrDelta } = await import('../src/pr-delta.js');
+        const fs2 = await import('node:fs');
+        let delta;
+        if (args.flags.base) {
+          const root = args.flags.root || process.cwd();
+          delta = await computePrDelta(path.resolve(root), {
+            baseRef: args.flags.base, headRef: args.flags.head || 'HEAD',
+          });
+        } else if (args.flags.in) {
+          delta = JSON.parse(fs2.readFileSync(args.flags.in, 'utf8'));
+        } else {
+          const data = await new Promise(r => {
+            const chunks = []; process.stdin.on('data', c => chunks.push(c));
+            process.stdin.on('end', () => r(Buffer.concat(chunks).toString('utf8')));
+          });
+          delta = JSON.parse(data);
+        }
+        const comment = renderPrComment(delta, {
+          repoName: args.flags.repo, prNumber: args.flags.pr, prTitle: args.flags.title,
+        });
+        console.log(comment);
+        process.exit(0);
+      }
+      case 'badge': {
+        // Emit a live SVG badge from the most recent scan. Drop the URL
+        // (or inline SVG) into README for pull-marketing.
+        const { renderBadge } = await import('../src/badge.js');
+        const root = args.flags.root || process.cwd();
+        const format = args.flags.format || 'svg';
+        const style = args.flags.style || 'flat';
+        console.log(renderBadge({ format, style, scanRoot: path.resolve(root) }));
+        process.exit(0);
+      }
+      case 'leaderboard-row': {
+        // Generate one repo's leaderboard row (JSON). The future public
+        // leaderboard at agentic-security.dev/leaderboard aggregates rows.
+        const { leaderboardRowFor } = await import('../src/leaderboard.js');
+        const root = args.flags.root || process.cwd();
+        const repo = args.flags.repo;
+        if (!repo) { console.error('leaderboard-row: --repo <owner/name> is required'); process.exit(2); }
+        const row = leaderboardRowFor({ scanRoot: path.resolve(root), repo });
+        console.log(JSON.stringify(row, null, 2));
+        process.exit(0);
+      }
       case 'history': {
         // Time-travel scan. Walk N historical git refs within --since,
         // scan each, emit a per-ref timeline + introduced/resolved deltas
@@ -1600,7 +1665,7 @@ async function main() {
         }
         process.exit(0);
       }
-      case 'version':  console.log('agentic-security 0.71.1  ·  created by ClearCapabilities.Com'); process.exit(0);
+      case 'version':  console.log('agentic-security 0.72.0  ·  created by ClearCapabilities.Com'); process.exit(0);
       case 'banner':   { printBanner(args); process.exit(0); }
       case 'harness':  process.exit(await cmdHarness(args));
       case 'scan-baseline': process.exit(await cmdScanBaseline(args));
