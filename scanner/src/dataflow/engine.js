@@ -459,7 +459,10 @@ export function runTaintEngine(perFileIR, callGraph, opts = {}) {
   // "does callee F return tainted under this entry state?" before
   // conservatively assuming it doesn't. This wires the cache that was
   // exported-but-unused for several releases.
-  const summaryCache = new SummaryCache();
+  //
+  // v0.69 — opts.summaryCache lets the caller (runDeepAnalysis with
+  // incremental mode) hand in a pre-seeded cache from persisted state.
+  const summaryCache = opts.summaryCache || new SummaryCache();
 
   // Deterministic ordering (Sentinel-parity §9.2): sort functions by qid so
   // cache-cold runs produce the same finding sequence run-over-run.
@@ -551,5 +554,7 @@ export function runTaintEngine(perFileIR, callGraph, opts = {}) {
       });
     }
   }
+  // v0.69 — expose cache to caller (runDeepAnalysis) for incremental persistence.
+  Object.defineProperty(all, '_summaryCache', { value: summaryCache, enumerable: false });
   return all;
 }

@@ -126,4 +126,96 @@ export function calleeIsResolvableCallback(arg) {
   return null;
 }
 
+/**
+ * v0.69 #8a — Closure capture-set analysis.
+ *
+ * Walks an expression / function-body tree collecting identifier references.
+ * Anything referenced but NOT in `boundNames` is a free variable — captured
+ * from the enclosing scope.
+ *
+ * Usage:
+ *   const captures = capturedFreeVars(callbackBody, new Set(callbackParams));
+ *
+ * Returns a Set<string> of captured identifier names.
+ *
+ * The engine consumes this at call sites: when `arr.map(cb)` is analyzed,
+ * if the caller's tainted-state covers any var in `cb`'s capture set, that
+ * tainted state seeds `cb`'s entry analysis (so a tainted captured var
+ * propagates into the callback's body).
+ *
+ * v0.69 ships the extractor + tests; engine wiring follows in v0.70 once
+ * alias analysis (#2) lands — the two together close the higher-order
+ * story without over-tainting common idioms.
+ */
+export function capturedFreeVars(node, boundNames = new Set(), out = new Set()) {
+  if (!node || typeof node !== 'object') return out;
+  // Identifier reference — capture iff not in boundNames.
+  if (node.kind === 'ident' && typeof node.name === 'string') {
+    if (!boundNames.has(node.name)) out.add(node.name);
+    return out;
+  }
+  // Member access — only the root identifier is free.
+  if (node.kind === 'member') {
+    capturedFreeVars(node.object, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'binary' || node.kind === 'logical') {
+    capturedFreeVars(node.left, boundNames, out);
+    capturedFreeVars(node.right, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'call') {
+    if (typeof node.callee === 'object') capturedFreeVars(node.callee, boundNames, out);
+    else if (typeof node.callee === 'string') {
+      // Dotted callee strings like `obj.method`. The receiver name (before
+      // first dot) is the capture-relevant binding.
+      const root = node.callee.split('.')[0];
+      if (root && !boundNames.has(root)) out.add(root);
+    }
+    for (const a of (node.args || [])) capturedFreeVars(a, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'tpl' && Array.isArray(node.parts)) {
+    for (const p of node.parts) capturedFreeVars(p, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'array' && Array.isArray(node.elements)) {
+    for (const e of node.elements) capturedFreeVars(e, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'object' && Array.isArray(node.props)) {
+    for (const p of node.props) capturedFreeVars(p.value, boundNames, out);
+    return out;
+  }
+  if (node.kind === 'union' && Array.isArray(node.branches)) {
+    for (const b of node.branches) capturedFreeVars(b, boundNames, out);
+    return out;
+  }
+  // Nested function-value: its params extend the boundNames for its own
+  // body, but free vars of the nested function still leak OUT (those that
+  // weren't bound by the inner scope).
+  if (node.kind === 'function-value' && node.body) {
+    const innerBound = new Set(boundNames);
+    for (const p of (node.params || [])) innerBound.add(p);
+    capturedFreeVars(node.body, innerBound, out);
+    return out;
+  }
+  return out;
+}
+
+/**
+ * Given a callback expression (typically `arr.map(<callback>)`'s callback
+ * argument), return its capture set. Inline arrow functions are recognized
+ * via `function-value` with `params` + `body`; named callbacks return
+ * empty (the named function's analysis handles its own captures).
+ */
+export function callbackCaptureSet(callbackArg) {
+  if (!callbackArg) return new Set();
+  if (callbackArg.kind === 'function-value' && callbackArg.body) {
+    const bound = new Set(callbackArg.params || []);
+    return capturedFreeVars(callbackArg.body, bound);
+  }
+  return new Set();
+}
+
 export { _ARRAY_FIRST_ARG_PROPAGATING, _PROMISE_INSTANCE_METHODS, _PROMISE_STATIC_METHODS, _RX_OPERATORS };

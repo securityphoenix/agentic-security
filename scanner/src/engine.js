@@ -7092,6 +7092,9 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       const irFindings = runDeepAnalysis(perFile, callGraph, {
         fnLimit: parseInt(process.env.AGENTIC_SECURITY_DEEP_FN_LIMIT || '5000', 10),
         deadlineMs: t0 + budgetMs,
+        // v0.69 — incremental cache inputs (used when AGENTIC_SECURITY_INCREMENTAL=1).
+        scanRoot,
+        fileContents: fc,
       });
       const elapsed = Date.now() - t0;
       if (elapsed > budgetMs) {

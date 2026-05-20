@@ -145,18 +145,30 @@ export function sliceBackward(fn, sinkNode, sinkArgPath) {
  *
  *   findings: produced by the engine, expected to carry `_funcQid` and `line`.
  *   perFileIR / callGraph: same shape the dataflow engine consumes.
+ *
+ * Walltime-bounded: total annotation work is capped by
+ * AGENTIC_SECURITY_BACKWARD_SLICE_BUDGET_MS (default 30_000). When the
+ * budget is exhausted, remaining findings are left without slices —
+ * earlier findings keep their annotations.
+ *
+ * Returns the (mutated) findings array, with an `_annotateBackwardSlicesStats`
+ * scratch property on the array containing { annotated, skipped, exhausted }.
  */
 export function annotateBackwardSlices(findings, perFileIR, callGraph) {
   if (!Array.isArray(findings)) return findings;
+  const budgetMs = Number(process.env.AGENTIC_SECURITY_BACKWARD_SLICE_BUDGET_MS) || 30_000;
+  const deadline = Date.now() + budgetMs;
   // Build a qid → fn map for O(1) lookup.
   const fnByQid = new Map();
   if (callGraph && callGraph.functions) {
     for (const fn of callGraph.functions.values()) fnByQid.set(fn.qid, fn);
   }
+  let annotated = 0, skipped = 0, exhausted = false;
   for (const f of findings) {
-    if (!f || !f._funcQid) continue;
+    if (Date.now() > deadline) { exhausted = true; skipped++; continue; }
+    if (!f || !f._funcQid) { skipped++; continue; }
     const fn = fnByQid.get(f._funcQid);
-    if (!fn) continue;
+    if (!fn) { skipped++; continue; }
     // Find the sink node in fn by line + callee match.
     let sinkNode = null;
     for (const nid of Object.keys(fn.cfg?.nodes || {})) {
@@ -164,7 +176,7 @@ export function annotateBackwardSlices(findings, perFileIR, callGraph) {
       if (!n || n.kind !== 'call') continue;
       if (n.line === f.line && n.callee === f.callee) { sinkNode = n; break; }
     }
-    if (!sinkNode) continue;
+    if (!sinkNode) { skipped++; continue; }
     // The tainted arg path — derive from the tainted argument's expression.
     const taintedArg = (sinkNode.args || [])[f.argIndex];
     const argPath = accessPathOf(taintedArg) || `arg[${f.argIndex}]`;
@@ -176,7 +188,14 @@ export function annotateBackwardSlices(findings, perFileIR, callGraph) {
         label: s.label || s.callee || s.path || '',
         line: s.line,
       })));
+      annotated++;
+    } else {
+      skipped++;
     }
   }
+  Object.defineProperty(findings, '_annotateBackwardSlicesStats', {
+    value: { annotated, skipped, exhausted, budgetMs },
+    enumerable: false,
+  });
   return findings;
 }

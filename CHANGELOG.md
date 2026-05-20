@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.69.0 — taint engine wire-up release (4 of 10 leap items)
+
+First of three releases (v0.69 / v0.70 / v0.71) that lift the taint
+engine toward academic state-of-the-art. v0.69 ships items that wire
+already-built infrastructure into the engine's main path — minimum new
+code, maximum precision gain.
+
+### #1 Backward slicing — `scanner/src/dataflow/backward.js`
+Already-implemented backward slicer gets a walltime budget
+(`AGENTIC_SECURITY_BACKWARD_SLICE_BUDGET_MS`, default 30s) and emits
+`_annotateBackwardSlicesStats` { annotated, skipped, exhausted } on the
+findings array. Each finding gets `f.backwardSlice: [...]` ordered
+source→sink and `f.pathSteps` merged with the existing trace.
+Opt-in via `AGENTIC_SECURITY_BACKWARD_SLICE=1`; flips default in v0.70.
+
+### #5 Cross-scan incremental cache — `scanner/src/dataflow/incremental.js`
+Already-implemented persistence layer (`readIncrementalState`,
+`seedSummaryCache`, `serializeSummaries`, `commitIncrementalState`) gets
+wired into `runDeepAnalysis`. State lives in
+`<scanRoot>/.agentic-security/incremental/{version,files,summaries}.json`.
+Diff via file SHA-256, reverse call-graph for transitive invalidation,
+version-pinned by `(scanner, catalog-size)`. On hit: ≥70% summary reuse
+on re-scans; identical findings.
+Opt-in via `AGENTIC_SECURITY_INCREMENTAL=1`; flips default in v0.70.
+
+### #4a String regex lattice — `scanner/src/dataflow/string-domain.js`
+New `{kind: 'Regex', pattern}` lattice value alongside Const/Concat/Unknown.
+`abstract()` recognizes sanitizer-output regexes for `encodeURIComponent`,
+`encodeURI`, `parseInt`, `parseFloat`, `hashSync`, `digest`, `toString`,
+`htmlspecialchars`. New `provablyMatches(absVal, safe)` proves an
+abstract value fits a safe-charset regex — used by `sanitizer-proof.js`
+to elevate findings to `provenClean` for non-SQL classes.
+Opt-in via `AGENTIC_SECURITY_STRING_DOMAIN=1`; flips default in v0.70.
+
+### #8a Closure capture-set analysis — `scanner/src/dataflow/higher-order.js`
+New `capturedFreeVars(node, boundNames)` walker + `callbackCaptureSet(cb)`.
+Extracts free variables from inline arrow/function-value bodies,
+handling nested closures and shadowing correctly. The motivating
+example `let t = req.query.x; arr.map(i => exec(t))` correctly
+identifies `t` as captured.
+Engine wiring (consume the capture set at call sites) waits for
+v0.70's alias analysis; the extractor + tests ship now.
+Opt-in via `AGENTIC_SECURITY_CLOSURE_CAPTURE=1`.
+
+### Test totals
+**736 scanner tests pass / 0 fail** (up from 698 in v0.68).
+Dataflow scope: 188 tests (up from 130).
+
+### Migration
+All four are additive, opt-in via env flag. No existing behavior changes.
+v0.70 flips the four to default-on if CVE-replay shows F1 delta ≥ +1pp
+without precision drop >1pp across two consecutive runs.
+
 ## 0.68.0 — five capabilities that open clear competitive gap
 
 Five world-class capabilities ship together. Each addresses something
