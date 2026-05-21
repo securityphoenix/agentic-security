@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.74.2 — npm package + version alignment
+
+First release published to npm under the org that owns the scope:
+`@clear-capabilities/agentic-security-scanner`. Adds a bin alias
+`agentic-security-scanner` (→ same dist bundle) so the documented
+`npx @clear-capabilities/agentic-security-scanner secure .` resolves
+an executable. Aligns the source-tree version with the npm registry
+after the 0.74.1 metadata-only publish.
+
 ## 0.74.0 — viral surface: PoC video gen + security-tutor skill + personality voices + compare runner
 
 Four shareability lifts.
