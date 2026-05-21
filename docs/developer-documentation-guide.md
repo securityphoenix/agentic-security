@@ -365,14 +365,14 @@ Five minutes from `npx` to a working pro setup with a CI gate, ticket sync, and 
 ### 1. Install and confirm
 
 ```bash
-       npx @clearcapabilities/agentic-security-scanner version
+       npx @clear-capabilities/agentic-security-scanner version
        # → agentic-security 0.35.0 · created by ClearCapabilities.Com
 ```
 
 Or globally, if you prefer the short alias `as`:
 
 ```bash
-       npm install -g @clearcapabilities/agentic-security-scanner
+       npm install -g @clear-capabilities/agentic-security-scanner
        as version
 ```
 
@@ -1230,7 +1230,7 @@ scanner version — the receipts an auditor wants instead of a checkbox.
 The scanner exports its public API for embedding:
 
 ```js
-       import { runScan } from '@clearcapabilities/agentic-security-scanner';
+       import { runScan } from '@clear-capabilities/agentic-security-scanner';
 
        const { scan, meta } = await runScan('.', { changedSince: 'origin/main' });
        const critical = scan.findings.filter(f => f.severity === 'critical');
@@ -1767,7 +1767,7 @@ Auto-generated GitHub Actions workflow (recommended):
 Manual CI runner (auto-detects PR base ref):
 
 ```bash
-       npx @clearcapabilities/agentic-security-scanner ci . --fail-on critical
+       npx @clear-capabilities/agentic-security-scanner ci . --fail-on critical
 ```
 
 Raw scan with SARIF upload to GitHub Security tab:
@@ -1777,7 +1777,7 @@ Raw scan with SARIF upload to GitHub Security tab:
        - uses: actions/setup-node@v4
          with: { node-version: '20' }
        - run: |
-           npx @clearcapabilities/agentic-security-scanner scan . \
+           npx @clear-capabilities/agentic-security-scanner scan . \
              --format sarif --output security.sarif
        - uses: github/codeql-action/upload-sarif@v3
          with: { sarif_file: security.sarif }

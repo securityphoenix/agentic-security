@@ -11,7 +11,7 @@ jobs:
       - checkout
       - run:
           name: Install scanner
-          command: npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+          command: npm install --no-audit --no-fund @clear-capabilities/agentic-security-scanner
       - run:
           name: Run agentic-security scan
           command: npx agentic-security scan --all --json > findings.json

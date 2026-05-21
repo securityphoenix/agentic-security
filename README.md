@@ -44,7 +44,7 @@ Then type `/agentic-security:secure` and let it tell you the next step.
 In your **terminal**, anywhere (no Claude Code required):
 
 ```bash
-npx @clearcapabilities/agentic-security-scanner secure .
+npx @clear-capabilities/agentic-security-scanner secure .
 ```
 
 Same engine. No accounts.
@@ -158,7 +158,7 @@ The mascot (Patch) reacts to whatever your scan actually said.
 |---|---|
 | A builder shipping fast with AI, no security background | [→ Builder Quickstart](#-for-vibecoders--builders) |
 | A security engineer or professional developer managing real risk | [→ Pro Quickstart](#-for-security-pros--engineers) |
-| Curious | Run `npx @clearcapabilities/agentic-security-scanner scan .` and see what it finds |
+| Curious | Run `npx @clear-capabilities/agentic-security-scanner scan .` and see what it finds |
 
 ---
 
@@ -375,20 +375,20 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 ```bash
 # 1. Flip to pro mode (lowers confidence threshold, shows full taxonomy,
 #    writes SARIF + CSV every scan, audit-grade suppression schema).
-npx @clearcapabilities/agentic-security-scanner profile set pro
+npx @clear-capabilities/agentic-security-scanner profile set pro
 
 # 2. Lock the rule-pack version for reproducible scans across the team.
-npx @clearcapabilities/agentic-security-scanner rules lock
+npx @clear-capabilities/agentic-security-scanner rules lock
 
 # 3. Wire two-way ticket sync (dry-run first).
-npx @clearcapabilities/agentic-security-scanner tickets sync \
+npx @clear-capabilities/agentic-security-scanner tickets sync \
    --provider github --severity high --dry-run
 
 # 4. Add a CI gate that fails on critical findings new since the PR base.
-npx @clearcapabilities/agentic-security-scanner ci . --fail-on critical
+npx @clear-capabilities/agentic-security-scanner ci . --fail-on critical
 
 # 5. Generate compliance attestation evidence.
-npx @clearcapabilities/agentic-security-scanner scan . --format aibom > ai-bom.json
+npx @clear-capabilities/agentic-security-scanner scan . --format aibom > ai-bom.json
 ```
 
 ### The full pro catalog

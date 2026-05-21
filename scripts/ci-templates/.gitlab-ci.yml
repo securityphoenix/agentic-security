@@ -10,7 +10,7 @@ agentic-security:
   stage: security
   image: node:20
   script:
-    - npm install --no-audit --no-fund @clearcapabilities/agentic-security-scanner
+    - npm install --no-audit --no-fund @clear-capabilities/agentic-security-scanner
     - npx agentic-security scan --all --json > findings.json
     - npx agentic-security ci-gate --threshold high
   artifacts:

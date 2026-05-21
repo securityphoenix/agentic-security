@@ -26,7 +26,7 @@ lua require('agentic-security').setup()
 Then ensure the bin is installed:
 
 ```bash
-npm i -g @clearcapabilities/agentic-security-scanner
+npm i -g @clear-capabilities/agentic-security-scanner
 ```
 
 ## Configuration

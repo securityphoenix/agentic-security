@@ -33,7 +33,7 @@ function _readVersion() {
     return require('../../package.json');
   });
   // 2. Walk upward from the current file looking for any package.json that
-  //    carries `@clearcapabilities/agentic-security-scanner`. Survives ncc.
+  //    carries `@clear-capabilities/agentic-security-scanner`. Survives ncc.
   candidates.push(() => {
     let dir;
     try { dir = path.dirname(fileURLToPath(import.meta.url)); }

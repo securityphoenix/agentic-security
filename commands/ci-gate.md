@@ -116,8 +116,8 @@ jobs:
 
       - name: Install agentic-security scanner
         run: |
-          npm install -g @clearcapabilities/agentic-security-scanner@\${pluginVersion} 2>/dev/null || \\
-          npx --yes @clearcapabilities/agentic-security-scanner@\${pluginVersion} --version || \\
+          npm install -g @clear-capabilities/agentic-security-scanner@\${pluginVersion} 2>/dev/null || \\
+          npx --yes @clear-capabilities/agentic-security-scanner@\${pluginVersion} --version || \\
           echo 'Scanner install attempted'
 
       - name: Run security scan
