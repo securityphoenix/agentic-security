@@ -16,11 +16,24 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { runScan } from '../runScan.js';
 import { applyFix as applyFixHistory } from '../posture/fix-history.js';
 import { verifyLastScan } from '../posture/integrity.js';
 import { redactString, redactFinding } from './redact.js';
-import { verifyFix as verifyFixCore } from '../posture/fix-verify.js';
+
+// Lazy-loaded: these transitively pull in npm packages (fast-glob,
+// @babel/core) that aren't available in the plugin-cache install path
+// (no node_modules). Deferring keeps the MCP server bootable everywhere;
+// the import only runs when a tool that needs them is actually called.
+let _runScan;
+async function getRunScan() {
+  if (!_runScan) _runScan = (await import('../runScan.js')).runScan;
+  return _runScan;
+}
+let _verifyFixCore;
+async function getVerifyFixCore() {
+  if (!_verifyFixCore) _verifyFixCore = (await import('../posture/fix-verify.js')).verifyFix;
+  return _verifyFixCore;
+}
 
 const MAX_FILES_PER_SCAN = 1024;
 const MAX_FILE_BYTES = 500_000;
@@ -315,6 +328,7 @@ export const scan_diff = {
       fileContents[rel] = content;
     }
 
+    const runScan = await getRunScan();
     const result = await runScan(sessionRoot, { network: false, fileContents });
     const wantSet = new Set(Object.keys(fileContents));
     const sevRank = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
@@ -588,6 +602,7 @@ export const verify_fix = {
       confined[relPath] = String(content);
     }
     try {
+      const verifyFixCore = await getVerifyFixCore();
       const r = await verifyFixCore({
         scanRoot: ctx.sessionRoot,
         originalFindingStableId: stable_id,
