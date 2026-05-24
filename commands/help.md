@@ -39,41 +39,44 @@ fixes, and bodyguards that prevent foot-guns BEFORE they hit production.
 
   Understand it
     /explain                   Plain-English explanation of one finding
-    /explain --narrative       4-act attack story (was /story-explain)
-    /attack-surface            3-5 realistic attack scenarios as narrative
+    /explain --narrative       4-act attack story
+    /threat --view surface     3-5 realistic attack scenarios as narrative
+
+  Stack-specific audits (one command, many targets)
+    /audit --target db         Supabase RLS, SQL injection, service-role exposure
+    /audit --target auth       Clerk / NextAuth / Auth0 / Lucia misconfig
+    /audit --target rate-limit Unrate-limited auth/AI/payment endpoints
+    /audit --target webhook    Missing signature verification
+    /audit --target env        NEXT_PUBLIC_ leaks, .env hygiene
+    /audit --target csp-cors   Generate CSP + CORS headers for your stack
+    /audit --target deploy     Vercel / Railway / Fly / Netlify / CF checklist
+    /audit --target launch     Pre-launch 10-item go/no-go checklist
+    /audit --target llm-cost   Auto-patch missing max_tokens + spend tracker
+    /audit --target prompt     Prompt injection + LLM output → SQL/exec
+    /audit --all               Run every target in sequence
 
   Bodyguards (set once, run forever)
     /ai-bodyguard              Intercept insecure AI code BEFORE it hits disk
     /destructive-guard         Block rm -rf, DROP TABLE, force push to main…
-    /predeploy-gate            Block vercel --prod / fly deploy on findings
+    /ci --predeploy            Block vercel --prod / fly deploy on findings
     /cve-alerts                Daily Slack/Discord ping on new CVE in your deps
 
   Secrets (the panic button)
     /rotate-secret             Provider-aware rotation guide
-    /rotate-secret --auto      Revoke + scrub + push replacement (was /rotate-key-auto)
+    /rotate-secret --auto      Revoke + scrub + push replacement
     /vault-wizard              Migrate .env to Doppler / Infisical / platform
 
-  Stack-specific
-    /stack-playbook            Copy-paste security checklist for your stack
+  Hardening & docs
     /harden                    Headers + .gitignore + SECURITY.md + audit hook
-    /db-audit                  Supabase RLS, service-role exposure
-    /auth-audit                Clerk / NextAuth / Auth0 / Lucia misconfig
-    /rate-limit-check          Find unrate-limited auth/AI/payment endpoints
-    /webhook-audit             Stripe/GitHub/Clerk signature verification
-    /env-check                 NEXT_PUBLIC_ leaks, hardcoded fallbacks
-    /csp-cors                  Generate CSP + CORS headers for your stack
-    /llm-cost-ceiling          Auto-patch max_tokens + $-spend tracker
-    /prompt-firewall           LLM defense gaps (user input in system prompt)
-    /deploy-check              Vercel/Railway/Fly/Netlify/CF checklist
-    /launch-check              10 things builders typically miss
+    /stack-playbook            Copy-paste security checklist for your stack
 
   Customer / investor artifacts
-    /security-attestation                    Default: README badge (was /security-badge)
-    /security-attestation --format onepager  "How we keep your data safe" doc (was /security-onepager)
-    /security-attestation --format page      /.well-known/security.txt + /security page (was /trust-page)
-    /privacy-docs              PRIVACY.md + cookie banner from your stack
-    /disaster-playbook         DISASTER.md with the commands you'll need
-    /social-media              X / LinkedIn / Discord posts about progress
+    /security-attestation                    Default: README badge
+    /security-attestation --format onepager  "How we keep your data safe" doc
+    /security-attestation --format page      /.well-known/security.txt + page
+    /generate --type privacy   PRIVACY.md + cookie banner from your stack
+    /generate --type disaster  DISASTER.md incident-response playbook
+    /generate --type social    X / LinkedIn / Discord posts about progress
 
 ═══════════════════════════════════════════════════════════════
 🔧 PRO / APPLICATION SECURITY LANE
@@ -90,7 +93,6 @@ you already run, customization, and audit-defensible output.
     /scan --pipeline           GitHub Actions integrity
     /scan --logic              Semantic business-logic review (subagent)
     /scan --diff [--since ref] Architectural-risk score on git diff
-    agentic-security scan --pr [ref]    Diff-aware: only changed files
     agentic-security scan --deterministic  Byte-stable for CI baselines
 
   Validation & triage
@@ -98,22 +100,35 @@ you already run, customization, and audit-defensible output.
     /show-findings --all       Interactive HTML triage report
     /show-findings --kev       Filter to actively-exploited CVEs
     /show-findings --chains    Multi-finding attack chains
-    /show-findings --threat-model [--stride|--llm]
+    /triage                    Interactive TP/FP marking
+    /three-agent-review        Red / blue / auditor review of one finding
 
-  Rule authoring & customization
-    agentic-security rule list             List custom YAML rules
-    agentic-security rule test <glob>      Test rules against fixtures
-    agentic-security rules validate        Lint rules.yml
-    agentic-security rules lock            Pin rule-pack hash
-    agentic-security packs list            Curated rule packs
+  Finding inquiry (one command, three modes)
+    /explain --finding <id>    Plain-English explanation
+    /explain --provenance --finding <id>   Full provenance graph (was /why-fired)
+    /explain --gap <CWE>       Why a CWE didn't fire (was /why-not)
 
-  Integrations
-    /ci-gate                   GitHub Actions workflow + SARIF upload
-    /fix --pr                  Bundle fixes into a feature branch + PR
-    agentic-security tickets sync --provider github|linear|jira
-    agentic-security org-scan --repos <list>   Fleet scan across N repos
-    agentic-security triage list|assign|transition|trend
-    /security-tests            Generate failing security regression tests
+  CI & deploy integration (one command, three modes)
+    /ci                        GitHub Actions workflow + SARIF upload
+    /ci --provider gitlab      Other providers (gitlab|circleci|buildkite|jenkins)
+    /ci --predeploy            Block vercel/fly/wrangler deploys
+    /ci --hooks                Pre-commit + pre-push git hooks
+
+  Threat modeling (one command, eight views)
+    /threat                    Auto-derived STRIDE — assets, boundaries, findings
+    /threat --view personas    Per-persona priority matrix (5 adversary classes)
+    /threat --view playbook    Copy-paste attack scripts (curl / Nuclei)
+    /threat --view bounty      Predicted HackerOne / Immunefi USD payouts
+    /threat --view adversary   Multi-step LLM exploit agent
+    /threat --view surface     Plain-English attack narrative
+    /threat --view boundary    Auto-Mermaid trust-boundary diagram
+    /threat --view spof        Single-point-of-failure counterfactual
+
+  LLM red-teaming (one command, three modes)
+    /llm                       Static scan of LLM-calling code (default)
+    /llm --endpoint URL        Active red-team (30+ prompts × 7 mutations)
+    /llm --mode jailbreak      Jailbreak families only (fast verdict)
+    /llm --mode eval           Generate promptfoo YAML eval suite
 
   Posture & compliance
     /posture-management --sbom   CycloneDX 1.6 / SPDX 2.3 SBOM
@@ -124,44 +139,22 @@ you already run, customization, and audit-defensible output.
     /posture-management --mttr   Findings exceeding SLA thresholds
     /security-trend            Rolling history + regression detection
     /compliance-report [nist|asvs|llm]   Auditor-ready attestation
+    /compliance-fix            Route every Not-Compliant control to its fix
 
-  Pro framing of dual-ICP commands
-    /explain --narrative --post-mortem    Past-tense narrative for incident write-ups
-    /rotate-secret --auto --scrub-history git filter-repo / BFG history rewrite
+  Scanner engineering
+    /scanner --self-test       Adversarial self-test — scanner attacks itself
+    /scanner --diff            Compare two scanner versions (catches regressions)
+    /scanner --baseline        Compare two scan outputs (what did this PR break?)
+    /scanner --concurrency     Missed unlocks, deadlocks, fire-and-forget async
+    /scanner --spec-drift      Function name vs. body intent-drift detector
 
-  LLM red-teaming
-    /llm-redteam               30+ adversarial prompts × 7 mutations
-    /jailbreak-detector        Canonical jailbreak families, per-family verdict
-    /llm-eval                  Generate promptfoo YAML eval suite
+  Code generation
+    /generate --type tests     Failing security regression tests per finding
+    /generate --type privacy   Privacy policy from detected processors
+    /generate --type disaster  Incident-response playbook
 
-═══════════════════════════════════════════════════════════════
-🆕 NEXT-GEN (v3) — production-aware + adversary-grade
-═══════════════════════════════════════════════════════════════
-The v3 PRD additions. These read .agentic-security/last-scan.json — run /scan first.
-
-  Production-aware filters (compose with any /scan mode)
-    /scan --exposed-only            Only findings prod controls don't already block
-    /scan --mitigated-only          Inverse — findings your WAF/auth/network handles
-    /scan --persona apt-nation-state    Filter by attacker class
-
-  Attacker-grade output
-    /threat-model              Auto-derived STRIDE — assets, boundaries, findings
-    /personas                  Per-persona priority matrix (5 adversary classes)
-    /playbook                  Copy-paste attack scripts (curl / Nuclei / multi-step)
-    /bounty                    Predicted HackerOne / Immunefi USD payouts
-    /adversary --finding <id> --target <url>    Multi-step LLM exploit agent
-
-  Defensive-posture views
-    /spof                      Single-point-of-failure controls (counterfactual)
-    /trust-boundary            Auto-Mermaid architecture diagram with findings
-    /scan --concurrency        Data races, missed unlocks, deadlock cycles
-    /scan --spec-drift         Function name vs. body intent-drift detector
-
-  Engineering / forensics
-    /archaeology --finding <id>      When did our codebase first become vulnerable?
-    /why-fired --finding <id>        Full provenance graph for one finding
-    /diff-scan --baseline <bin> --candidate <bin>     FR-SDLC-10 scanner-vs-scanner
-    /self-test                 Adversarial self-test — scanner attacks itself
+  Forensics
+    /archaeology --finding <id>      When did this become vulnerable?
 
 ═══════════════════════════════════════════════════════════════
 🤝 BOTH LANES USE THESE
@@ -169,45 +162,21 @@ The v3 PRD additions. These read .agentic-security/last-scan.json — run /scan 
 
   Dependency depth
     /supply-chain-check                       Roll-up verdict across six dep audits
-    /supply-chain-check --show pinning        Was /dep-pinning
-    /supply-chain-check --show freshness      Was /dep-freshness
-    /supply-chain-check --show alternatives   Was /dep-alternatives
-    /install-script-audit                     postinstall / preinstall hooks
-    /vendor-audit                             Copy-pasted third-party code (invisible to SCA)
-    /trim                                     deps + dead code in one pass (was /trim-dependencies + /trim-dead-code)
+    /supply-chain-check --show pinning        Loose version ranges
+    /supply-chain-check --show freshness      Stale deps
+    /supply-chain-check --show alternatives   Lighter / safer replacements
+    /supply-chain-check --show install-scripts  postinstall / preinstall hooks
+    /supply-chain-check --show vendored       Copy-pasted third-party code
+    /trim                                     deps + dead code in one pass
     /trim --what deps                         deps only
     /trim --what code                         dead code only
-
-  CI integration
-    /ci-gate                                  GitHub Actions workflow + SARIF upload
-    /ci-gate --provider gitlab|circleci|buildkite|jenkins   Other providers (was /ci-gate-multi)
 
   Project meta
     /status                    Plugin & project health snapshot
     /help                      This command
     /find-and-fix-everything   The "I have 10 min" mode
 
-═══════════════════════════════════════════════════════════════
-🪦 RENAMED / MERGED COMMANDS
-═══════════════════════════════════════════════════════════════
-Eleven commands have been folded into their canonical forms. The old slashes
-still work for one release as deprecated aliases so muscle memory doesn't
-break — but the lines above use the new forms.
-
-  /ci-gate-multi      →  /ci-gate --provider <name>
-  /rotate-key-auto    →  /rotate-secret --auto
-  /trim-dead-code     →  /trim --what code
-  /trim-dependencies  →  /trim --what deps (or just /trim for both)
-  /story-explain      →  /explain --narrative
-  /security-badge     →  /security-attestation                       (default)
-  /security-onepager  →  /security-attestation --format onepager
-  /trust-page         →  /security-attestation --format page
-  /dep-pinning        →  /supply-chain-check --show pinning
-  /dep-freshness      →  /supply-chain-check --show freshness
-  /dep-alternatives   →  /supply-chain-check --show alternatives
-
 USAGE NOTES
-  - Every command works as /agentic-security:<name> too (the long form).
   - Most commands accept a [path] argument to limit scope.
   - First run /scan once. Most other commands read its output
     from .agentic-security/last-scan.json.

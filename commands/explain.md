@@ -1,6 +1,6 @@
 ---
-description: Explain a finding in plain English — what, how attackers abuse it, worst case, fix. --narrative for story shape.
-argument-hint: "[--finding <id>] [--narrative]"
+description: Explain a finding in plain English — what, how attackers abuse it, worst case, fix. Also --provenance and --gap modes.
+argument-hint: "[--finding <id>] [--narrative] [--provenance] [--gap <CWE>]"
 ---
 
 Explain a security finding in plain English. The user can pass:
@@ -186,3 +186,137 @@ Output is clean enough to paste into a Notion doc or a customer email.
 - No moralizing. The reader knows it's bad. Show why.
 - No mustache-twirling attackers. Bots and bored teenagers are the realistic ones.
 - No cliffhangers. End with the fix.
+
+---
+
+## `--provenance` mode (formerly `/why-fired`)
+
+When the user passes `--provenance --finding <id>`, do NOT run the standard explain bash block. Instead run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null || true
+node -e "
+const fs = require('fs');
+let scan;
+try { scan = JSON.parse(fs.readFileSync('.agentic-security/last-scan.json', 'utf8')); }
+catch { console.log('No scan yet. Run /scan first.'); process.exit(0); }
+const id = process.argv[1] || '';
+if (!id) { console.log('Usage: /explain --provenance --finding <id-or-stableId>'); process.exit(1); }
+const f = (scan.findings || []).find(x => x.id === id || x.stableId === id);
+if (!f) { console.log('No finding matches ' + id + '. Use /show-findings --all to browse.'); process.exit(0); }
+const w = f.whyFired;
+if (!w) { console.log('Finding has no whyFired record. Re-run /scan with v0.52+.'); process.exit(0); }
+const W = (s,c) => process.stdout.isTTY ? '\x1b['+c+'m'+s+'\x1b[0m' : s;
+const BOLD='1', DIM='2';
+console.log('');
+console.log(W('Provenance: ' + (f.vuln || ''), BOLD));
+console.log(W('  ' + f.file + ':' + f.line + ' [' + (f.severity || '').toUpperCase() + ']', DIM));
+console.log('');
+console.log(W('Detector:        ', BOLD) + w.detector);
+console.log(W('Rule ID:         ', BOLD) + w.ruleId);
+console.log(W('Parser:          ', BOLD) + w.parser);
+if (w.scanner && w.scanner.rulesetVersion) console.log(W('Rule pack:       ', BOLD) + w.scanner.rulesetVersion);
+console.log('');
+console.log(W('Evidence', BOLD));
+if (w.evidence.sourceSnippet) console.log('  ' + W('source: ', DIM) + w.evidence.sourceSnippet.slice(0, 80));
+if (w.evidence.sinkSnippet)   console.log('  ' + W('sink:   ', DIM) + w.evidence.sinkSnippet.slice(0, 80));
+if (w.evidence.pathSteps && w.evidence.pathSteps.length) {
+  console.log('  ' + W('flow:', DIM));
+  for (const s of w.evidence.pathSteps.slice(0, 8)) console.log('    → ' + s.type + ' ' + (s.label || ''));
+}
+console.log('  ' + W('sanitizers considered: ', DIM) + (w.evidence.sanitizers.length ? w.evidence.sanitizers.join(', ') : '(none rejected)'));
+console.log('  ' + W('guards observed:       ', DIM) + (w.evidence.guards.length ? w.evidence.guards.join(', ') : '(none)'));
+console.log('');
+console.log(W('What the engine considered', BOLD));
+console.log('  reachability filter:    ' + w.considered.reachabilityFilter);
+console.log('  cluster collapsed:      ' + (w.considered.clusterCollapsed ? 'yes' : 'no'));
+console.log('  type-narrowed:          ' + (w.considered.typeNarrowed ? 'yes' : 'no'));
+console.log('  crown-jewel tier:       ' + (w.considered.crownJewelTier || '(unscored)'));
+console.log('  production verdict:     ' + (w.considered.mitigationVerdict || '(no prod context)'));
+console.log('  suppressions applied:   ' + (w.considered.suppressionsApplied.length ? w.considered.suppressionsApplied.join(', ') : '(none)'));
+console.log('  suppressions skipped:   ' + (w.considered.suppressionsSkipped.length ? w.considered.suppressionsSkipped.join(', ') : '(none)'));
+console.log('');
+if (f.exploitabilityFactors) console.log(W('Exploitability factors:  ', BOLD) + f.exploitabilityFactors.join(', '));
+if (f.calibrated_confidence != null) console.log(W('Calibrated confidence:   ', BOLD) + (f.calibrated_confidence * 100).toFixed(1) + '%');
+console.log('');
+" -- "$2"
+```
+
+Print the output as-is. The provenance graph tells the security engineer *exactly* why the engine emitted this finding.
+
+---
+
+## `--gap` mode (formerly `/why-not`)
+
+When the user passes `--gap <CWE>`, do NOT run the standard explain bash block. Instead run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs banner 2>/dev/null || true
+node -e "
+const fs = require('fs');
+const arg = (process.argv[1] || '').trim();
+if (!arg) { console.error('Usage: /explain --gap <CWE> (e.g. CWE-89 or 89 or sql-injection)'); process.exit(1); }
+let scan;
+try { scan = JSON.parse(fs.readFileSync('.agentic-security/last-scan.json', 'utf8')); }
+catch { console.error('No last-scan.json found. Run /scan --all first.'); process.exit(1); }
+const W = (s, code) => process.stdout.isTTY ? \`\\x1b[\${code}m\${s}\\x1b[0m\` : s;
+const CWE_TO_FAMILY = {
+  'CWE-89': 'sql-injection', 'CWE-79': 'xss', 'CWE-78': 'command-injection',
+  'CWE-22': 'path-traversal', 'CWE-918': 'ssrf', 'CWE-611': 'xxe',
+  'CWE-502': 'insecure-deserialization', 'CWE-94': 'code-injection',
+  'CWE-915': 'mass-assignment', 'CWE-1321': 'prototype-pollution',
+  'CWE-352': 'csrf', 'CWE-367': 'toctou', 'CWE-90': 'ldap-injection',
+  'CWE-643': 'xpath-injection', 'CWE-943': 'nosql-injection',
+  'CWE-601': 'open-redirect', 'CWE-798': 'hardcoded-secret',
+  'CWE-327': 'weak-crypto', 'CWE-330': 'weak-rng', 'CWE-613': 'jwt-no-exp',
+};
+const FAMILY_ALIAS = { sql:'sql-injection', xss:'xss', cmd:'command-injection',
+  command:'command-injection', csrf:'csrf', ssrf:'ssrf', idor:'idor', xxe:'xxe', deser:'insecure-deserialization' };
+let cwe = null, family = null;
+const m = arg.match(/(?:CWE[-_]?)(\\d+)/i) || arg.match(/^(\\d+)$/);
+if (m) { cwe = 'CWE-' + m[1]; family = CWE_TO_FAMILY[cwe] || null; }
+else { family = FAMILY_ALIAS[arg.toLowerCase()] || arg.toLowerCase(); for (const [k, v] of Object.entries(CWE_TO_FAMILY)) if (v === family) { cwe = k; break; } }
+console.log('');
+console.log(W('━━━ Why not: ' + (cwe || family || arg) + ' ━━━', '1'));
+console.log('');
+const matched = (scan.findings || []).filter(f => (cwe && f.cwe === cwe) || (family && f.family === family));
+if (matched.length) {
+  console.log(W('Actually, this CWE WAS flagged — ' + matched.length + ' finding(s):', '32'));
+  for (const f of matched.slice(0, 5)) console.log('  · ' + f.vuln + '  →  ' + (f.file || '?') + ':' + (f.line || '?'));
+  if (matched.length > 5) console.log('  · ... and ' + (matched.length - 5) + ' more.');
+  process.exit(0);
+}
+const allSrc = scan.sources || []; const allSink = scan.sinks || [];
+const sourcesOfFamily = allSrc.filter(s => (s.family || '').includes(family || '_NONE_'));
+const sinksOfFamily = allSink.filter(s => (s.family || '').includes(family || '_NONE_'));
+console.log(W('Considered for this CWE:', '1'));
+console.log('  Sources matching this family:    ' + sourcesOfFamily.length);
+console.log('  Sinks matching this family:      ' + sinksOfFamily.length);
+const suppressions = (scan.suppressions || []).filter(s => {
+  const r = (s.reason || '').toLowerCase();
+  return r.includes(family || '_NONE_') || r.includes(cwe?.toLowerCase() || '_NONE_');
+});
+console.log('  Suppressed candidate findings:   ' + suppressions.length);
+console.log('');
+console.log(W('Why no finding:', '1'));
+if (sourcesOfFamily.length === 0 && sinksOfFamily.length === 0) {
+  console.log('  · No sources OR sinks of this family detected. Either the code path');
+  console.log('    doesn\\'t exist, or the catalog doesn\\'t know your framework\\'s entry points.');
+} else if (sourcesOfFamily.length === 0) {
+  console.log('  · Sinks present, but no untrusted source flows into them.');
+} else if (sinksOfFamily.length === 0) {
+  console.log('  · Sources present, but they don\\'t flow into any sink of this family.');
+} else if (suppressions.length > 0) {
+  console.log('  · Candidates were generated but suppressed. Top reasons:');
+  const byReason = new Map();
+  for (const s of suppressions.slice(0, 50)) byReason.set(s.reason, (byReason.get(s.reason) || 0) + 1);
+  for (const [r, n] of [...byReason.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5)) console.log('       · ' + r + ' (' + n + 'x)');
+} else {
+  console.log('  · Sources and sinks both seen, but no taint path linked them.');
+  console.log('    This is a recall gap — consider posting the file path for triage.');
+}
+console.log('');
+" -- "$2"
+```
+
+Print the output as-is. The gap analysis tells the user why the engine did NOT fire for a CWE they expected.

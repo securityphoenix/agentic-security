@@ -5,7 +5,7 @@ argument-hint: "[--show pinning|freshness|alternatives|install-scripts|vendored]
 
 # Supply-chain check
 
-The six dep commands (`/dep-pinning`, `/dep-freshness`, `/install-script-audit`, `/dep-alternatives`, `/vendor-audit`, `/trim-dependencies`) each answer one slice of the supply-chain question. This is the roll-up: **is it safe to `npm install`?**
+Six dep surfaces rolled up into one verdict: **is it safe to `npm install`?** Use `--show <surface>` to drill into any one area.
 
 It runs the SCA scan plus the five precision-loss-zero dep audits, then prints one verdict. No new detection — pure orchestration.
 
@@ -185,12 +185,12 @@ echo ""
 echo "──────────────────────────────────────────────────────────────"
 echo ""
 W "  Drill-down:" "$BOLD"; echo ""
-echo "      /dep-pinning            Pin loose ranges"
-echo "      /dep-freshness          Score stale deps"
-echo "      /install-script-audit   Review postinstall scripts"
-echo "      /vendor-audit           Audit vendored third-party code"
-echo "      /trim-dependencies      Remove unused installed deps"
-echo "      /dep-alternatives       Lighter / safer replacements"
+echo "      --show pinning          Pin loose ranges"
+echo "      --show freshness        Score stale deps"
+echo "      --show install-scripts  Review postinstall scripts"
+echo "      --show vendored         Audit vendored third-party code"
+echo "      --show alternatives     Lighter / safer replacements"
+echo "      /trim --what deps       Remove unused installed deps"
 echo ""
 W "  🛡  agentic-security · created by Clear Capabilities" "$DIM"; echo ""
 
