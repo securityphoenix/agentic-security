@@ -95,6 +95,10 @@ fi
 
 **`eu-ai-act`** — EU AI Act Articles 9–15 (v0). Covers the high-risk AI obligations with code-detectable signals: risk management system (Art. 9), data governance (Art. 10), technical documentation (Art. 11), record-keeping (Art. 12 — the most code-detectable), transparency (Art. 13), human oversight (Art. 14), accuracy/robustness/cybersecurity (Art. 15). Applicability (whether your system is in scope of Annex III) is a legal determination — Counsel owns it, not this scanner. Edit `scripts/eu-ai-act/evidence-rules.json` to extend. **v0 mapping — requires Counsel + GRC sign-off before regulator use.**
 
+## Intellectual property note
+
+This tool references standard control identifiers (e.g. CC6.1, A.8.24, Art. 12) and uses independently authored descriptions. It does not reproduce copyrighted standard text from ISO, AICPA, or any other standards body.
+
 ## Closing the gaps
 
 After the report is written, the command offers `/agentic-security:compliance-fix <framework>`. That command re-scans, then routes every Not-Compliant or Partial control to the `/agentic-security:*` command that closes it — deduplicated, ordered, and tagged with which controls each step fixes. Controls that no scanner can patch (incident response plans, model evaluation policies, etc.) are listed separately with a note explaining what they require.
