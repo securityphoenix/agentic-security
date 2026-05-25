@@ -57,7 +57,7 @@ The MCP server is harness-agnostic — same binary, different manifest:
 
 What you get per harness:
 
-- **Claude Code**: full surface — 12 MCP tools, 38 slash commands, 11 auto-activating skills, 5 hooks, 8 subagents, the full audit log + scratchpad + AGENTS.md continual-learning ladder.
+- **Claude Code**: full surface — 12 MCP tools, 38 slash commands, 11 auto-activating skills, 4 hooks, 8 subagents, the full audit log + scratchpad + AGENTS.md continual-learning ladder.
 - **Codex / Cursor / Gemini**: the 12 MCP tools (deterministic write toolchain, scan, find, lookup) wired directly into the harness's agent. Slash commands + skill activation are Claude-Code-specific today; the underlying MCP behavior is identical across all four harnesses.
 
 If you want a harness not listed here, the MCP server speaks the standard JSON-RPC-over-NDJSON protocol — any MCP-aware client can use it.
@@ -116,8 +116,8 @@ The mascot (Patch) reacts to whatever your scan actually said.
 
 | You are… | Start here |
 |---|---|
-| A builder shipping fast with AI, no security background | [→ Builder Quickstart](#-for-vibecoders--builders) |
-| A security engineer or professional developer managing real risk | [→ Pro Quickstart](#-for-security-pros--engineers) |
+| A builder shipping fast with AI, no security background | [→ Builder Quickstart](#builder-quickstart) |
+| A security engineer or professional developer managing real risk | [→ Pro Quickstart](#pro-quickstart) |
 | Curious | Run `npx @clear-capabilities/agentic-security-scanner scan .` and see what it finds |
 
 ---
@@ -167,7 +167,7 @@ The mascot (Patch) reacts to whatever your scan actually said.
 
 ---
 
-## 🎨 For Vibecoders / Builders
+## Builder Quickstart
 
 You ship features fast. You don't know what a CWE is. You're scared of pushing prod because last time you accidentally deployed a `console.log` of a Stripe key. You want someone to tell you what's wrong, in English, with the fix.
 
@@ -273,7 +273,6 @@ This is automatic, on by default. Disable with `--no-blast-radius` if you really
 |---|---|
 | `/agentic-security:fix --all` | Pick a tier (`--critical` / `--high` / `--medium` / `--low`); the security-fixer agent patches each one, sequential, test-aware. |
 | `agentic-security fix --finding <id> --preview` | Unified-diff preview before any write. `--apply` writes and backs up the original. |
-| `agentic-security undo [--all\|--list]` | Atomic revert for the most recent fix. Safer than `git stash` for partial rollbacks. |
 | `/agentic-security:harden` | One-command hardening: security headers, `.gitignore`, `SECURITY.md`, `npm audit` script. Idempotent. |
 | `/agentic-security:rotate-secret` | Detects which provider owns a leaked key, finds every reference, gives platform-specific rotation steps. Add `--scrub-history` to also rewrite git history via `git filter-repo` / BFG. |
 | `/agentic-security:rotate-secret --auto` | Goes further: actually revokes, scrubs the value across files, pushes the replacement to Vercel/Fly/Railway/Cloudflare/Netlify env vars via CLI. `--scrub-history` purges git history and writes an audit log to `.agentic-security/rotation-history/`. |
@@ -300,7 +299,7 @@ This is automatic, on by default. Disable with `--no-blast-radius` if you really
 
 ---
 
-## 🔧 For Security Pros / Engineers
+## Pro Quickstart
 
 You triage findings for a living. Most scanners drown you in noise, are impossible to extend, and make every PR review feel like archaeology. You need depth, customization, integration, and audit-defensible output.
 
@@ -311,7 +310,7 @@ You triage findings for a living. Most scanners drown you in noise, are impossib
 - **EPSS-aware prioritization.** Every CVE finding decorated with EPSS score + percentile (FIRST.org). CVEs with percentile ≥ 95% get tagged `exploited-now` and bumped one severity tier so they sort to the top. KEV layered on top.
 - **Cross-language taint.** Schema-aware bridges follow flows across HTTP/gRPC/GraphQL/queues/ORM round-trips — OpenAPI + proto + SDL fields paired by structural identity (with synonym detection: `email` ↔ `emailAddress`), not name match.
 - **Polyglot embedded-language taint.** Tainted strings inside strings — SQL / JNDI / shell / LDAP / XPath / Mongo / HTML / CSS — recognized even when no obvious sink shape matches (Log4Shell-class detection).
-- **MCP server.** Six tools any MCP-speaking agent (Claude Code / Cursor / Cline / Aider / Codex) can call: `scan_diff`, `query_taint`, `explain_finding`, `synthesize_fix`, `verify_fix`, `apply_fix`. Hash-chained audit log, session-root pinning, secret redaction, kill switch, code fingerprint — mapped to the OWASP MCP top-10.
+- **MCP server.** 12 tools any MCP-speaking agent (Claude Code / Cursor / Cline / Aider / Codex) can call: `scan_diff`, `query_taint`, `explain_finding`, `find_rule_module`, `lookup_cve`, `synthesize_fix`, `verify_fix`, `apply_fix`, `append_agents_memory`, `read_agents_memory`, `append_scratchpad`, `read_scratchpad`. Hash-chained audit log, session-root pinning, secret redaction, kill switch, code fingerprint — mapped to the OWASP MCP top-10.
 - **IDE plugins via LSP.** Same engine powers JetBrains (LSP4IJ), Neovim (native LSP), and VS Code. Inline diagnostics keyed by `stableId` so IDE and CLI reference identical findings.
 - **Refactor-stable IDs + confidence + exploitability.** Every finding carries a 16-hex `stableId` (hash of rule + normalized sink signature + path shape), a calibrated `confidence` ∈ [0,1] with tier label, and a composite `exploitability` ∈ [0,1] combining severity + reachability + auth gating + project mitigations + KEV/EPSS.
 - **Custom rule DSL.** Semgrep-lite YAML rules in `.agentic-security/rules/*.yml`. `rule test` harness over `vulnerable/` + `clean/` fixtures. `/query` translates natural-language descriptions into the rule DSL.
@@ -405,7 +404,7 @@ Wire `agentic-security badge` into your CI to publish on every scan, and every r
 | `/agentic-security:ci --provider <name>` | Auto-detects GitLab CI / CircleCI / Buildkite / Jenkins from the repo and emits the matching template. `--provider <name>` to override. |
 | `/agentic-security:ci --hooks` | Install pre-commit and pre-push git hooks that run scoped scans on every commit and full diff scans before push. Blocks on new critical findings by default. |
 | `/agentic-security:ci --predeploy` | Block production deploys (`vercel --prod`, `fly deploy`, `wrangler publish`, `netlify deploy --prod`, `railway up`) when critical findings or KEV-listed deps are present. Intercepts both in Claude's Bash tool AND in the user's terminal via a sourced shell wrapper. |
-| `agentic-security mcp` | Launch the MCP server (also auto-registered in `.claude-plugin/plugin.json`). Six tools: `scan_diff`, `query_taint`, `explain_finding`, `synthesize_fix`, `verify_fix`, `apply_fix`. Stdio JSON-RPC 2.0; hash-chained audit log; OWASP MCP top-10 hardened. |
+| `agentic-security mcp` | Launch the MCP server (also auto-registered in `.claude-plugin/plugin.json`). 12 tools: `scan_diff`, `query_taint`, `explain_finding`, `find_rule_module`, `lookup_cve`, `synthesize_fix`, `verify_fix`, `apply_fix`, `append_agents_memory`, `read_agents_memory`, `append_scratchpad`, `read_scratchpad`. Stdio JSON-RPC 2.0; hash-chained audit log; OWASP MCP top-10 hardened. |
 | `agentic-security lsp` | Launch the LSP server (also auto-registered for JetBrains / Neovim / VS Code plugins). |
 | `agentic-security org-scan --repos <list>` | Fleet scan across N repos with bounded concurrency. Per-repo + rolled-up JSON output. |
 | `agentic-security triage list \| assign \| transition \| trend` | Per-finding state machine with MTTR + opened/closed deltas. Persists to `.agentic-security/triage.json`. |
@@ -447,8 +446,6 @@ Wire `agentic-security badge` into your CI to publish on every scan, and every r
 | `/agentic-security:generate --type tests` | Generate failing security regression tests + passing fix-validation tests for each finding (Jest / Vitest / pytest). |
 | `/agentic-security:status` | One-screen plugin & project health snapshot — version, last scan, finding counts, cache size, hook activation. |
 | `/agentic-security:help` | Full command catalog, ICP-segmented (🎨 Vibecoder lane / 🔧 Pro lane / 🤝 Both). |
-
-The full reference lives in the **[Developer Documentation](https://github.com/Clear-Capabilities/agentic-security/blob/main/docs/developer-documentation-guide.md)**.
 
 ---
 
@@ -512,20 +509,17 @@ The full reference lives in the **[Developer Documentation](https://github.com/C
       /chain, /trend, /badge)    pipeline integrations      Linear / Jira)
 
        Sideband interfaces:
-         mcp/        JSON-RPC 2.0 server — 6 tools any MCP-speaking agent
-                     (Claude Code / Cursor / Cline / Aider / Codex) can call:
-                     scan_diff, query_taint, explain_finding, synthesize_fix,
-                     verify_fix, apply_fix. Hash-chained audit log; OWASP MCP
-                     top-10 hardened.
+         mcp/        JSON-RPC 2.0 server — 12 tools any MCP-speaking agent
+                     (Claude Code / Cursor / Cline / Aider / Codex) can call.
+                     Hash-chained audit log; OWASP MCP top-10 hardened.
          lsp/        Language-Server-Protocol — powers JetBrains, Neovim, and
                      VS Code plugins via textDocument/publishDiagnostics.
-         hooks/      5 Claude Code event hooks: session-welcome, pre-edit
-                     bodyguard (real-time block-before-write), conversation
-                     -context, pre-bash-guard (destructive command intercept),
-                     post-edit-scan.
-         agents/     7 sub-agents: poc-generator, fixer, triager, chain-
+         hooks/      4 Claude Code hook event types: SessionStart,
+                     PreToolUse (bodyguard + destructive-guard),
+                     PostToolUse (post-edit scan), Stop (drift check).
+         agents/     8 sub-agents: poc-generator, fixer, triager, chain-
                      synthesizer, logic-reviewer, material-change, malware
-                     -analyst.
+                     -analyst, refactor-cleaner.
 ```
 
 The whole engine ships as a single 2.6 MB ESM bundle (`dist/agentic-security.mjs`). Pure Node ≥ 24. No native deps. No daemon. No background process.
