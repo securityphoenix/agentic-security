@@ -25,6 +25,11 @@ import { scanSwift } from './sast/swift.js';
 import { scanDartFlutter } from './sast/dart-flutter.js';
 import { scanWeakRandomness } from './sast/weak-randomness.js';
 import { scanGraphQL as scanGraphQLModule } from './sast/graphql.js';
+import { scanSensitiveDataLogging } from './sast/sensitive-data-logging.js';
+import { scanComparisonSafety } from './sast/comparison-safety.js';
+import { scanWeakPasswordHash } from './sast/weak-password-hash.js';
+import { scanCachePoisoning } from './sast/cache-poisoning.js';
+import { scanNullByteInjection } from './sast/null-byte-injection.js';
 import { scanLlmTradingAgent } from './sast/llm-trading-agent.js';
 import { scanMobileManifest } from './sast/mobile-manifest.js';
 import { scanQuarkusHardening } from './sast/quarkus-hardening.js';
@@ -76,7 +81,7 @@ import { scanXPathInjection } from './sast/xpath-injection.js';
 import { scanSSTI } from './sast/ssti.js';
 import { scanOpenRedirect } from './sast/open-redirect.js';
 import { scanResponseSplitting } from './sast/response-splitting.js';
-import { scanStoredPromptInjection } from './sast/llm-stored-prompt.js';
+import { scanStoredPromptInjection, scanStoredPromptInjectionCrossFile } from './sast/llm-stored-prompt.js';
 import { scanRAGPoisoning } from './sast/rag-poisoning.js';
 import { scanAgentToolEscalation } from './sast/agent-tool-escalation.js';
 import { scanDbTaint, scanDbTaintCrossFile } from './sast/db-taint.js';
@@ -5446,15 +5451,60 @@ function dedupeFindingsWithEvidence(findings){
 // that export is actually imported or invoked in the codebase.
 let _VULN_FUNCTION_HINTS_DATA;
 try { _VULN_FUNCTION_HINTS_DATA = _require('./sca/vuln-function-hints.json'); } catch(_) { _VULN_FUNCTION_HINTS_DATA = {}; }
+let _VULN_FUNCTION_HINTS_GENERATED;
+try { _VULN_FUNCTION_HINTS_GENERATED = _require('./sca/vuln-function-hints-generated.json'); } catch(_) { _VULN_FUNCTION_HINTS_GENERATED = {}; }
 const VULN_FUNCTION_HINTS = {
-  "lodash":["merge","defaultsDeep","set","setWith","zipObjectDeep"],
-  "jsonwebtoken":["decode"],
-  "marked":["parse"],
+  "lodash":["merge","defaultsDeep","set","setWith","zipObjectDeep","template"],
+  "jsonwebtoken":["decode","verify","sign"],
+  "marked":["parse","lexer"],
   "ejs":["render","renderFile","compile"],
-  "node-fetch":["default"],
-  "xml2js":["parseString"],
-  "js-yaml":["load"],
+  "node-fetch":["default","fetch"],
+  "xml2js":["parseString","parseStringPromise"],
+  "js-yaml":["load","loadAll"],
   "minimist":["parse"],
+  "express":["static","urlencoded","json"],
+  "axios":["get","post","put","patch","delete","request","create"],
+  "pg":["query","connect"],
+  "mysql2":["query","execute","createConnection","createPool"],
+  "mongoose":["connect","model","find","findOne","findById","aggregate"],
+  "sequelize":["query","literal","define"],
+  "handlebars":["compile","precompile","registerHelper"],
+  "pug":["compile","render","renderFile"],
+  "sharp":["resize","toBuffer","toFile"],
+  "tar":["extract","create","list"],
+  "glob":["sync","glob"],
+  "cookie":["parse","serialize"],
+  "cookie-parser":["default"],
+  "cors":["default"],
+  "helmet":["default","contentSecurityPolicy"],
+  "passport":["authenticate","initialize","session"],
+  "bcrypt":["hash","compare","genSalt"],
+  "bcryptjs":["hash","compare","genSalt"],
+  "crypto-js":["AES","DES","TripleDES","MD5","SHA1","SHA256","HmacSHA256"],
+  "serialize-javascript":["default"],
+  "shelljs":["exec","which","cat","sed"],
+  "child_process":["exec","execSync","spawn","fork"],
+  "vm2":["VM","NodeVM"],
+  "yaml":["parse","parseDocument"],
+  "dotenv":["config","parse"],
+  "jsonwebtoken":["decode","verify","sign"],
+  "jose":["jwtVerify","SignJWT","compactDecrypt"],
+  "cheerio":["load"],
+  "puppeteer":["launch","connect"],
+  "nodemailer":["createTransport"],
+  "redis":["createClient","get","set","del"],
+  "ioredis":["get","set","del","eval"],
+  "knex":["raw","select","where","insert","update","del"],
+  "prisma":["findUnique","findFirst","findMany","create","update","delete","queryRaw"],
+  "typeorm":["query","createQueryBuilder","getRepository"],
+  "sqlite3":["run","get","all","exec"],
+  "better-sqlite3":["prepare","exec","pragma"],
+  "ws":["on","send","close"],
+  "socket.io":["on","emit","to","broadcast"],
+  "formidable":["parse"],
+  "multer":["single","array","fields"],
+  "path-to-regexp":["compile","parse"],
+  ...(typeof _VULN_FUNCTION_HINTS_GENERATED === 'object' && !Array.isArray(_VULN_FUNCTION_HINTS_GENERATED) ? Object.fromEntries(Object.entries(_VULN_FUNCTION_HINTS_GENERATED).filter(([k])=>!k.startsWith('_'))) : {}),
   ...(typeof _VULN_FUNCTION_HINTS_DATA === 'object' && !Array.isArray(_VULN_FUNCTION_HINTS_DATA) ? Object.fromEntries(Object.entries(_VULN_FUNCTION_HINTS_DATA).filter(([k])=>!k.startsWith('_'))) : {}),
 };
 function markUsedVulnFunctions(supplyChain,fc){
@@ -5479,7 +5529,31 @@ function markUsedVulnFunctions(supplyChain,fc){
   }
   for(const sc of supplyChain||[]){
     if(sc.type!=='vulnerable_dep')continue;
-    const hints=VULN_FUNCTION_HINTS[sc.name];if(!hints)continue;
+    // Merge hints: hardcoded → OSV ecosystem_specific → skip if none
+    const hardcoded=VULN_FUNCTION_HINTS[sc.name]||[];
+    const osvFns=Array.isArray(sc.osvVulnFunctions)?sc.osvVulnFunctions.map(f=>{const d=f.lastIndexOf('.');return d>0?f.slice(d+1):f;}):[];
+    const allFns=[...new Set([...hardcoded,...osvFns])];
+    if(!allFns.length){sc.functionReachable='unknown';sc.noKnownCallSite=true;sc._hintSource='none';continue;}
+    sc._hintSource=osvFns.length?(hardcoded.length?'hardcoded+osv':'osv'):'hardcoded';
+    // Search codebase for these functions (if not already searched via VULN_FUNCTION_HINTS)
+    if(osvFns.length&&!hardcoded.length){
+      for(const[fp,content] of Object.entries(fc)){
+        const lines=content.split('\n');
+        for(const fn of osvFns){
+          const shortFn=fn.lastIndexOf('.')>0?fn.slice(fn.lastIndexOf('.')+1):fn;
+          const re=new RegExp(`\\b${shortFn.replace(/\W/g,'\\$&')}\\b`,'g');
+          for(let li=0;li<lines.length;li++){
+            if(re.test(lines[li])){
+              if(!perFile[sc.name])perFile[sc.name]=[];
+              perFile[sc.name].push({pkg:sc.name,fn:shortFn,file:fp,line:li+1});
+              if(!used[sc.name])used[sc.name]=new Set();
+              used[sc.name].add(shortFn);
+            }
+            re.lastIndex=0;
+          }
+        }
+      }
+    }
     sc.usedVulnerableFunctions=[...(used[sc.name]||[])];
     const sites=(perFile[sc.name]||[]);
     const seen=new Set();
@@ -5973,7 +6047,10 @@ function _parsePackageLockJson(text,filePath){
       const parts=scoped?name.slice(1).split('/'):['',name];
       const group=scoped?`@${parts[0]}`:'';
       const pkgName=scoped?parts[1]:name;
+      const depChain=path.split('node_modules/').filter(Boolean);
+      const isDirect=depChain.length<=1;
       out.push({name,version:ver,group,scope:info.dev?'optional':'required',
+        depChain,isDirect,
         purl:_makePurl('npm',pkgName,ver,group),ecosystem:'npm',filePath,isUnpinned:false});
     }
   }catch(_){}return out;
@@ -6395,7 +6472,13 @@ async function queryOSV(components,allFileContents){
         const resp=await fetch(`https://api.osv.dev/v1/vulns/${vid}`);
         const d=await resp.json();
         const fixedVersions=new Set();
-        for(const aff of(d.affected||[]))for(const rng of(aff.ranges||[]))for(const ev of(rng.events||[]))if(ev.fixed)fixedVersions.add(ev.fixed);
+        const osvVulnFunctions=[];
+        for(const aff of(d.affected||[])){
+          for(const rng of(aff.ranges||[]))for(const ev of(rng.events||[]))if(ev.fixed)fixedVersions.add(ev.fixed);
+          const es=aff.ecosystem_specific||aff.database_specific||{};
+          if(Array.isArray(es.vulnerable_functions))osvVulnFunctions.push(...es.vulnerable_functions);
+          if(Array.isArray(es.imports))for(const imp of es.imports)if(Array.isArray(imp.symbols))osvVulnFunctions.push(...imp.symbols);
+        }
         let severity='medium';
         const db=d.database_specific||{};
         if(db.severity)severity=db.severity.toLowerCase()==='moderate'?'medium':db.severity.toLowerCase();
@@ -6411,6 +6494,7 @@ async function queryOSV(components,allFileContents){
         vuln={id:vid,description:(d.summary||d.details||'No description.').slice(0,300),
           fixedVersions:[...fixedVersions].sort(),
           aliases:(d.aliases||[]).filter(a=>a.startsWith('CVE-')),
+          osvVulnFunctions:[...new Set(osvVulnFunctions)],
           severity,cvssVector,hasKnownAttackRef};
         _osvCacheSet('vuln:'+vid,vuln);
       }catch(_){continue;}
@@ -6421,7 +6505,7 @@ async function queryOSV(components,allFileContents){
       results.push({type:'vulnerable_dep',name:comp.name,version:comp.version,ecosystem:comp.ecosystem,
         purl:comp.purl,osvId:vid,cveAliases:vuln.aliases,description:vuln.description,
         fixedVersions:vuln.fixedVersions,severity:vuln.severity,cvssVector:vuln.cvssVector,
-        hasKnownAttackRef:vuln.hasKnownAttackRef,reachable:comp.reachable,scope:comp.scope,
+        hasKnownAttackRef:vuln.hasKnownAttackRef,osvVulnFunctions:vuln.osvVulnFunctions||[],reachable:comp.reachable,scope:comp.scope,
         file:comp.filePath,
         // kept for generateRecs() compat
         advisory:`${vid}${cveStr}, ${vuln.description}`,
@@ -6607,7 +6691,10 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   // variants, OWASP Benchmark's helpers package). Roadmap item #5.
   try { _GLOBAL_JAVA_TAINTED_METHODS = _buildGlobalJavaTaintedMethodIndex(fileContents); }
   catch { _GLOBAL_JAVA_TAINTED_METHODS = new Set(); }
-  const files=Object.keys(fileContents).filter(f=>shouldScan(f) && !_isPathIgnored(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000)continue;const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aF.push(...scanAliasedSinks(p,c));aF.push(...scanJavaSAST(p,c));aF.push(...scanJavaBenchExtras(p,c));aLogic.push(...scanMiddlewareOrdering(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));
+  const _perFileTimeoutMs = parseInt(process.env.AGENTIC_SECURITY_PER_FILE_TIMEOUT_MS || '10000', 10);
+  const _fileTimings = [];
+  let _filesSkipped = 0, _filesTimedOut = 0;
+  const files=Object.keys(fileContents).filter(f=>shouldScan(f) && !_isPathIgnored(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;const _ft0=Date.now();setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000){_filesSkipped++;continue;}const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000)continue;fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aF.push(...scanAliasedSinks(p,c));aF.push(...scanJavaSAST(p,c));aF.push(...scanJavaBenchExtras(p,c));aLogic.push(...scanMiddlewareOrdering(p,c));aLogic.push(...scanReDoS(p,c));aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));
       aF.push(...scanLLM(p,c));
       aF.push(...scanLLMOwasp(p,c));
       aLogic.push(...scanBusinessLogic(p,c));
@@ -6625,6 +6712,11 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanDartFlutter(p,c));
       aF.push(...scanWeakRandomness(p,c));
       aF.push(...scanGraphQLModule(p,c));
+      aF.push(...scanSensitiveDataLogging(p,c));
+      aF.push(...scanComparisonSafety(p,c));
+      aF.push(...scanWeakPasswordHash(p,c));
+      aF.push(...scanCachePoisoning(p,c));
+      aF.push(...scanNullByteInjection(p,c));
       aF.push(...scanLlmTradingAgent(p,c));
       aF.push(...scanMobileManifest(p,c));
       aF.push(...scanQuarkusHardening(p,c));
@@ -6673,7 +6765,11 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanMutationXSS(p,c));
       aF.push(...scanKotlin(p,c));
       aF.push(...scanRuby(p,c));
-      aF.push(...scanPhp(p,c));}catch(_){}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
+      aF.push(...scanPhp(p,c));
+      const _ftElapsed=Date.now()-_ft0;
+      if(_ftElapsed>_perFileTimeoutMs){aF.push({id:`file-timeout:${p}`,file:p,line:0,vuln:`File analysis exceeded ${_perFileTimeoutMs}ms (${_ftElapsed}ms)`,severity:'info',parser:'ENGINE',confidence:0.5,_timeout:true});_filesTimedOut++;}
+      _fileTimings.push({file:p,ms:_ftElapsed});
+      }catch(_){_fileTimings.push({file:p,ms:Date.now()-_ft0,error:true});}if(i%5===0)await new Promise(r=>setTimeout(r,0));}
   // Deserialization-gadget detector runs once with full-tree context (it needs
   // manifest contents to know which gadget libs are on the classpath).
   try {
@@ -6821,20 +6917,40 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   setProgress({current:i,total:files.length,file:"OSV vulnerability database...",phase:"SCA"});
   const allFileContents={...fc, ...depFileContents};
   const components=parseManifests(allFileContents);
+  try{const{detectVendoredLibraries}=await import('./sca/vendor-detect.js');const vendored=detectVendoredLibraries(fc);for(const v of vendored){const key=`${v.ecosystem}:${v.name}:${v.version}`;if(!components.some(c=>`${c.ecosystem}:${c.name}:${c.version}`===key))components.push({...v,group:'',purl:`pkg:${v.ecosystem}/${v.name}@${v.version}`,filePath:v.file,isUnpinned:false,reachable:true});}}catch(_){}
   const reach=buildReachabilitySet(fc);
   const reachabilitySet=reach.imported;
-  components.forEach(c=>{c.reachable=reachabilitySet.has(c.name.toLowerCase())||(c.ecosystem==='pypi'&&reachabilitySet.has(c.name.replace(/-/g,'_').toLowerCase()));});
+  components.forEach(c=>{
+    c.reachable=reachabilitySet.has(c.name.toLowerCase())||(c.ecosystem==='pypi'&&reachabilitySet.has(c.name.replace(/-/g,'_').toLowerCase()));
+    c.isBuildOnly=(c.scope==='optional'&&!c.reachable);
+    if(!c.isDirect&&c.isDirect!==false)c.isDirect=!c.depChain||!c.depChain.length||c.depChain.length<=1;
+  });
   let supplyChain=[];try{supplyChain=await queryOSV(components,allFileContents);}catch(_){supplyChain=[];}
   // Feat-9: enrich SCA findings with EPSS abuse-probability scores
   try{supplyChain=await _enrichWithEPSS(supplyChain);}catch(_){}
   // 0.10.0: enrich SCA findings with CISA KEV (CISA KEV catalog)
   try{supplyChain=await _enrichWithKEV(supplyChain);}catch(_){}
   try{markUsedVulnFunctions(supplyChain,fc);}catch(_){}
+  // LLM-assisted function extraction for CVEs without hints (opt-in: AGENTIC_SECURITY_LLM_SCA=1)
+  if(process.env.AGENTIC_SECURITY_LLM_SCA==='1'){try{const{extractVulnFunctionsViaLLM}=await import('./sca/llm-function-extract.js');const enriched=await extractVulnFunctionsViaLLM(supplyChain);if(enriched.length){markUsedVulnFunctions(supplyChain,fc);}}catch(_){}}
   setProgress({current:i,total:files.length,file:"Registry metadata...",phase:"SCA"});
   let registryInfo=new Map();try{registryInfo=await queryRegistries(components);}catch(_){}
   const dd=(a,k)=>[...new Map(a.map(x=>[k(x),x])).values()];
   // 0.6.0 Feat-1: annotate function-level reachability on SCA findings
   try { _annotateFunctionReachability(supplyChain,dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`).map(r=>({...r})),callGraph,fc); } catch(_) {}
+  // Reachability tier classification for SCA findings
+  for(const sc of supplyChain||[]){
+    if(sc.type!=='vulnerable_dep')continue;
+    if(sc.functionReachable==='reachable')sc.reachabilityTier='function-reachable';
+    else if(sc.functionReachable==='unreachable')sc.reachabilityTier='unreachable';
+    else if(sc.reachable)sc.reachabilityTier='import-reachable';
+    else if(sc.isBuildOnly||sc.scope==='optional'&&!sc.reachable){sc.reachabilityTier='build-only';sc.isBuildOnly=true;if(sc.severity==='critical')sc.severity='medium';else if(sc.severity==='high')sc.severity='low';}
+    else if(sc.scope==='required')sc.reachabilityTier='manifest-only';
+    else sc.reachabilityTier='transitive-only';
+    if(sc.reachabilityTier==='transitive-only'){sc.unreachable=true;sc._reachabilityDemoted=true;}
+  }
+  // Early dedup: collapse duplicates BEFORE the annotation pipeline to reduce work.
+  try{const _earlyMap=new Map();for(const f of aF){const k=`${f.file||''}:${f.line||0}:${f.vuln||''}`;if(!_earlyMap.has(k))_earlyMap.set(k,f);}aF.length=0;aF.push(..._earlyMap.values());}catch(_){}
   // Sort findings: critical first, then structural patterns last within same severity
   aF.sort((a,b)=>({critical:0,high:1,medium:2,low:3}[a.severity]??4)-({critical:0,high:1,medium:2,low:3}[b.severity]??4));
   const vulnsByKey={};for(const sc of supplyChain.filter(s=>s.type==='vulnerable_dep')){const k=`${sc.ecosystem}:${sc.name}:${sc.version}`;if(!vulnsByKey[k])vulnsByKey[k]=[];vulnsByKey[k].push(sc);}
@@ -6842,6 +6958,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   for(const[key,paths]of attackResult.pathsByKey){const[eco,name,...vp]=key.split(':');const ver=vp.join(':');for(const f of paths){if(!f.linkedComponents)f.linkedComponents=[];if(!f.linkedComponents.some(c=>c.name===name&&c.ecosystem===eco))f.linkedComponents.push({ecosystem:eco,name,version:ver});}}
   const annotatedComponents=components.map(c=>{const key=`${c.ecosystem}:${c.name}:${c.version}`;const vulns=vulnsByKey[key]||[];const riKey=c.ecosystem==='maven'&&c.group?`maven:${c.group}/${c.name}`:`${c.ecosystem}:${c.name}`;const ri=registryInfo.get(riKey)||{};const latestVersion=ri.latestVersion||'';const vd=(ri.versions||{})[c.version]||{};const isDeprecated=typeof vd.deprecated==='string'&&vd.deprecated.length>0;const deprecationMessage=isDeprecated?vd.deprecated:'';const isOutdated=!isDeprecated&&typeof vd.outdated==='string'&&vd.outdated.length>0;const outdatedMessage=isOutdated?vd.outdated:'';const license=ri.license||vd.license||'';return{...c,vulns,hasVulns:vulns.length>0,hasAttackPath:attackResult.flagged.has(key),attackPaths:attackResult.pathsByKey.get(key)||[],latestVersion,isDeprecated,deprecationMessage,isOutdated,outdatedMessage,license};});
   try{aF.push(...scanDbTaintCrossFile(fc));}catch(_){}
+  try{aF.push(...scanStoredPromptInjectionCrossFile(fc));}catch(_){}
   let finalFindings;try{finalFindings=dedupeFindingsWithEvidence(aF);}catch(_){finalFindings=dd(aF,f=>f.id);}
   // 0.34.6: filter out Java FPs where a sanitizer pattern (argv-form ProcessBuilder,
   // parameterized prepareStatement, constant-folded dead-branch) is present.
@@ -7120,6 +7237,33 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
         f.validator_verdict = 'unvalidated';
       }
       finalFindings.push(...irFindings);
+      // Java SCA enrichment: use deep-mode IR call graph to improve Java function reachability
+      try {
+        for (const sc of supplyChain) {
+          if (sc.type !== 'vulnerable_dep' || sc.ecosystem !== 'maven') continue;
+          if (sc.functionReachable === 'reachable') continue;
+          const allFns = [...(sc.osvVulnFunctions || []), ...(VULN_FUNCTION_HINTS[sc.name] || [])];
+          if (!allFns.length) continue;
+          for (const fn of callGraph.functions ? callGraph.functions.values() : []) {
+            if (!fn.cfg || !fn.cfg.nodes) continue;
+            for (const node of Object.values(fn.cfg.nodes)) {
+              if (node.kind !== 'call') continue;
+              const callee = typeof node.callee === 'string' ? node.callee : null;
+              if (!callee) continue;
+              const shortCallee = callee.includes('.') ? callee.split('.').pop() : callee;
+              if (allFns.some(f => f === shortCallee || f === callee)) {
+                sc.functionReachable = 'reachable';
+                sc.reachabilityTier = 'function-reachable';
+                if (!sc.vulnerableFunctionCallSites) sc.vulnerableFunctionCallSites = [];
+                sc.vulnerableFunctionCallSites.push({ pkg: sc.name, fn: shortCallee, file: fn.file, line: node.line });
+                sc._javaIrEnriched = true;
+                break;
+              }
+            }
+            if (sc.functionReachable === 'reachable') break;
+          }
+        }
+      } catch { /* Java SCA enrichment is best-effort */ }
     } catch (e) {
       // Deep mode is best-effort. A parser blowup in one file shouldn't kill
       // the scan — fall back to the pattern-only result.
@@ -7313,7 +7457,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   // v3 next-gen: why-fired provenance is captured LAST so it reflects the
   // final state of each finding after every other annotator has run.
   _runAnnotator("annotateWhyFired", () => { annotateWhyFired(finalFindings, {}); });
-  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions(),_v3,_engineErrors:{cppDataflowParseErrors:_cppDataflowParseErrors.value},annotatorErrors:_annotatorErrors};}
+  const _scanMeta={filesScanned:files.length,filesSkipped:_filesSkipped,filesTimedOut:_filesTimedOut,fileTimings:_fileTimings.sort((a,b)=>b.ms-a.ms).slice(0,20),findingsBySeverity:{critical:finalFindings.filter(f=>f.severity==='critical').length,high:finalFindings.filter(f=>f.severity==='high').length,medium:finalFindings.filter(f=>f.severity==='medium').length,low:finalFindings.filter(f=>f.severity==='low').length,info:finalFindings.filter(f=>f.severity==='info').length}};
+  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions(),_v3,_scanMeta,_engineErrors:{cppDataflowParseErrors:_cppDataflowParseErrors.value},annotatorErrors:_annotatorErrors};}
 
 // Post-aggregation classification: every source becomes "unsafe"|"safe"; every sink becomes "confirmed"|"safe".
 // Orphans (no finding linkage) are bucketed by file-local heuristic so the UI shows binary states only.

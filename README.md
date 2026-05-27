@@ -95,9 +95,12 @@ Also works with Codex, Cursor, and Gemini CLI — [harness setup](docs/HARNESS_C
 - **Plain-English findings with dollar-cost estimates.** Best/likely/worst-case exposure, grounded in IBM Cost of a Data Breach 2024 and 25+ public settlement records. Not CVE numbers.
 - **Intercepts insecure AI-generated code before it hits disk.** The `/ai-bodyguard` hook blocks SQLi via concat, hardcoded API keys, `eval` on user input, and more — in real time, as your AI writes.
 - **12-pillar scan in one command.** SAST, SCA, secrets, IaC, LLM safety, MCP agent-tool audit, auth/authZ, pipeline integrity, containers, deploy config, supply chain, and trend tracking.
-- **Function-level reachability.** Drops SCA findings whose vulnerable function isn't reachable from any route — kills your noisiest bucket.
+- **Function-level reachability across every dependency.** OSV ecosystem_specific parsing, GHSA fix-commit analysis, vendored code fingerprinting, Java IR call-graph matching, and LLM-assisted function extraction — not just a hardcoded hints list.
+- **SCA reachability tiers.** Every dependency classified as `function-reachable`, `import-reachable`, `build-only`, `manifest-only`, or `transitive-only` — so you fix what matters.
 - **CISA KEV + EPSS prioritization.** Separates "this could theoretically be bad" from "people are running scripts that exploit this today."
+- **SARIF codeFlows for taint traces.** Multi-step source-to-sink paths rendered natively in GitHub Code Scanning, DefectDojo, and VS Code SARIF Viewer.
 - **One-command fix with preview.** Every patch previewed before write, backed up, revertible. The fixer reads your stack so patches match your code style.
+- **Auto-baseline for legacy codebases.** `--set-baseline` snapshots existing findings; `--since-baseline` shows only what's new. Day-one usable on any project.
 
 Deep engine details — [architecture](docs/ARCHITECTURE.md).
 
@@ -114,7 +117,7 @@ Deep engine details — [architecture](docs/ARCHITECTURE.md).
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.77.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.78.0-blue)]()
 [![agentic-security](https://img.shields.io/badge/agentic--security-passing-brightgreen)]()
 
 ## License

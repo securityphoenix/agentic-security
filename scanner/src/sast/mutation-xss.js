@@ -83,5 +83,48 @@ export function scanMutationXSS(fp, raw) {
     });
   }
 
+  // Email template XSS: user data rendered into HTML email body
+  const emailSinkRe = /\b(?:sendMail|transporter\.sendMail|sg\.send|ses\.sendEmail|mailgun\.messages\.create|send_email|mail\.send)\s*\(/g;
+  for (const em of code.matchAll(emailSinkRe)) {
+    const after = code.slice(em.index, em.index + 500);
+    if (!/\bhtml\s*:/i.test(after)) continue;
+    const taintHint = /(?:req\.|request\.|params|body|query|user\.\w+|data\.\w+)/.test(after);
+    const templateHint = /(?:ejs\.render|pug\.render|mustache\.render|handlebars\.compile|marked\.parse|render_template|Jinja2|\.render\s*\()/.test(after);
+    if (!taintHint && !templateHint) continue;
+    const line = lineOf(raw, em.index);
+    push({
+      id: `email-template-xss:${fp}:${line}`,
+      file: fp, line,
+      vuln: 'Email Template XSS — user data rendered into HTML email body',
+      severity: 'high',
+      cwe: 'CWE-79',
+      family: 'email-template-xss',
+      stride: 'Tampering',
+      snippet: (raw.split('\n')[line - 1] || '').trim().slice(0, 200),
+      remediation: 'HTML-escape user-supplied data before inserting into email templates. Use the template engine\'s auto-escape mode. Consider rendering text-only emails for user-generated content.',
+      parser: 'EMAIL-XSS',
+      confidence: 0.65,
+    });
+  }
+
+  // Markdown → HTML → innerHTML chain
+  const markdownHtmlRe = /\bmarked\.parse\s*\([^)]*(?:req\.|request\.|params|body|query|user)/g;
+  for (const mm of code.matchAll(markdownHtmlRe)) {
+    const line = lineOf(raw, mm.index);
+    push({
+      id: `markdown-xss:${fp}:${line}`,
+      file: fp, line,
+      vuln: 'Markdown→HTML XSS — user-supplied Markdown rendered to HTML without sanitization',
+      severity: 'high',
+      cwe: 'CWE-79',
+      family: 'xss',
+      stride: 'Tampering',
+      snippet: (raw.split('\n')[line - 1] || '').trim().slice(0, 200),
+      remediation: 'Pipe marked output through DOMPurify: `const html = DOMPurify.sanitize(marked.parse(userInput))`. Or use marked with `sanitize: true` option.',
+      parser: 'MARKDOWN-XSS',
+      confidence: 0.70,
+    });
+  }
+
   return findings;
 }

@@ -34,7 +34,8 @@
 import { addPath } from './access-paths.js';
 
 export function isImplicitFlowEnabled() {
-  return process.env.AGENTIC_SECURITY_IMPLICIT_FLOW === '1';
+  if (process.env.AGENTIC_SECURITY_IMPLICIT_FLOW === '0') return false;
+  return true;
 }
 
 /**
@@ -62,11 +63,25 @@ export function buildImplicitContext(cfg, exprTaint) {
     const n = cfg.nodes[nid];
     if (!n) continue;
     if (n.kind === 'if' && n.cond && exprTaint(n.cond)) {
-      // Push the consequent at depth+1. We don't have a separate alternate
-      // edge in this v1 IR — `succ` carries both. v2 should add `then`/`else`
-      // distinguishing edges.
+      // Config-constant filter: if condition is `ident === literal` where
+      // ident is NOT tainted, skip (it's a config check, not a taint branch).
+      if (n.cond.kind === 'binary' && (n.cond.op === '===' || n.cond.op === '==' || n.cond.op === 'Eq') &&
+          n.cond.right && n.cond.right.kind === 'literal' &&
+          n.cond.left && n.cond.left.kind === 'ident' &&
+          !exprTaint(n.cond.left)) {
+        for (const s of (n.succ || [])) {
+          stack.push({ nid: s, depth, label });
+        }
+      } else {
+        for (const s of (n.succ || [])) {
+          stack.push({ nid: s, depth: depth + 1, label: _formatCondLabel(n.cond) });
+        }
+      }
+    } else if (n.kind === 'loop-header' && depth > 0) {
+      // Loop-body exclusion: don't escalate implicit depth inside loops —
+      // loop iteration count is not a taint channel for most vuln classes.
       for (const s of (n.succ || [])) {
-        stack.push({ nid: s, depth: depth + 1, label: _formatCondLabel(n.cond) });
+        stack.push({ nid: s, depth: Math.max(depth - 1, 0), label });
       }
     } else {
       for (const s of (n.succ || [])) {
@@ -94,6 +109,9 @@ export function implicitAssignTarget(node, ctx) {
   if (!node || node.kind !== 'assign') return null;
   if (!ctx || !ctx.tainted) return null;
   if (typeof node.target !== 'string') return null;
+  // Literal-assignment filter: assigning a constant in a tainted branch
+  // is not an implicit information leak.
+  if (node.source && node.source.kind === 'literal') return null;
   return node.target;
 }
 
@@ -119,7 +137,7 @@ export function createImplicitFinding(node, conditionLabel) {
   return {
     kind: 'taint',
     implicit: true,
-    confidence: 0.5,
+    confidence: 0.40,
     vuln: `Implicit flow — variable mutated inside tainted-conditional branch (condition: ${conditionLabel || '?'})`,
     severity: 'medium',
     cwe: 'CWE-200',

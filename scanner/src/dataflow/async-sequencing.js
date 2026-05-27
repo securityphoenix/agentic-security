@@ -55,22 +55,24 @@ const ASYNC_ITER_BODY_SOURCES = new Set([
  * AST shape expected (parser-js.js neutral):
  *   { kind: 'call', callee: { kind: 'member', object: <expr>, prop: <string> }, args: [...] }
  */
-export function describeChain(callExpr) {
+export function describeChain(callExpr, opts = {}) {
   if (!callExpr || callExpr.kind !== 'call') return null;
   const ops = [];
   let cur = callExpr;
-  // Walk leftward through .then/.catch/.finally chain.
   while (cur && cur.kind === 'call' && cur.callee && cur.callee.kind === 'member' && PROMISE_CHAIN_METHODS.has(cur.callee.prop)) {
     const arg = (cur.args || [])[0];
     ops.unshift({
-      kind: cur.callee.prop,           // 'then' | 'catch' | 'finally'
+      kind: cur.callee.prop,
       callback: arg && (arg.kind === 'ident' || arg.kind === 'arrow' || arg.kind === 'function') ? arg : null,
       argIndex: 0,
     });
     cur = cur.callee.object;
   }
-  // `cur` should be the root call (e.g., `fetch(url)` or `Promise.all([...])`).
-  const isPromise = isPromiseRoot(cur);
+  let isPromise = isPromiseRoot(cur);
+  if (!isPromise && opts.summaryCache && opts.callGraph && cur && cur.kind === 'call') {
+    const name = typeof cur.callee === 'string' ? cur.callee : (cur.callee?.name || null);
+    if (name) isPromise = isAsyncSourceFromSummary(name, opts.summaryCache, opts.callGraph);
+  }
   return { ops, rootCallee: cur, isPromise };
 }
 
@@ -84,11 +86,18 @@ function isPromiseRoot(expr) {
   }
   if (c.kind === 'member') {
     if (c.object && c.object.kind === 'ident' && c.object.name === 'Promise' && PROMISE_STATIC_METHODS.has(c.prop)) return true;
-    // any .xxxAsync() pattern, or .then-chainable: too noisy to assume; require
-    // an explicit await elsewhere or a known callee.
     return /Async$/.test(c.prop) || /^(fetch|json|text|blob|formData)$/.test(c.prop);
   }
   return false;
+}
+
+export function isAsyncSourceFromSummary(calleeName, summaryCache, callGraph) {
+  if (!calleeName || !summaryCache || !callGraph) return false;
+  const resolved = callGraph.resolve ? callGraph.resolve(calleeName) : null;
+  const qid = resolved && (resolved.qid || resolved);
+  if (typeof qid !== 'string') return false;
+  const sum = summaryCache.get(qid, new Set());
+  return !!(sum && sum.returnTainted);
 }
 
 /**

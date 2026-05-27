@@ -144,3 +144,16 @@ export function trend(scanRoot, sinceDays = 30) {
     totalOpen: findings.filter(f => f.state === 'open' || f.state === 'in-progress').length,
   };
 }
+
+export function exportTriageMetrics(scanRoot) {
+  const triage = loadTriage(scanRoot);
+  const findings = Object.values(triage.findings || {});
+  const families = {};
+  for (const f of findings) {
+    const fam = f.family || 'unknown';
+    if (!families[fam]) families[fam] = { tp: 0, fp: 0 };
+    if (f.state === 'fixed' || f.state === 'open' || f.state === 'in-progress') families[fam].tp++;
+    else if (f.state === 'false-positive') families[fam].fp++;
+  }
+  return { families };
+}

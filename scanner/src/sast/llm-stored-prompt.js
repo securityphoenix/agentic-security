@@ -101,3 +101,60 @@ export function scanStoredPromptInjection(fp, raw) {
   }
   return findings;
 }
+
+const ORM_READ_RE = /\b(?:findOne|findUnique|findFirst|findById|findByPk|get_object_or_404|objects\.get|objects\.filter|\.query\s*\()\b/;
+
+export function scanStoredPromptInjectionCrossFile(fileContents) {
+  if (!fileContents || typeof fileContents !== 'object') return [];
+  const llmSinks = [];
+  const ormReads = [];
+  for (const [fp, raw] of Object.entries(fileContents)) {
+    if (!raw || typeof raw !== 'string' || raw.length > 500_000) continue;
+    const lang = _lang(fp);
+    if (!lang) continue;
+    for (const [plang, pat, label] of LLM_CALL_PATTERNS) {
+      if (plang !== lang) continue;
+      const re = new RegExp(pat.source, pat.flags);
+      let m;
+      while ((m = re.exec(raw))) {
+        const varName = (m[1] || '').split('.')[0];
+        if (varName) llmSinks.push({ file: fp, line: _lineOf(raw, m.index), varName, label });
+      }
+    }
+    if (ORM_READ_RE.test(raw)) {
+      const lines = raw.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (ORM_READ_RE.test(lines[i])) {
+          const assignMatch = lines[i].match(/(\w+)\s*=\s*/);
+          if (assignMatch) ormReads.push({ file: fp, line: i + 1, varName: assignMatch[1] });
+        }
+      }
+    }
+  }
+  const findings = [];
+  const seen = new Set();
+  for (const sink of llmSinks) {
+    for (const read of ormReads) {
+      if (sink.file === read.file) continue;
+      if (sink.varName !== read.varName) continue;
+      const id = `llm-stored-prompt-xfile:${read.file}:${read.line}->${sink.file}:${sink.line}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      findings.push({
+        id,
+        file: sink.file, line: sink.line,
+        vuln: `LLM Stored-Prompt Injection — cross-file ORM→LLM (${sink.label})`,
+        severity: 'high',
+        cwe: 'CWE-1336',
+        family: 'llm-prompt-injection',
+        parser: 'LLM-STORED-PROMPT-XFILE',
+        confidence: 0.55,
+        description: `Variable "${sink.varName}" loaded from ORM at ${read.file}:${read.line} is used as LLM system prompt at ${sink.file}:${sink.line}. An attacker who can modify the DB record can inject instructions.`,
+        remediation: 'Validate stored prompts against a schema or signing key. Wrap DB-loaded text in delimiters and a role-isolation frame.',
+        source: { file: read.file, line: read.line, label: `ORM read → ${read.varName}` },
+        sink: { file: sink.file, line: sink.line, label: `LLM ${sink.label}` },
+      });
+    }
+  }
+  return findings;
+}

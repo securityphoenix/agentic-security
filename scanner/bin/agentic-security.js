@@ -107,6 +107,8 @@ Options:
   --pr [ref]                   Diff-aware: scan only files changed since ref (auto-detects PR base)
   --deterministic              Reproducible scan: stable sort, no-network, lockfile-checked
   --incremental                Reuse taint summaries from prior scans (speeds up deep mode in CI)
+  --set-baseline               Save current findings as baseline (suppresses pre-existing issues)
+  --since-baseline             Only show findings NOT in the saved baseline
   --no-epss                    Skip EPSS exploit-prediction enrichment (default: enabled)
   --no-blast-radius            Skip blast-radius / cost framing (default: enabled)
   --verbose                    Include fix bodies + taxonomy in CLI output
@@ -345,6 +347,26 @@ async function cmdScan(args) {
     if (only === 'sast') { scan.secrets = []; scan.supplyChain = []; }
     if (only === 'sca')  { scan.findings = []; scan.secrets = []; }
     if (only === 'secrets') { scan.findings = []; scan.supplyChain = []; }
+  }
+
+  // --set-baseline: save current findings as baseline for future --since-baseline filtering
+  const baselinePath = path.join(target || '.', '.agentic-security', 'baseline.json');
+  if (args.flags['set-baseline']) {
+    const { normalizeFindings } = await import('../src/report/index.js');
+    const baselineIds = new Set(normalizeFindings(scan).map(f => f.stableId || f.id));
+    fs.mkdirSync(path.dirname(baselinePath), { recursive: true });
+    fs.writeFileSync(baselinePath, JSON.stringify({ ids: [...baselineIds], createdAt: new Date().toISOString(), count: baselineIds.size }, null, 2));
+    process.stderr.write(`[baseline] saved ${baselineIds.size} findings as baseline\n`);
+  }
+  // --since-baseline: filter out findings that existed in the saved baseline
+  if (args.flags['since-baseline'] && fs.existsSync(baselinePath)) {
+    try {
+      const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+      const baselineSet = new Set(baseline.ids || []);
+      const before = scan.findings.length;
+      scan.findings = (scan.findings || []).filter(f => !baselineSet.has(f.stableId || f.id));
+      process.stderr.write(`[baseline] filtered ${before - scan.findings.length} baseline findings, ${scan.findings.length} new\n`);
+    } catch { /* baseline file unreadable, skip */ }
   }
 
   // 0.9.0 Feat-18: --scorecard flag enables OSSF Scorecard enrichment

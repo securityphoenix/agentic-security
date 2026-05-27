@@ -322,6 +322,7 @@ export function toJSON(scan, meta={}, opts={}){
     // threw and were skipped. The findings still ship; downstream consumers
     // see the gap.
     annotatorErrors: Array.isArray(scan.annotatorErrors) ? scan.annotatorErrors : [],
+    _scanMeta: scan._scanMeta || null,
   };
   if (opts.includeSuppressed) out.suppressed = scan.suppressions||[];
   return out;
@@ -560,11 +561,31 @@ export function toSARIF(scan, meta={}){
           ...(scan && scan._rulesetVersionMismatch ? { rulesetVersionMismatch: scan._rulesetVersionMismatch } : {}),
         },
       }],
-      results: findings.map(f => ({
+      results: findings.map(f => {
+        const chain = Array.isArray(f.chain) ? f.chain : [];
+        const codeFlows = chain.length >= 2 ? [{
+          threadFlows: [{
+            locations: chain.map((hop, idx) => ({
+              location: {
+                physicalLocation: {
+                  artifactLocation: { uri: hop.file || f.file },
+                  region: { startLine: Math.max(1, hop.line || 1) },
+                },
+                message: { text: hop.label || (idx === 0 ? 'source' : idx === chain.length - 1 ? 'sink' : 'propagation') },
+              },
+            })),
+          }],
+        }] : undefined;
+        const fixes = f.remediation ? [{
+          description: { text: f.remediation.slice(0, 500) },
+        }] : undefined;
+        return {
         ruleId: f.vuln ? f.vuln.replace(/[^a-zA-Z0-9]/g, '_') : 'unknown',
         level: SEV_TO_SARIF[f.severity] || 'warning',
         message: { text: f.fix?.description || f.vuln || 'Security finding' },
         locations: [{ physicalLocation: { artifactLocation: { uri: f.file }, region: { startLine: Math.max(1, f.line||1) } } }],
+        ...(codeFlows ? { codeFlows } : {}),
+        ...(fixes ? { fixes } : {}),
         // Phase-1 (Sentinel-parity) fingerprint: stableId persists across
         // refactors. Keep partialFingerprints intact for tools that key on
         // the line-hash; add a 'stableId' fingerprint for tools that respect
@@ -595,7 +616,7 @@ export function toSARIF(scan, meta={}){
           ...(f._unsigned ? { unsigned: true } : {}),
           ...(f._passThroughSigning ? { passThroughSigning: true } : {}),
         },
-      })),
+      };}),
     }],
   };
 }

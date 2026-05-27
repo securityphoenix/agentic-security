@@ -203,7 +203,10 @@ test('implicit-flow: isImplicitFlowEnabled reads env', () => {
   process.env.AGENTIC_SECURITY_IMPLICIT_FLOW = '1';
   assert.equal(isImplicitFlowEnabled(), true);
   delete process.env.AGENTIC_SECURITY_IMPLICIT_FLOW;
+  assert.equal(isImplicitFlowEnabled(), true);
+  process.env.AGENTIC_SECURITY_IMPLICIT_FLOW = '0';
   assert.equal(isImplicitFlowEnabled(), false);
+  delete process.env.AGENTIC_SECURITY_IMPLICIT_FLOW;
   if (prev) process.env.AGENTIC_SECURITY_IMPLICIT_FLOW = prev;
 });
 
@@ -224,9 +227,12 @@ test('implicit-flow: buildImplicitContext marks branch nodes when condition is t
 });
 
 test('implicit-flow: implicitAssignTarget identifies assign-in-tainted-branch', () => {
-  const n = { kind: 'assign', target: 'isAdmin', source: { kind: 'literal', value: true } };
+  const n = { kind: 'assign', target: 'isAdmin', source: { kind: 'ident', name: 'role' } };
   assert.equal(implicitAssignTarget(n, { tainted: true }), 'isAdmin');
   assert.equal(implicitAssignTarget(n, { tainted: false }), null);
+  // Literal assignments in tainted branches are NOT implicit-tainted (refinement)
+  const nLiteral = { kind: 'assign', target: 'flag', source: { kind: 'literal', value: true } };
+  assert.equal(implicitAssignTarget(nLiteral, { tainted: true }), null);
 });
 
 test('implicit-flow: markImplicitTaint + createImplicitFinding', () => {
@@ -234,7 +240,7 @@ test('implicit-flow: markImplicitTaint + createImplicitFinding', () => {
   assert.ok(s.has('implicit:isAdmin'));
   const f = createImplicitFinding({ line: 42 }, 't === "admin"');
   assert.equal(f.implicit, true);
-  assert.equal(f.confidence, 0.5);
+  assert.equal(f.confidence, 0.40);
 });
 
 // ── P2.1: RHS tabulation ──────────────────────────────────────────────────

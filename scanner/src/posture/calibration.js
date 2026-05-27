@@ -120,6 +120,20 @@ export function loadCalibrationHistory(scanRoot) {
   };
   if (seed) merge(seed);
   if (customer) merge(customer);
+  // Merge triage-derived TP/FP counts (auto-feedback loop)
+  try {
+    const triage = _readJsonMaybe(path.join(scanRoot || process.cwd(), '.agentic-security', 'triage.json'));
+    if (triage && triage.findings) {
+      const triageFams = {};
+      for (const f of Object.values(triage.findings)) {
+        const fam = f.family || 'unknown';
+        if (!triageFams[fam]) triageFams[fam] = { tp: 0, fp: 0 };
+        if (f.state === 'fixed' || f.state === 'open' || f.state === 'in-progress') triageFams[fam].tp++;
+        else if (f.state === 'false-positive') triageFams[fam].fp++;
+      }
+      merge({ families: triageFams });
+    }
+  } catch { /* triage file optional */ }
   return { families };
 }
 

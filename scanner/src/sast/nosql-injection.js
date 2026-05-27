@@ -18,6 +18,9 @@ const DYNAMO_EXPR_CONCAT_RE = /(?:FilterExpression|ConditionExpression|KeyCondit
 
 const PY_MONGO_FIND_REQ = /\.\s*(?:find|find_one|update_one|update_many|delete_one|delete_many)\s*\(\s*request\s*\.\s*(?:json|data|args|form)/g;
 
+const MONGO_AGGREGATE_RE = /\.\s*aggregate\s*\(\s*\[[\s\S]{0,300}?\{\s*\$(?:match|expr|where|function|redact|lookup)\s*:[\s\S]{0,200}?(?:req|request|params|query|body|input)\b/g;
+const MONGO_MAPREDUCE_RE = /\.\s*mapReduce\s*\([\s\S]{0,300}?(?:req|request|params|query|body|input)\b/g;
+
 function lineOf(raw, idx) { return raw.substring(0, idx).split('\n').length; }
 
 export function scanNoSQLInjection(fp, raw) {
@@ -33,6 +36,8 @@ export function scanNoSQLInjection(fp, raw) {
       [MONGO_WHERE_RE, 'mongo-where', 'NoSQL Injection: MongoDB $where with user-controlled string', 0.90],
       [MONGO_FIND_REQ_OBJ_RE, 'mongo-find', 'NoSQL Injection: MongoDB query with raw request object (operator injection)', 0.80],
       [DYNAMO_EXPR_CONCAT_RE, 'dynamo-expr', 'NoSQL Injection: DynamoDB Expression built via string concatenation', 0.85],
+      [MONGO_AGGREGATE_RE, 'mongo-aggregate', 'NoSQL Injection: MongoDB aggregate pipeline with user-controlled stage', 0.80],
+      [MONGO_MAPREDUCE_RE, 'mongo-mapreduce', 'NoSQL Injection: MongoDB mapReduce with user-controlled function', 0.85],
     ]) {
       const r = new RegExp(re.source, re.flags);
       while ((m = r.exec(code))) {
