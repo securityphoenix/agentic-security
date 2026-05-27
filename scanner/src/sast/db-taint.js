@@ -213,3 +213,57 @@ export function scanDbTaint(fp, raw) {
   }
   return findings;
 }
+
+// ── Cross-file stored injection ────────────────────────────────────────────
+//
+// Extends the same-file detector to work across all files in the project.
+// Collects ORM writes and render-of-reads across all files, then matches
+// by field name to find stored XSS / stored injection paths.
+
+export function scanDbTaintCrossFile(fileContents) {
+  if (!fileContents || typeof fileContents !== 'object') return [];
+  const allWrites = [];
+  const allReads = [];
+  for (const [fp, raw] of Object.entries(fileContents)) {
+    if (!raw || typeof raw !== 'string' || raw.length > 500_000) continue;
+    const lang = _lang(fp);
+    if (!lang) continue;
+    const code = blankComments(raw, lang === 'py' ? 'py' : undefined);
+    const writes = _findTaintedWrites(code, lang);
+    for (const w of writes) allWrites.push({ ...w, file: fp });
+    const reads = _findRendersOfReads(code, lang);
+    for (const r of reads) allReads.push({ ...r, file: fp });
+  }
+  const findings = [];
+  const seen = new Set();
+  for (const w of allWrites) {
+    for (const r of allReads) {
+      if (w.file === r.file) continue;
+      if (w.field !== r.field) continue;
+      const id = `db-taint-xfile:${w.file}:${w.line}->${r.file}:${r.line}:${w.field}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      findings.push({
+        id,
+        file: r.file, line: r.line,
+        vuln: `Stored XSS via DB round-trip — cross-file (${w.model || '?'}.${w.field})`,
+        severity: 'high',
+        cwe: 'CWE-79',
+        family: 'stored-xss',
+        stride: 'Tampering',
+        remediation:
+          `User content written to ${w.model || '?'}.${w.field} at ${w.file}:${w.line} is later read at ${r.file}:${r.line} and rendered. ` +
+          'Sanitize at write time (HTML-escape), escape at render time, and use CSP to block inline scripts.',
+        parser: 'DB-TAINT-XFILE',
+        confidence: 0.60,
+        source: { file: w.file, line: w.line, label: `${w.model || '?'}.${w.field} write` },
+        sink: { file: r.file, line: r.line, label: `${w.field} render` },
+        trace: [
+          { file: w.file, line: w.line, kind: 'db-write', sourceLabel: `${w.model || '?'}.${w.field} ← user input` },
+          { file: r.file, line: r.line, kind: 'db-read',  sourceLabel: `${w.field} → render sink` },
+        ],
+      });
+    }
+  }
+  return findings;
+}

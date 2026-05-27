@@ -72,23 +72,81 @@ function _normalizeType(t) {
  * Returns the (mutated) findings array with `_stubFilterStats` non-
  * enumerable sidecar.
  */
-export function applyStubAwareFilter(findings, stubs) {
+const TYPE_GUARD_PATTERNS = [
+  { re: /typeof\s+(\w+)\s*===?\s*['"]number['"]/, type: 'number' },
+  { re: /typeof\s+(\w+)\s*===?\s*['"]boolean['"]/, type: 'boolean' },
+  { re: /Number\.isInteger\s*\(\s*(\w+)\s*\)/, type: 'number' },
+  { re: /Number\.isFinite\s*\(\s*(\w+)\s*\)/, type: 'number' },
+  { re: /!isNaN\s*\(\s*(\w+)\s*\)/, type: 'number' },
+];
+
+function _extractTypeGuardType(condExpr) {
+  if (!condExpr) return null;
+  const condStr = _exprToString(condExpr);
+  if (!condStr) return null;
+  for (const { re, type } of TYPE_GUARD_PATTERNS) {
+    if (re.test(condStr)) return type;
+  }
+  return null;
+}
+
+function _exprToString(expr) {
+  if (!expr) return null;
+  if (expr.kind === 'literal') return String(expr.value || '');
+  if (expr.kind === 'ident') return expr.name;
+  if (expr.kind === 'binary') return `${_exprToString(expr.left)} ${expr.op} ${_exprToString(expr.right)}`;
+  if (expr.kind === 'call') return `${typeof expr.callee === 'string' ? expr.callee : _exprToString(expr.callee)}(${(expr.args || []).map(_exprToString).join(',')})`;
+  if (expr.kind === 'member') return `${_exprToString(expr.object)}.${expr.prop}`;
+  if (expr.kind === 'unknown') return 'typeof';
+  return null;
+}
+
+function _hasTypeGuardOnPath(finding, perFileIR) {
+  if (!perFileIR || !finding.file) return null;
+  const ir = perFileIR[finding.file];
+  if (!ir || !ir.functions) return null;
+  const fn = ir.functions.find(f => {
+    const sinkLine = finding.line || 0;
+    return sinkLine >= f.line && sinkLine <= f.line + Object.keys(f.cfg.nodes).length * 3;
+  });
+  if (!fn) return null;
+  for (const node of Object.values(fn.cfg.nodes)) {
+    if (node.kind === 'if' && node.cond) {
+      const guardType = _extractTypeGuardType(node.cond);
+      if (guardType) return guardType;
+    }
+  }
+  return null;
+}
+
+export function applyStubAwareFilter(findings, stubs, perFileIR) {
   if (!Array.isArray(findings) || findings.length === 0) return findings;
-  if (!stubs || !stubs.signatures) return findings;
   let demoted = 0;
   for (const f of findings) {
     if (!f || f.parser !== 'IR-TAINT') continue;
     const safeSet = FAMILY_SAFE_TYPES[f.cwe];
     if (!safeSet) continue;
-    const sourceType = _sourceTypeFromStubs(f, stubs);
-    if (!sourceType) continue;
-    if (!safeSet.has(sourceType)) continue;
-    f._stubTypeDemoted = true;
-    f._stubTypeReason = `source type ${sourceType} cannot carry ${f.cwe} metacharacters`;
-    f._stubTypeOriginalSeverity = f.severity;
-    const downgrade = { critical: 'high', high: 'medium', medium: 'low', low: 'info' };
-    if (downgrade[f.severity]) f.severity = downgrade[f.severity];
-    demoted++;
+    // Check 1: stub-based type demotion
+    const sourceType = stubs ? _sourceTypeFromStubs(f, stubs) : null;
+    if (sourceType && safeSet.has(sourceType)) {
+      f._stubTypeDemoted = true;
+      f._stubTypeReason = `source type ${sourceType} cannot carry ${f.cwe} metacharacters`;
+      f._stubTypeOriginalSeverity = f.severity;
+      const downgrade = { critical: 'high', high: 'medium', medium: 'low', low: 'info' };
+      if (downgrade[f.severity]) f.severity = downgrade[f.severity];
+      demoted++;
+      continue;
+    }
+    // Check 2: type-guard narrowing on CFG path
+    const guardType = _hasTypeGuardOnPath(f, perFileIR);
+    if (guardType && safeSet.has(guardType)) {
+      f._stubTypeDemoted = true;
+      f._stubTypeReason = `type guard narrows to ${guardType}, safe for ${f.cwe}`;
+      f._stubTypeOriginalSeverity = f.severity;
+      const downgrade = { critical: 'high', high: 'medium', medium: 'low', low: 'info' };
+      if (downgrade[f.severity]) f.severity = downgrade[f.severity];
+      demoted++;
+    }
   }
   Object.defineProperty(findings, '_stubFilterStats', {
     value: { demoted, totalConsidered: findings.length },

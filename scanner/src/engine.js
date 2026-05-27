@@ -23,6 +23,8 @@ import { scanSpringbootHardening } from './sast/springboot-hardening.js';
 import { scanLaravelHardening } from './sast/laravel-hardening.js';
 import { scanSwift } from './sast/swift.js';
 import { scanDartFlutter } from './sast/dart-flutter.js';
+import { scanWeakRandomness } from './sast/weak-randomness.js';
+import { scanGraphQL as scanGraphQLModule } from './sast/graphql.js';
 import { scanLlmTradingAgent } from './sast/llm-trading-agent.js';
 import { scanMobileManifest } from './sast/mobile-manifest.js';
 import { scanQuarkusHardening } from './sast/quarkus-hardening.js';
@@ -77,7 +79,7 @@ import { scanResponseSplitting } from './sast/response-splitting.js';
 import { scanStoredPromptInjection } from './sast/llm-stored-prompt.js';
 import { scanRAGPoisoning } from './sast/rag-poisoning.js';
 import { scanAgentToolEscalation } from './sast/agent-tool-escalation.js';
-import { scanDbTaint } from './sast/db-taint.js';
+import { scanDbTaint, scanDbTaintCrossFile } from './sast/db-taint.js';
 import { scanSSRFCloudMetadata } from './sast/ssrf-cloud-metadata.js';
 import { scanMutationXSS } from './sast/mutation-xss.js';
 import { scanDeserializationGadgets, _detectGadgets } from './sast/deserialization-gadgets.js';
@@ -6621,6 +6623,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanLaravelHardening(p,c));
       aF.push(...scanSwift(p,c));
       aF.push(...scanDartFlutter(p,c));
+      aF.push(...scanWeakRandomness(p,c));
+      aF.push(...scanGraphQLModule(p,c));
       aF.push(...scanLlmTradingAgent(p,c));
       aF.push(...scanMobileManifest(p,c));
       aF.push(...scanQuarkusHardening(p,c));
@@ -6837,6 +6841,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   const attackResult=computeAttackPathComponents(aF,components,reach.byFile);
   for(const[key,paths]of attackResult.pathsByKey){const[eco,name,...vp]=key.split(':');const ver=vp.join(':');for(const f of paths){if(!f.linkedComponents)f.linkedComponents=[];if(!f.linkedComponents.some(c=>c.name===name&&c.ecosystem===eco))f.linkedComponents.push({ecosystem:eco,name,version:ver});}}
   const annotatedComponents=components.map(c=>{const key=`${c.ecosystem}:${c.name}:${c.version}`;const vulns=vulnsByKey[key]||[];const riKey=c.ecosystem==='maven'&&c.group?`maven:${c.group}/${c.name}`:`${c.ecosystem}:${c.name}`;const ri=registryInfo.get(riKey)||{};const latestVersion=ri.latestVersion||'';const vd=(ri.versions||{})[c.version]||{};const isDeprecated=typeof vd.deprecated==='string'&&vd.deprecated.length>0;const deprecationMessage=isDeprecated?vd.deprecated:'';const isOutdated=!isDeprecated&&typeof vd.outdated==='string'&&vd.outdated.length>0;const outdatedMessage=isOutdated?vd.outdated:'';const license=ri.license||vd.license||'';return{...c,vulns,hasVulns:vulns.length>0,hasAttackPath:attackResult.flagged.has(key),attackPaths:attackResult.pathsByKey.get(key)||[],latestVersion,isDeprecated,deprecationMessage,isOutdated,outdatedMessage,license};});
+  try{aF.push(...scanDbTaintCrossFile(fc));}catch(_){}
   let finalFindings;try{finalFindings=dedupeFindingsWithEvidence(aF);}catch(_){finalFindings=dd(aF,f=>f.id);}
   // 0.34.6: filter out Java FPs where a sanitizer pattern (argv-form ProcessBuilder,
   // parameterized prepareStatement, constant-folded dead-branch) is present.

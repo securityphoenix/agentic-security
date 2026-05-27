@@ -68,20 +68,38 @@ export class SummaryCache {
   // Compute the summary for a function (or return cached). The `analyze`
   // callback is the per-function walker that returns
   //   { returnTainted, mutatedParams: Set, taintedGlobals: Set, findings: [] }
+  //
+  // Fixed-point iteration: when a recursive call returns a bottom stub,
+  // re-analyze up to FP_MAX times until the summary stabilizes.
   compute(qid, taintedParams, analyze) {
     const k = this._key(qid, taintedParams);
-    if (this._cache.has(k)) return this._cache.get(k);
+    if (this._cache.has(k)) {
+      const cached = this._cache.get(k);
+      if (!cached._recursive) return cached;
+    }
     if (this._stack.has(qid)) {
-      // Recursion — return bottom summary; fixed-point iter will refine.
+      this._hitRecursion = true;
       return { returnTainted: false, mutatedParams: new Set(), taintedGlobals: new Set(), findings: [], _recursive: true };
     }
     if (++this._iter > this._maxIter) {
       return { returnTainted: false, mutatedParams: new Set(), taintedGlobals: new Set(), findings: [], _budgetExceeded: true };
     }
     this._stack.add(qid);
+    this._hitRecursion = false;
     try {
-      const summary = analyze(qid, taintedParams);
+      let summary = analyze(qid, taintedParams);
       this._cache.set(k, summary);
+      if (this._hitRecursion) {
+        const FP_MAX = 3;
+        for (let fp = 0; fp < FP_MAX; fp++) {
+          if (++this._iter > this._maxIter) break;
+          const prev = summary;
+          summary = analyze(qid, taintedParams);
+          if (_summaryEq(prev, summary)) break;
+          this._cache.set(k, summary);
+        }
+      }
+      if (summary._recursive) delete summary._recursive;
       return summary;
     } finally {
       this._stack.delete(qid);
@@ -108,6 +126,13 @@ export class SummaryCache {
 
   size() { return this._cache.size; }
   clear() { this._cache.clear(); this._iter = 0; }
+}
+
+function _summaryEq(a, b) {
+  if (!a || !b) return a === b;
+  if (!!a.returnTainted !== !!b.returnTainted) return false;
+  if ((a.mutatedParams?.size || 0) !== (b.mutatedParams?.size || 0)) return false;
+  return true;
 }
 
 // Build the entry-taint-state for a callee from a call site:

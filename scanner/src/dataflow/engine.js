@@ -38,6 +38,7 @@ import { accessPathOf, isCoveredBy, addPath, removePathAndDescendants, joinSets 
 import { aliasesForVar } from './points-to.js';
 import { higherOrderTaintFlow } from './higher-order.js';
 import { SummaryCache, entryStateFromCall } from './summaries.js';
+import { lookupBuiltinSummary } from './builtin-summaries.js';
 
 // v0.70 #2 — addPath that also taints every alias of the variable.
 // When `target` is a dotted path like "a.x" and the root `a` has aliases
@@ -242,6 +243,25 @@ function step(node, stateIn, callContext) {
             for (const v of mutated.mutated) newState = addPath(newState, v);
           }
           if (sum && sum.returnTainted) return { state: newState, findings: [] };
+        } else if (target && calleeName) {
+          // Fallback: check builtin summaries for unresolved external calls
+          const builtin = lookupBuiltinSummary(calleeName);
+          if (builtin) {
+            if (builtin.returnTainted && (node.source.args || []).some(a => exprTaint(a, newState))) {
+              newState = _addPathAliasAware(newState, target, callContext);
+            } else if (!builtin.returnTainted) {
+              newState = removePathAndDescendants(newState, target);
+              return { state: newState, findings: [] };
+            }
+            if (builtin.mutatedParams && builtin.mutatedParams.size) {
+              for (const idx of builtin.mutatedParams) {
+                const argExpr = (node.source.args || [])[parseInt(idx)];
+                if (argExpr && argExpr.kind === 'ident' && (node.source.args || []).some(a => exprTaint(a, newState))) {
+                  newState = _addPathAliasAware(newState, argExpr.name, callContext);
+                }
+              }
+            }
+          }
         }
       }
       if (src && target) {
@@ -291,6 +311,24 @@ function step(node, stateIn, callContext) {
               sum, paramNames, node.args || [], state);
             for (const v of mutated.mutated) state = addPath(state, v);
           }
+        }
+      }
+      // Built-in mutation functions: Object.assign(target, ...sources),
+      // _.merge(target, ...sources), etc. When any source arg is tainted,
+      // taint the target in the caller's scope.
+      const calleeName = typeof node.callee === 'string' ? node.callee : null;
+      if (calleeName && /^(?:Object\.assign|_\.merge|_\.extend|_\.defaultsDeep|_\.defaults|Object\.defineProperties?)$/.test(calleeName)) {
+        const targetArg = (node.args || [])[0];
+        const sourceArgsTainted = argTaints.slice(1).some(Boolean);
+        if (targetArg && targetArg.kind === 'ident' && sourceArgsTainted) {
+          state = _addPathAliasAware(state, targetArg.name, callContext);
+          callContext._taintSources.push({
+            varName: targetArg.name,
+            sourceId: `builtin-mutation:${calleeName}`,
+            sourceLabel: `${calleeName} mutation`,
+            provenance: 'mutation',
+            line: node.line,
+          });
         }
       }
       if (cat) {
@@ -535,6 +573,64 @@ export function runTaintEngine(perFileIR, callGraph, opts = {}) {
     if (summaryCache.size() === prevCacheSize) break;
     prevCacheSize = summaryCache.size();
   }
+  // Class-field cross-taint pass: when a method writes tainted data to _this_.field,
+  // re-analyze other methods of the same class with those fields in the entry state.
+  const classTaintedFields = new Map();
+  for (const fn of fnList) {
+    if (Date.now() > deadlineMs) break;
+    const sum = summaryCache.get(fn.qid, new Set());
+    if (!sum || !sum.mutatedParams) continue;
+    for (const p of sum.mutatedParams) {
+      if (typeof p === 'string' && p.startsWith('_this_.')) {
+        const classPrefix = fn.qid.split('::')[0] + '::';
+        if (!classTaintedFields.has(classPrefix)) classTaintedFields.set(classPrefix, new Set());
+        classTaintedFields.get(classPrefix).add(p);
+      }
+    }
+  }
+  for (const [classPrefix, fields] of classTaintedFields) {
+    if (Date.now() > deadlineMs) break;
+    for (const fn of fnList) {
+      if (!fn.qid.startsWith(classPrefix)) continue;
+      if (summaryCache.has(fn.qid, fields)) continue;
+      const ctx = {
+        _findings: [], _taintSources: [], _returnTainted: false,
+        _stack: new Set(), deadlineMs,
+        _summaryCache: summaryCache, _callGraph: callGraph,
+        _mutatedParamsOut: new Set(),
+      };
+      try { analyzeFunction(fn, fields, ctx); } catch {}
+      summaryCache.set(fn.qid, fields, {
+        returnTainted: !!ctx._returnTainted,
+        mutatedParams: ctx._mutatedParamsOut || new Set(),
+        taintedGlobals: new Set(),
+        findings: [],
+      });
+    }
+  }
+
+  // k=2 pass: compute tainted-entry-state summaries for functions with params
+  // AND at least one caller in the call graph. This catches "safe when called
+  // clean, dangerous when called with tainted input" wrapper patterns.
+  for (const fn of fnList) {
+    if (Date.now() > deadlineMs) break;
+    if (!fn.params || !fn.params.length) continue;
+    const taintedEntry = new Set(fn.params);
+    if (summaryCache.has(fn.qid, taintedEntry)) continue;
+    const ctx = {
+      _findings: [], _taintSources: [], _returnTainted: false,
+      _stack: new Set(), deadlineMs,
+      _summaryCache: summaryCache, _callGraph: callGraph,
+      _mutatedParamsOut: new Set(),
+    };
+    try { analyzeFunction(fn, taintedEntry, ctx); } catch {}
+    summaryCache.set(fn.qid, taintedEntry, {
+      returnTainted: !!ctx._returnTainted,
+      mutatedParams: ctx._mutatedParamsOut || new Set(),
+      taintedGlobals: new Set(),
+      findings: [],
+    });
+  }
   for (const fn of fnList) {
     if (++n > fnLimit) break;
     if (Date.now() > deadlineMs) break;  // global timeout
@@ -552,6 +648,39 @@ export function runTaintEngine(perFileIR, callGraph, opts = {}) {
     try {
       analyzeFunction(fn, new Set(), callContext);
     } catch { continue; }
+    // Process higher-order invocations: resolve callbacks and analyze with
+    // tainted first-param. Feed findings back into the caller's finding set.
+    const hoInvocations = callContext._higherOrderInvocations || [];
+    const HO_CAP = 50;
+    for (let hi = 0; hi < Math.min(hoInvocations.length, HO_CAP); hi++) {
+      if (Date.now() > deadlineMs) break;
+      const inv = hoInvocations[hi];
+      if (!inv.callee || !inv.taintedParam) continue;
+      const resolved = callGraph.resolve ? callGraph.resolve(inv.callee) : null;
+      const cbFn = resolved && resolved.qid ? resolved : null;
+      if (!cbFn || !cbFn.params || !cbFn.params.length) continue;
+      const cbEntry = new Set([cbFn.params[inv.paramIndex || 0]]);
+      let cbSummary = summaryCache.get(cbFn.qid, cbEntry);
+      if (!cbSummary) {
+        cbSummary = summaryCache.compute(cbFn.qid, cbEntry, () => {
+          const inner = {
+            _findings: [], _taintSources: [], _returnTainted: false,
+            _stack: new Set(), deadlineMs,
+            _summaryCache: summaryCache, _callGraph: callGraph,
+            _mutatedParamsOut: new Set(),
+          };
+          try { analyzeFunction(cbFn, cbEntry, inner); } catch {}
+          // Merge any findings from the callback analysis into the caller.
+          callContext._findings.push(...inner._findings.map(f => ({ ...f, _funcQid: fn.qid, _via: 'higher-order' })));
+          return {
+            returnTainted: !!inner._returnTainted,
+            mutatedParams: inner._mutatedParamsOut || new Set(),
+            taintedGlobals: new Set(),
+            findings: [],
+          };
+        });
+      }
+    }
     for (const f of callContext._findings) {
       const key = `${f.sinkId}:${fn.file}:${f.line}`;
       if (seen.has(key)) continue;

@@ -106,6 +106,7 @@ Options:
   --no-network                 Skip OSV/registry queries (offline mode)
   --pr [ref]                   Diff-aware: scan only files changed since ref (auto-detects PR base)
   --deterministic              Reproducible scan: stable sort, no-network, lockfile-checked
+  --incremental                Reuse taint summaries from prior scans (speeds up deep mode in CI)
   --no-epss                    Skip EPSS exploit-prediction enrichment (default: enabled)
   --no-blast-radius            Skip blast-radius / cost framing (default: enabled)
   --verbose                    Include fix bodies + taxonomy in CLI output
@@ -315,6 +316,11 @@ async function cmdScan(args) {
       process.stderr.write(`[deterministic] run \`agentic-security rules lock\` to refresh.\n`);
       return 4;
     }
+  }
+
+  // --incremental : reuse taint summaries from prior scans for faster deep mode.
+  if (args.flags['incremental'] || process.env.AGENTIC_SECURITY_INCREMENTAL === '1') {
+    process.env.AGENTIC_SECURITY_INCREMENTAL = '1';
   }
 
   // --pr [ref] : friendlier alias for --changed-since that auto-detects the PR

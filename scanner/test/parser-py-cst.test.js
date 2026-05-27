@@ -196,3 +196,70 @@ _maybe('parsePythonFile single-file shim mirrors the regex shape exactly', () =>
   assert.equal(typeof fn.cfg.exit, 'string');
   assert.equal(typeof fn.cfg.nodes, 'object');
 });
+
+_maybe('CST parser: destructuring assignment produces per-element assigns', () => {
+  const code = `
+def handler(request):
+    a, b = request.form, request.args
+    return b
+`;
+  const cst = parsePythonFileCst('app.py', code);
+  assert.ok(cst);
+  const nodes = Object.values(cst.functions[0].cfg.nodes);
+  const assigns = nodes.filter(n => n.kind === 'assign' && n.target);
+  const targets = assigns.map(n => n.target);
+  assert.ok(targets.includes('a'), 'expected assign for destructured target "a"');
+  assert.ok(targets.includes('b'), 'expected assign for destructured target "b"');
+});
+
+_maybe('CST parser: walrus operator tracks named binding', () => {
+  const code = `
+import re
+def f(text):
+    if (m := re.match(r"pat", text)):
+        return m.group(0)
+`;
+  const cst = parsePythonFileCst('app.py', code);
+  assert.ok(cst);
+  const nodes = Object.values(cst.functions[0].cfg.nodes);
+  const walrusAssign = nodes.find(n => n.kind === 'assign' && n.target === 'm');
+  assert.ok(walrusAssign, 'expected a synthetic assign node for walrus target "m"');
+  assert.equal(walrusAssign.source.kind, 'call');
+});
+
+_maybe('CST parser: match-case bodies are lowered as if-chain', () => {
+  const code = `
+def route(cmd):
+    match cmd:
+        case "start":
+            return 1
+        case "stop":
+            return 0
+        case other:
+            return -1
+`;
+  const cst = parsePythonFileCst('app.py', code);
+  assert.ok(cst);
+  const nodes = Object.values(cst.functions[0].cfg.nodes);
+  const ifNodes = nodes.filter(n => n.kind === 'if');
+  assert.ok(ifNodes.length >= 3, `expected at least 3 if-nodes for match cases, got ${ifNodes.length}`);
+  const returnNodes = nodes.filter(n => n.kind === 'return');
+  assert.ok(returnNodes.length >= 3, 'expected at least 3 return nodes in match-case branches');
+  const otherAssign = nodes.find(n => n.kind === 'assign' && n.target === 'other');
+  assert.ok(otherAssign, 'expected assign for MatchAs capture "other"');
+});
+
+_maybe('CST parser: comprehension if-filters produce if nodes', () => {
+  const code = `
+def f(items):
+    result = [x for x in items if x.valid]
+    return result
+`;
+  const cst = parsePythonFileCst('app.py', code);
+  assert.ok(cst);
+  const nodes = Object.values(cst.functions[0].cfg.nodes);
+  const loopAssign = nodes.find(n => n.kind === 'assign' && n.target === 'x');
+  assert.ok(loopAssign, 'expected assign node for comprehension loop variable');
+  const ifNode = nodes.find(n => n.kind === 'if');
+  assert.ok(ifNode, 'expected if node for comprehension filter');
+});

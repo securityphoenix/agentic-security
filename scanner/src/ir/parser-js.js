@@ -86,6 +86,7 @@ function exprOf(n) {
     };
     case 'ArrayExpression':   return { kind: 'array', elements: (n.elements || []).map(exprOf) };
     case 'SpreadElement':     return exprOf(n.argument);
+    case 'ThisExpression':    return { kind: 'ident', name: '_this_' };
     default:                   return { kind: 'unknown' };
   }
 }
@@ -94,6 +95,7 @@ function exprOf(n) {
 function lhsPath(n) {
   if (!n) return null;
   if (n.type === 'Identifier') return n.name;
+  if (n.type === 'ThisExpression') return '_this_';
   if (n.type === 'MemberExpression') {
     const base = lhsPath(n.object);
     const prop = n.computed ? '*' : (n.property?.name || '*');

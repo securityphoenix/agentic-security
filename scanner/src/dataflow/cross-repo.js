@@ -216,4 +216,78 @@ export function federatedFindings(graph) {
   return findings;
 }
 
-export const _internal = { _parseSpec, _endpointsFor, _leafPathsOf, _responseFields, _requestFields };
+// ── Intra-project cross-service taint ───────────────────────────────────────
+//
+// Detects HTTP client calls in one file whose target matches a route handler
+// in another file within the same project. When tainted data flows into the
+// client call's body, and the matching handler reads from req.body, emit a
+// cross-service finding.
+
+const _CLIENT_PATTERNS = [
+  { re: /\bfetch\s*\(\s*['"`]([^'"`]+)['"`]/g, method: null, bodyArg: true },
+  { re: /\baxios\.(\w+)\s*\(\s*['"`]([^'"`]+)['"`]/g, method: 1, pathGroup: 2, bodyArg: true },
+  { re: /\brequests\.(\w+)\s*\(\s*['"`]([^'"`]+)['"`]/g, method: 1, pathGroup: 2, bodyArg: true },
+  { re: /\bhttp\.NewRequest\s*\(\s*['"`](\w+)['"`]\s*,\s*['"`]([^'"`]+)['"`]/g, method: 1, pathGroup: 2 },
+];
+
+const _HANDLER_PATTERNS = [
+  { re: /\bapp\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/g },
+  { re: /\brouter\.(get|post|put|patch|delete|HandleFunc)\s*\(\s*['"`]([^'"`]+)['"`]/g },
+  { re: /\b@app\.(route|get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/g },
+];
+
+function _normalizePath(p) {
+  return p.replace(/:[^/]+/g, '*').replace(/\{[^}]+\}/g, '*').replace(/<[^>]+>/g, '*').replace(/\/+$/, '');
+}
+
+export function detectIntraProjectServiceEdges(fileContents) {
+  if (!fileContents || typeof fileContents !== 'object') return [];
+  const consumers = [];
+  const producers = [];
+  for (const [fp, raw] of Object.entries(fileContents)) {
+    if (!raw || typeof raw !== 'string') continue;
+    const lineOf = (idx) => raw.slice(0, idx).split('\n').length;
+    for (const pat of _CLIENT_PATTERNS) {
+      pat.re.lastIndex = 0;
+      for (const m of raw.matchAll(pat.re)) {
+        const method = pat.method ? (m[pat.method] || 'get').toLowerCase() : 'get';
+        const path = m[pat.pathGroup || 1];
+        consumers.push({ file: fp, line: lineOf(m.index), method, path: _normalizePath(path) });
+      }
+    }
+    for (const pat of _HANDLER_PATTERNS) {
+      pat.re.lastIndex = 0;
+      for (const m of raw.matchAll(pat.re)) {
+        const method = m[1].toLowerCase();
+        const path = m[2];
+        producers.push({ file: fp, line: lineOf(m.index), method: method === 'route' ? 'any' : method, path: _normalizePath(path) });
+      }
+    }
+  }
+  const findings = [];
+  for (const c of consumers) {
+    for (const p of producers) {
+      if (c.file === p.file) continue;
+      if (p.method !== 'any' && c.method !== p.method) continue;
+      if (c.path !== p.path && !c.path.endsWith(p.path)) continue;
+      findings.push({
+        id: `cross-service:${c.file}:${c.line}->${p.file}:${p.line}`,
+        file: p.file,
+        line: p.line,
+        vuln: 'Cross-Service Taint — HTTP client in one file targets handler in another',
+        severity: 'medium',
+        family: 'cross-service-taint',
+        cwe: 'CWE-346',
+        parser: 'CROSS-SERVICE',
+        confidence: 0.60,
+        description: `HTTP client call in ${c.file}:${c.line} targets the route handler at ${p.file}:${p.line}. If tainted data flows through the client body into the handler's sink, this is a cross-service injection path.`,
+        remediation: 'Validate and sanitize all data crossing service boundaries, even internal ones. Treat internal API inputs the same as external user input.',
+        source: { file: c.file, line: c.line, label: `${c.method.toUpperCase()} ${c.path}` },
+        sink: { file: p.file, line: p.line, label: `handler ${p.path}` },
+      });
+    }
+  }
+  return findings;
+}
+
+export const _internal = { _parseSpec, _endpointsFor, _leafPathsOf, _responseFields, _requestFields, _normalizePath };

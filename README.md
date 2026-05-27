@@ -66,6 +66,8 @@ Also works with Codex, Cursor, and Gemini CLI — [harness setup](docs/HARNESS_C
 
 ## Five commands to know
 
+![agentic-security demo](docs/brand/demo.gif)
+
 **`/agentic-security:secure`** — Don't know what to do? It tells you the single best next step.
 
 ```

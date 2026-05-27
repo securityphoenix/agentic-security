@@ -166,8 +166,14 @@ def _lower_expr(node: ast.AST) -> dict[str, Any]:
     if isinstance(node, ast.Starred):
         return _lower_expr(node.value)
     if isinstance(node, ast.NamedExpr):
-        # Walrus: `(x := expr)` — flow the RHS forward.
-        return _lower_expr(node.value)
+        # Walrus: `(x := expr)` — surface both the target binding and the value.
+        return {
+            "kind": "union",
+            "branches": [
+                {"kind": "ident", "name": node.target.id},
+                _lower_expr(node.value),
+            ],
+        }
     if isinstance(node, ast.UnaryOp):
         return _lower_expr(node.operand)
     if isinstance(node, ast.Await):
@@ -205,9 +211,9 @@ def _flatten_callee(node: ast.AST) -> Any:
     return None
 
 
-def _assign_target(node: ast.AST) -> Optional[str]:
-    """Return a single identifier or dotted-path string for an assignment target,
-    or None for destructuring shapes we don't model."""
+def _assign_target(node: ast.AST) -> "str | list[str] | None":
+    """Return a single identifier, dotted-path string, or a list of targets
+    for destructuring assignments (Tuple/List unpacking)."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -219,7 +225,40 @@ def _assign_target(node: ast.AST) -> Optional[str]:
         if isinstance(cur, ast.Name):
             parts.insert(0, cur.id)
             return ".".join(parts)
-    # ast.Tuple, ast.List, ast.Starred — destructuring, not yet modeled.
+    if isinstance(node, (ast.Tuple, ast.List)):
+        targets = []
+        for elt in node.elts:
+            t = _assign_target(elt)
+            targets.append(t if isinstance(t, str) else None)
+        return targets
+    if isinstance(node, ast.Starred):
+        return _assign_target(node.value)
+    return None
+
+
+def _lower_match_pattern(pattern: ast.AST, subject: dict) -> dict:
+    """Lower a match-case pattern to an expression for the if-condition."""
+    if isinstance(pattern, ast.MatchValue):
+        return {"kind": "binary", "op": "Eq", "left": subject, "right": _lower_expr(pattern.value)}
+    if isinstance(pattern, ast.MatchSingleton):
+        return {"kind": "binary", "op": "Is", "left": subject, "right": {"kind": "literal", "value": pattern.value}}
+    if isinstance(pattern, ast.MatchAs):
+        if pattern.pattern is not None:
+            return _lower_match_pattern(pattern.pattern, subject)
+        return {"kind": "unknown"}
+    if isinstance(pattern, ast.MatchOr):
+        if pattern.patterns:
+            return _lower_match_pattern(pattern.patterns[0], subject)
+        return {"kind": "unknown"}
+    return {"kind": "unknown"}
+
+
+def _match_pattern_capture(pattern: ast.AST) -> Optional[str]:
+    """Extract the capture variable name from a match-case pattern, if any."""
+    if isinstance(pattern, ast.MatchAs):
+        return pattern.name
+    if isinstance(pattern, ast.MatchStar) and hasattr(pattern, "name"):
+        return pattern.name
     return None
 
 
@@ -250,6 +289,28 @@ class CfgBuilder:
         if src_id not in dn["pred"]:
             dn["pred"].append(src_id)
 
+    @staticmethod
+    def _collect_walrus(node: ast.AST) -> list[ast.NamedExpr]:
+        """Collect all NamedExpr (walrus) nodes from an expression tree."""
+        out: list[ast.NamedExpr] = []
+        for child in ast.walk(node):
+            if isinstance(child, ast.NamedExpr):
+                out.append(child)
+        return out
+
+    def _emit_walrus_assigns(self, expr_node: ast.AST, prev: str, line: int) -> str:
+        """Emit assign nodes for any walrus operators in an expression."""
+        for w in self._collect_walrus(expr_node):
+            a = self._add({
+                "kind": "assign",
+                "target": w.target.id,
+                "source": _lower_expr(w.value),
+                "line": line,
+            })
+            self._link(prev, a)
+            prev = a
+        return prev
+
     def lower(self, body: list[ast.stmt]) -> None:
         tail = self.entry
         tail = self._lower_block(body, tail)
@@ -272,6 +333,13 @@ class CfgBuilder:
                     "callee": _flatten_callee(stmt.value.func),
                     "args": [_lower_expr(a) for a in (stmt.value.args or [])]
                           + [_lower_expr(kw.value) for kw in (stmt.value.keywords or [])],
+                    "line": line,
+                })
+            elif isinstance(stmt.value, ast.NamedExpr):
+                cur = self._add({
+                    "kind": "assign",
+                    "target": stmt.value.target.id,
+                    "source": _lower_expr(stmt.value.value),
                     "line": line,
                 })
             else:
@@ -300,10 +368,46 @@ class CfgBuilder:
                 # ast.Assign: targets may be multi (a = b = c). We use the first.
                 tgt = _assign_target(stmt.targets[0]) if stmt.targets else None
                 src = _lower_expr(stmt.value)
+            if isinstance(tgt, list):
+                # Destructuring: a, b = expr → one assign per element.
+                rhs = src
+                tail = prev
+                for i, t in enumerate(tgt):
+                    elem_src = {"kind": "member", "object": rhs, "prop": "[]"}
+                    a = self._add({"kind": "assign", "target": t, "source": elem_src, "line": line})
+                    self._link(tail, a)
+                    tail = a
+                return tail
+            # Comprehension with filters at statement level: emit filter conditions.
+            rhs_node = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
+            if rhs_node and isinstance(rhs_node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+                tail = prev
+                for gen in rhs_node.generators:
+                    # Emit loop var assign from iter
+                    loop_tgt = _assign_target(gen.target)
+                    if loop_tgt and isinstance(loop_tgt, str):
+                        la = self._add({
+                            "kind": "assign", "target": loop_tgt,
+                            "source": _lower_expr(gen.iter), "line": line,
+                        })
+                        self._link(tail, la)
+                        tail = la
+                    for if_clause in gen.ifs:
+                        if_n = self._add({
+                            "kind": "if",
+                            "cond": _lower_expr(if_clause),
+                            "line": line,
+                        })
+                        self._link(tail, if_n)
+                        tail = if_n
+                cur = self._add({"kind": "assign", "target": tgt if isinstance(tgt, str) else None, "source": src, "line": line})
+                self._link(tail, cur)
+                return cur
             cur = self._add({"kind": "assign", "target": tgt, "source": src, "line": line})
             self._link(prev, cur)
             return cur
         if isinstance(stmt, ast.If):
+            prev = self._emit_walrus_assigns(stmt.test, prev, line)
             if_node = self._add({
                 "kind": "if",
                 "cond": _lower_expr(stmt.test),
@@ -342,6 +446,7 @@ class CfgBuilder:
             self._link(lh, join)
             return join
         if isinstance(stmt, (ast.While,)):
+            prev = self._emit_walrus_assigns(stmt.test, prev, line)
             lh = self._add({"kind": "loop-header", "line": line})
             self._link(prev, lh)
             body_tail = self._lower_block(stmt.body, lh)
@@ -409,11 +514,32 @@ class CfgBuilder:
             self._link(prev, cur)
             return cur
         if isinstance(stmt, ast.Match):
-            # Match statement — emit a noop for now. Future work: lower each
-            # case as an alternate branch with its pattern guard.
-            cur = self._add({"kind": "noop", "line": line, "_unmodeled": "match"})
-            self._link(prev, cur)
-            return cur
+            subject = _lower_expr(stmt.subject)
+            join = self._add({"kind": "noop", "line": line})
+            for case in stmt.cases:
+                case_line = getattr(case, "lineno", line) or line
+                pattern_expr = _lower_match_pattern(case.pattern, subject)
+                if_node = self._add({
+                    "kind": "if",
+                    "cond": pattern_expr,
+                    "line": case_line,
+                })
+                self._link(prev, if_node)
+                # If pattern has a capture name, emit an assign for it.
+                capture = _match_pattern_capture(case.pattern)
+                if capture:
+                    a = self._add({
+                        "kind": "assign", "target": capture,
+                        "source": subject, "line": case_line,
+                    })
+                    self._link(if_node, a)
+                    body_prev = a
+                else:
+                    body_prev = if_node
+                body_tail = self._lower_block(case.body, body_prev)
+                self._link(body_tail, join)
+            self._link(prev, join)
+            return join
         # ast.Pass, ast.Break, ast.Continue, ast.Import, ast.ImportFrom,
         # ast.Global, ast.Nonlocal, ast.Delete — all noops for taint.
         cur = self._add({"kind": "noop", "line": line})

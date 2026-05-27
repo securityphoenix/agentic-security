@@ -13,6 +13,9 @@ import {
   probePythonAvailable,
 } from './parser-py-cst.js';
 import { parseJavaFile } from './parser-java.js';
+import { parseGoFile } from './parser-go.js';
+import { parsePhpFile } from './parser-php.js';
+import { parseRubyFile } from './parser-rb.js';
 import { buildCallGraph } from './callgraph.js';
 import { buildClassHierarchy } from './class-hierarchy.js';
 import { computeSSA, isSSAEnabled } from './ssa.js';
@@ -76,6 +79,15 @@ export function buildProjectIR(fileContents) {
     } else if (/\.kt$/i.test(file)) {
       const ir = parseKotlinFile(file, code);
       if (ir) perFile[file] = ir;
+    } else if (/\.go$/i.test(file)) {
+      const ir = parseGoFile(file, code);
+      if (ir) perFile[file] = ir;
+    } else if (/\.(?:php|phtml)$/i.test(file)) {
+      const ir = parsePhpFile(file, code);
+      if (ir) perFile[file] = ir;
+    } else if (/\.rb$/i.test(file)) {
+      const ir = parseRubyFile(file, code);
+      if (ir) perFile[file] = ir;
     }
   }
   if (pyBatch.length) {
@@ -116,6 +128,15 @@ export async function buildProjectIRAsync(fileContents) {
         const ir = await parseJavaFile(file, code);
         if (ir) perFile[file] = ir;
       } catch { /* skip */ }
+    } else if (/\.go$/i.test(file)) {
+      const ir = parseGoFile(file, code);
+      if (ir) perFile[file] = ir;
+    } else if (/\.(?:php|phtml)$/i.test(file)) {
+      const ir = parsePhpFile(file, code);
+      if (ir) perFile[file] = ir;
+    } else if (/\.rb$/i.test(file)) {
+      const ir = parseRubyFile(file, code);
+      if (ir) perFile[file] = ir;
     }
   }
   if (pyBatch.length) {
@@ -149,4 +170,4 @@ export function parsePythonFile(file, code) {
   return parsePythonFileRegex(file, code);
 }
 
-export { parseJsFile, parseJavaFile, parseCSharpFile, parseKotlinFile, buildCallGraph, buildClassHierarchy, computeSSA, isSSAEnabled, probePythonAvailable };
+export { parseJsFile, parseJavaFile, parseCSharpFile, parseKotlinFile, parseGoFile, parsePhpFile, parseRubyFile, buildCallGraph, buildClassHierarchy, computeSSA, isSSAEnabled, probePythonAvailable };
