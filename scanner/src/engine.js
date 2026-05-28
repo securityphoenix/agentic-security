@@ -126,6 +126,7 @@ import { annotateCrownJewelScores } from './posture/crown-jewels.js';
 import { annotateFeatureFlagGating } from './posture/feature-flags.js';
 import { annotatePersonaScores } from './posture/persona-prioritization.js';
 import { annotateMitigationComposite } from './posture/mitigation-composite.js';
+import { annotateCompositeRisk } from './posture/composite-risk.js';
 import { annotateTypeNarrowing } from './posture/type-narrowing.js';
 import { annotateWhyFired } from './posture/why-fired.js';
 import { scanSpecificationDrift } from './posture/specification-mining.js';
@@ -7238,6 +7239,10 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   _runAnnotator("annotateFeatureFlagGating", () => { annotateFeatureFlagGating(finalFindings, fc, { scanRoot }); });
   // v3 next-gen: composite mitigation verdict consumes every prod signal above.
   _runAnnotator("annotateMitigationComposite", () => { annotateMitigationComposite(finalFindings); });
+  // Composite risk score (0..100 derived ordinal). Must run AFTER mitigation
+  // composite + exploitability + toxicityScore so it sees the final values.
+  // Used by agents and UI as the canonical sort key for "which finding first."
+  _runAnnotator("annotateCompositeRisk", () => { annotateCompositeRisk(finalFindings); });
   // v3 next-gen: crown-jewel mapping (FR-PROD-5) — score each file/finding by
   // business impact. Must run before persona prioritization (which uses it).
   _runAnnotator("annotateCrownJewelScores", () => { annotateCrownJewelScores(finalFindings, fc); });
@@ -7466,6 +7471,16 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   const _toxCtx={routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`).map(r=>({...r})),supplyChain,hasCloudCreds:_hasCloudCreds};
   try{finalFindings.forEach(f=>scoreToxicity(f,_toxCtx));}catch(_){}
   for(const sc of supplyChain||[]){try{scoreToxicity(sc,_toxCtx);}catch(_){}}
+  // Composite risk for the supplyChain bucket too. The SAST pass at
+  // annotateCompositeRisk above runs before scoreToxicity (which only
+  // touches finalFindings in the same line), so this is the catch-up call
+  // for the SCA bucket — must happen after KEV / EPSS / scoreToxicity on
+  // supplyChain so it sees the populated signals.
+  try { annotateCompositeRisk(supplyChain); } catch (_) {}
+  // And re-annotate finalFindings here so they pick up the toxicityScore
+  // that was just set. Idempotent: composite-risk derives fresh from the
+  // current field values on each call.
+  try { annotateCompositeRisk(finalFindings); } catch (_) {}
   // 0.9.0 Feat-18: OSSF Scorecard enrichment (opt-in via AGENTIC_SECURITY_SCORECARD=1)
   try { await _enrichWithScorecard(annotatedComponents); }
   catch (e) { _annotatorErrors.push({ phase: '_enrichWithScorecard', err: String((e && e.message) || e) }); }

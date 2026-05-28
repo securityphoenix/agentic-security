@@ -468,6 +468,19 @@ export const explain_finding = {
       confidence: f.confidence ?? null,
       hasReplacementFix: typeof f.fix?.replacement === 'string',
       integrity: status,
+      // Risk-signal passthrough so agents can decide priority without
+      // re-reading last-scan.json or re-fetching OSV/KEV/EPSS. compositeRisk
+      // is the canonical sort key; the other fields are its provenance.
+      compositeRisk: f.compositeRisk ?? null,
+      compositeRiskTier: f.compositeRiskTier ?? null,
+      compositeRiskFactors: Array.isArray(f.compositeRiskFactors) ? f.compositeRiskFactors : [],
+      exploitability: f.exploitability ?? null,
+      exploitabilityTier: f.exploitabilityTier ?? null,
+      mitigationVerdict: f.mitigationVerdict ?? null,
+      kev: !!(f.kev || f.kevListed || f.weaponized),
+      epssScore: typeof f.epssScore === 'number' ? f.epssScore : null,
+      epssPercentile: typeof f.epssPercentile === 'number' ? f.epssPercentile : null,
+      exploitedNow: !!f.exploitedNow,
     };
   },
 };
