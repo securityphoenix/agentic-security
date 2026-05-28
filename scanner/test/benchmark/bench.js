@@ -159,13 +159,24 @@ async function main() {
 
   if (JSON_OUT) {
     console.log(JSON.stringify({
-      overall: { tp: totalTP, fp: totalFP, fn: totalFN, precision, recall, f1: overallF1 },
+      overall: {
+        tp: totalTP, fp: totalFP, fn: totalFN,
+        precision, recall, f1: overallF1,
+        // Youden Index requires a declared negative class. The in-repo bench
+        // uses curated fixtures where every expected[] entry is positive and
+        // `expectedNone:true` fixtures act as implicit negatives — but the
+        // negatives have no per-family declaration, so per-family FPR is
+        // ill-defined. Reported as null for honesty; use bench:realworld
+        // against OWASP Benchmark for Youden numbers.
+        youden: null,
+      },
       perFamily, perFixture,
     }, null, 2));
   } else {
     console.log('');
     console.log(`Fixtures: ${fixtureNames.length}   TP: ${totalTP}   FP: ${totalFP}   FN: ${totalFN}`);
     console.log(`Precision: ${(precision*100).toFixed(1)}%   Recall: ${(recall*100).toFixed(1)}%   F1: ${(overallF1*100).toFixed(1)}%`);
+    console.log(`Youden Index: n/a (in-repo fixtures lack a declared per-family negative class — use bench:realworld against OWASP Benchmark for Youden)`);
     console.log('');
     console.log('Per-fixture:');
     console.log(`  ${pad('fixture', 28)} ${pad('TP', 4)} ${pad('FP', 4)} ${pad('FN', 4)}  P     R     F1`);

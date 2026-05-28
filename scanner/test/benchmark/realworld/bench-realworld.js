@@ -280,25 +280,32 @@ async function ensureClone(name, repo, sha) {
 
 // Build expected[] for OWASP Benchmark from upstream's expectedresults-*.csv.
 // Each row: testcase, category, real-vuln (true|false), cwe.
+//
+// Returns { expected, negatives }. `negatives` is the set of real=false test
+// files keyed by (basename, family) — used to compute true-negative-rate and
+// Youden Index in line with the official OWASP Benchmark scorecard convention.
 async function buildOwaspBenchmarkExpected(repoRoot, gt) {
   const csvPath = path.join(repoRoot, gt.path);
   const raw = await fs.readFile(csvPath, 'utf8');
   const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('#'));
   const expected = [];
+  const negatives = []; // real=false rows: each carries (file, family) for FPR scoring
   for (const line of lines) {
     const [test, cat, real, cwe] = line.split(',').map(s => s && s.trim());
     if (!test || !cat) continue;
-    if (real !== 'true') continue;   // only declared TPs become expected entries
     const family = gt.categoryToFamily[cat] || cat;
-    expected.push({
+    const entry = {
       file: `${test}.java`,
       line: 1,
       lineTolerance: 9999, // file-level granularity — ground truth is per-test-file, not per-line
       matchAny: true,      // multiple Java rules can fire on the same file (e.g., scanJavaSAST + structural sink+source pairing); credit them all to the single expected entry rather than counting in-file duplicates as FPs.
       family,
       cwe: cwe ? `CWE-${cwe}` : null,
-    });
+    };
+    if (real === 'true') expected.push(entry);
+    else if (real === 'false') negatives.push({ file: entry.file, family });
   }
+  expected._negatives = negatives;
   return expected;
 }
 
@@ -1061,29 +1068,83 @@ async function runOne(name, app, vulnFamilyMap) {
   const recall    = tp+fn === 0 ? 1 : tp/(tp+fn);
   const fOne      = f1(precision, recall);
 
-  // Per-family breakdown
+  // Per-family breakdown (positive class)
   const perFamily = {};
-  const bump = (fam, k) => { (perFamily[fam] ??= {tp:0,fp:0,fn:0})[k]++; };
+  const bump = (fam, k) => { (perFamily[fam] ??= {tp:0,fp:0,fn:0,tn:0,fpNeg:0})[k]++; };
   for (const t of tps) bump(t.family, 'tp');
   for (const x of fps) bump(x.family, 'fp');
   for (const x of fns) bump(x.family, 'fn');
 
-  const auditorVerified = !!(app.groundTruth && app.groundTruth.auditorVerified);
-  return { name, language: app.language, scanned: actual.length, tp, fp, fn, precision, recall, f1: fOne, perFamily, fps, fns, elapsedSec: parseFloat(elapsed), expectedTotal: expected.length, auditorVerified, requiresReAudit: reAuditFlag };
+  // Youden Index (TPR − FPR) — requires a real negative class. OWASP Benchmark
+  // ships real=false rows in expectedresults-1.2.csv; we parse them as a list
+  // of (file, family) pairs the engine should NOT fire on. For each negative,
+  // a firing in that family on that file is a category-FP; absence is a TN.
+  // Matches the OWASP Benchmark scorecard convention so Youden Index here is
+  // directly comparable to other tools' published Youden numbers.
+  //
+  // Corpora without a declared negative class (Juliet, BigVul, CVEfixes,
+  // curated apps) report Youden=null; F1 still applies.
+  const negatives = expected._negatives || [];
+  let youden = null, tpr = null, fpr = null, specificity = null;
+  let negTotalTN = 0, negTotalFP = 0;
+  if (negatives.length) {
+    // Index actuals by (basename, family) for O(1) lookup.
+    const actualByBaseFamily = new Set();
+    for (const a of actual) {
+      const aFile = fileOf(a);
+      const base = aFile.replace(/\\/g,'/').split('/').slice(-1)[0];
+      const fam = familyForBench(a.vuln, vulnFamilyMap, a);
+      actualByBaseFamily.add(base + '|' + fam);
+    }
+    for (const n of negatives) {
+      const key = n.file + '|' + n.family;
+      if (actualByBaseFamily.has(key)) { bump(n.family, 'fpNeg'); negTotalFP++; }
+      else { bump(n.family, 'tn'); negTotalTN++; }
+    }
+    tpr = recall;
+    fpr = (negTotalFP + negTotalTN) === 0 ? 0 : negTotalFP / (negTotalFP + negTotalTN);
+    specificity = 1 - fpr;
+    youden = tpr - fpr;
+  }
+
+  const auditorVerifiedSource = (app.groundTruth && app.groundTruth.auditorVerifiedSource) || null;
+  return {
+    name, language: app.language, scanned: actual.length,
+    tp, fp, fn, precision, recall, f1: fOne,
+    tpr, fpr, specificity, youden,
+    negativesTotal: negatives.length, negTN: negTotalTN, negFP: negTotalFP,
+    perFamily, fps, fns,
+    elapsedSec: parseFloat(elapsed),
+    expectedTotal: expected.length,
+    auditorVerifiedSource,
+    requiresReAudit: reAuditFlag,
+  };
 }
 
 function printResult(r) {
-  const auditorTag = r.auditorVerified ? '  [auditor-verified GT]' : '';
+  const auditorTag = r.auditorVerifiedSource ? `  [GT source: ${r.auditorVerifiedSource}]` : '';
   const reAuditTag = r.requiresReAudit ? '  [GT requires re-audit — F1 informational]' : '';
   console.log(`\n${r.name} (${r.language})${auditorTag}${reAuditTag}`);
-  console.log(`  P: ${(r.precision*100).toFixed(1)}%   R: ${(r.recall*100).toFixed(1)}%`);
+  console.log(`  P: ${(r.precision*100).toFixed(1)}%   R: ${(r.recall*100).toFixed(1)}%   F1: ${(r.f1*100).toFixed(1)}%`);
+  if (r.youden != null) {
+    console.log(`  TPR: ${(r.tpr*100).toFixed(1)}%   FPR: ${(r.fpr*100).toFixed(1)}%   Specificity: ${(r.specificity*100).toFixed(1)}%   Youden: ${(r.youden*100).toFixed(1)}%`);
+    console.log(`  Negatives: ${r.negativesTotal} (TN ${r.negTN} / FP ${r.negFP})`);
+  } else {
+    console.log(`  Youden Index: n/a (no declared negative class in this corpus)`);
+  }
   console.log(`  TP: ${r.tp} / FP: ${r.fp} / FN: ${r.fn}   (expected: ${r.expectedTotal}, scan emitted: ${r.scanned}, ${r.elapsedSec}s)`);
   if (Object.keys(r.perFamily).length) {
     console.log(`  per-family:`);
     for (const [fam, s] of Object.entries(r.perFamily).sort()) {
       const p = s.tp+s.fp===0?1:s.tp/(s.tp+s.fp);
       const rr = s.tp+s.fn===0?1:s.tp/(s.tp+s.fn);
-      console.log(`    ${pad(fam, 24)} TP:${pad(s.tp,4)} FP:${pad(s.fp,4)} FN:${pad(s.fn,4)} P:${(p*100).toFixed(0).padStart(3)}%  R:${(rr*100).toFixed(0).padStart(3)}%`);
+      const hasNeg = (s.tn||0) + (s.fpNeg||0) > 0;
+      const fprFam = hasNeg ? (s.fpNeg||0) / ((s.tn||0) + (s.fpNeg||0)) : null;
+      const yFam = hasNeg ? rr - fprFam : null;
+      const negCols = hasNeg
+        ? `  FPR:${(fprFam*100).toFixed(0).padStart(3)}%  Y:${(yFam*100).toFixed(0).padStart(3)}%`
+        : '';
+      console.log(`    ${pad(fam, 24)} TP:${pad(s.tp,4)} FP:${pad(s.fp,4)} FN:${pad(s.fn,4)} P:${(p*100).toFixed(0).padStart(3)}%  R:${(rr*100).toFixed(0).padStart(3)}%${negCols}`);
     }
   }
   if (VERBOSE) {
@@ -1170,7 +1231,7 @@ async function main() {
     // can hide individual-family collapse behind noisy macro-averages.
     if (targets.length > 1) {
       const ok = results.filter(r => !r.error);
-      const aud = ok.filter(r => r.auditorVerified);
+      const auditorSourced = ok.filter(r => !!r.auditorVerifiedSource);
       function agg(rs) {
         if (!rs.length) return null;
         const tp = rs.reduce((s, r) => s + (r.tp || 0), 0);
@@ -1178,18 +1239,19 @@ async function main() {
         const fn = rs.reduce((s, r) => s + (r.fn || 0), 0);
         const p = tp + fp === 0 ? 1 : tp / (tp + fp);
         const r = tp + fn === 0 ? 1 : tp / (tp + fn);
-        return { count: rs.length, tp, fp, fn, p, r };
+        const f1Val = p+r === 0 ? 0 : (2*p*r)/(p+r);
+        return { count: rs.length, tp, fp, fn, p, r, f1: f1Val };
       }
-      const aAgg = agg(aud);
+      const aAgg = agg(auditorSourced);
       const fAgg = agg(ok);
       console.log(`\n${'='.repeat(50)}\nAggregate (raw TP/FP/FN; per-family detail above)\n${'='.repeat(50)}`);
       if (aAgg) {
-        console.log(`Auditor-verified GT subset (${aAgg.count} apps): TP ${aAgg.tp}  FP ${aAgg.fp}  FN ${aAgg.fn}  P ${(aAgg.p*100).toFixed(1)}%  R ${(aAgg.r*100).toFixed(1)}%`);
+        console.log(`Auditor-source-verified subset (${aAgg.count} apps): TP ${aAgg.tp}  FP ${aAgg.fp}  FN ${aAgg.fn}  P ${(aAgg.p*100).toFixed(1)}%  R ${(aAgg.r*100).toFixed(1)}%  F1 ${(aAgg.f1*100).toFixed(1)}%`);
       }
       if (fAgg) {
-        console.log(`Full benchmark (${fAgg.count} apps):              TP ${fAgg.tp}  FP ${fAgg.fp}  FN ${fAgg.fn}  P ${(fAgg.p*100).toFixed(1)}%  R ${(fAgg.r*100).toFixed(1)}%`);
+        console.log(`Full benchmark (${fAgg.count} apps):                  TP ${fAgg.tp}  FP ${fAgg.fp}  FN ${fAgg.fn}  P ${(fAgg.p*100).toFixed(1)}%  R ${(fAgg.r*100).toFixed(1)}%  F1 ${(fAgg.f1*100).toFixed(1)}%`);
       }
-      console.log(`Only the auditor-verified subset is defensible as an external claim — each expected entry traces to an upstream artifact (CSV, FLAW comment, NVD record) rather than engine-driven curation.`);
+      console.log(`auditorVerifiedSource flags the provenance of each corpus's ground truth (e.g. "upstream-csv", "upstream-juliet-folders"). It is NOT an external sign-off — see docs/audit/README.md for the path to external auditor confirmation. Per-corpus numbers are for local validation only; do not publish single-corpus scores.`);
     }
   }
 }
