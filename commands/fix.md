@@ -1,6 +1,6 @@
 ---
-description: Remediate findings. --one <id> patches one, --all batch-fixes by severity, --pr bundles into a pull request.
-argument-hint: "[--one <finding-id>] | [--all [--critical|--high|--medium|--low]] | [--pr [--severity critical|high|all] [--apply] [--branch <name>]]"
+description: Remediate findings: --one <id>, --all by severity, --pr bundles a PR, --sca upgrades vulnerable deps.
+argument-hint: "[--one <finding-id>] | [--all [--critical|--high|--medium|--low]] | [--pr [--severity critical|high|all] [--apply] [--branch <name>]] | [--sca [--pr] [--apply] [--tier critical|high|all]]"
 ---
 
 Apply security fixes from `.agentic-security/last-scan.json`.
@@ -107,5 +107,59 @@ Generated with [agentic-security](https://github.com/Clear-Capabilities/agentic-
 EOF
 )"
 ```
+
+---
+
+### `/fix --sca [--pr] [--apply] [--tier critical|high|all]`
+
+Upgrade every vulnerable dependency in the project. **Default is dry-run** — pass `--apply` to actually upgrade.
+
+This is the SCA counterpart to `/fix --all` for SAST findings. Instead of patching source files, it shells to the ecosystem's package manager (`npm install`, `pip install --upgrade`, `cargo update`, `go get`) with the OSV-recommended target version, gates each upgrade on the project's test command, and rolls back any upgrade whose tests fail.
+
+**Workflow:**
+
+1. **Pre-flight**:
+   - Read `.agentic-security/last-scan.json` for every `type: "vulnerable_dep"` finding.
+   - Filter by `--tier`:
+     - `critical` (default): only `compositeRiskTier === 'critical'` or `kev === true`.
+     - `high`: critical + high tiers.
+     - `all`: every vulnerable_dep finding.
+   - Order by `compositeRisk` DESC. KEV-listed + route-reachable-via-function findings always sort first.
+   - Skip any finding whose `mitigationVerdict === 'mitigated-in-prod'` (already neutralized).
+   - Skip any finding suppressed by `.agentic-security/sca-policy.yml` (when present).
+
+2. **Per finding**:
+   - Call the MCP `synthesize_sca_upgrade(finding_id)` tool. Inspect:
+     - `isBreaking` — if true, surface to the user; in `--apply` mode skip by default unless the user explicitly opts in.
+     - `dryRun.peerDeps` — if non-empty, surface; consider skipping if the warnings indicate a hard conflict.
+   - In `--apply` mode: call `apply_sca_upgrade(finding_id, confirm: true)`. The tool itself runs the install, runs the project tests, and rolls back manifests on test failure.
+   - Record per-finding outcome: `applied | skipped-breaking | skipped-peer-conflict | rolled-back-test-failure`.
+
+3. **`--pr` mode** (combines with `--apply`):
+   - Pre-flight: clean working tree (warn + suggest commit/stash if dirty), `gh auth status` ok, on a feature branch (create `security/sca-upgrade-$(date +%Y%m%d)` if currently on main).
+   - After each successful upgrade, commit the manifest changes:
+     - `security: bump <pkg> <from> → <to> (fixes <OSV id>)`
+   - After the batch: push branch + open PR via `gh pr create`. Body lists every applied upgrade with CVE + fixed-version + composite-risk score.
+
+**Hard rules:**
+
+- Never run with `--apply` unless explicitly requested. Default is dry-run plan.
+- Never amend or force-push an existing branch.
+- Never skip the test gate. `apply_sca_upgrade` runs the project tests by default; if a project has no test command detected, surface that and require explicit user confirmation per finding.
+- Major-version bumps (`isBreaking: true`) are NOT auto-applied in v1; they require user opt-in via interactive confirm.
+
+**Output:**
+
+```
+Plan: N vulnerable dependencies, M upgrade candidates, K skipped (breaking)
+  applied:     <count>  (tests passed)
+  skipped-breaking: <count>  (major version bump)
+  skipped-peer:     <count>  (peer-dep conflict)
+  rolled-back:      <count>  (tests failed; manifests restored)
+```
+
+**Why this isn't just `/fix --all` extended:**
+
+SAST fixes write source code via the `apply_fix` MCP tool. That tool refuses every manifest basename (`package.json`, `package-lock.json`, `poetry.lock`, `Cargo.lock`, …) by design. SCA upgrades need a separate write path because the canonical way to modify a manifest is to delegate to the package manager — that's what `apply_sca_upgrade` does.
 
 🛡  agentic-security · created by ClearCapabilities.Com
