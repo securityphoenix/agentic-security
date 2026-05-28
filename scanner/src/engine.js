@@ -5964,39 +5964,72 @@ function _osvCacheGet(key){try{const r=sessionStorage.getItem('osv_'+key);return
 function _osvCacheSet(key,val){try{sessionStorage.setItem('osv_'+key,JSON.stringify(val));}catch(_){}}
 
 // Feat-9: EPSS (community abuse-probability index) overlay. Fetches probability
-// of abuse in the next 30 days per CVE; caches on disk. When offline or
+// of abuse in the next 30 days; caches per-CVE on disk. When offline or
 // the API errors, falls back to null fields — never blocks the scan.
-async function _fetchEPSS(cveId){
-  if (!cveId || !/^CVE-\d{4}-\d+$/i.test(cveId)) return null;
-  if (process.env.AGENTIC_SECURITY_OFFLINE === '1') return null;
-  const cached = _osvCacheGet('epss:'+cveId);
-  if (cached !== null) return cached;
-  try {
-    const res = await fetch(`https://api.first.org/data/v1/epss?cve=${encodeURIComponent(cveId)}`, {
-      headers: { 'User-Agent': 'agentic-security/0.1' },
-    });
-    if (!res.ok) { _osvCacheSet('epss:'+cveId, false); return null; }
-    const j = await res.json();
-    const row = j.data?.[0];
-    const out = row ? { score: parseFloat(row.epss), percentile: parseFloat(row.percentile) } : null;
-    _osvCacheSet('epss:'+cveId, out || false);
-    return out;
-  } catch { return null; }
+//
+// Batched: api.first.org accepts up to ~100 CVEs per request via ?cve=A,B,C…
+// One HTTP round trip per 100 CVEs instead of one per CVE. Cache lookups
+// remain per-CVE so a partial cache-hit still benefits.
+const _EPSS_BATCH = 100;
+async function _fetchEPSSBatch(cveIds){
+  if (!cveIds || !cveIds.length) return new Map();
+  if (process.env.AGENTIC_SECURITY_OFFLINE === '1') return new Map();
+  const out = new Map();
+  // Filter to well-formed CVE ids only.
+  const fresh = cveIds.filter(c => /^CVE-\d{4}-\d+$/i.test(c));
+  for (let i = 0; i < fresh.length; i += _EPSS_BATCH){
+    const batch = fresh.slice(i, i + _EPSS_BATCH);
+    const url = `https://api.first.org/data/v1/epss?cve=${encodeURIComponent(batch.join(','))}`;
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': 'agentic-security/0.1' } });
+      if (!res.ok) {
+        // Mark every CVE in the batch as "tried and failed" so we don't refetch this scan.
+        for (const c of batch) _osvCacheSet('epss:'+c, false);
+        continue;
+      }
+      const j = await res.json();
+      const seen = new Set();
+      for (const row of (j.data || [])) {
+        const cve = (row.cve || '').toUpperCase();
+        if (!cve) continue;
+        const score = parseFloat(row.epss);
+        const percentile = parseFloat(row.percentile);
+        if (Number.isFinite(score) && Number.isFinite(percentile)) {
+          const v = { score, percentile };
+          out.set(cve, v);
+          _osvCacheSet('epss:'+cve, v);
+          seen.add(cve);
+        }
+      }
+      // CVEs in the batch that EPSS does not know — cache the negative so we
+      // don't retry within this scan run.
+      for (const c of batch) if (!seen.has(c.toUpperCase())) _osvCacheSet('epss:'+c, false);
+    } catch { /* network error → caller continues without enrichment */ }
+  }
+  return out;
 }
 
 async function _enrichWithEPSS(supplyChainResults){
   const out = supplyChainResults;
-  const cves = new Set();
-  for (const r of out) for (const a of (r.cveAliases || [])) if (/^CVE-/.test(a)) cves.add(a);
-  // Fetch in parallel, deduped per CVE
+  // Collect every unique CVE referenced by any SCA finding.
+  const allCves = new Set();
+  for (const r of out) for (const a of (r.cveAliases || [])) if (/^CVE-/.test(a)) allCves.add(a.toUpperCase());
+  if (!allCves.size) return out;
+  // Cache lookup pass: keep CVEs we already have, defer the rest to one batched fetch.
   const epssByCve = new Map();
-  await Promise.all([...cves].map(async (cve) => {
-    const epss = await _fetchEPSS(cve);
-    if (epss) epssByCve.set(cve, epss);
-  }));
+  const uncached = [];
+  for (const c of allCves) {
+    const hit = _osvCacheGet('epss:'+c);
+    if (hit === null) uncached.push(c);
+    else if (hit) epssByCve.set(c, hit);   // hit === false means "tried, no data" — leave unset
+  }
+  if (uncached.length) {
+    const fetched = await _fetchEPSSBatch(uncached);
+    for (const [cve, v] of fetched) epssByCve.set(cve, v);
+  }
   for (const r of out) {
     const cve = (r.cveAliases || []).find(a => /^CVE-/.test(a));
-    const epss = cve ? epssByCve.get(cve) : null;
+    const epss = cve ? epssByCve.get(cve.toUpperCase()) : null;
     if (epss) {
       r.epssScore = epss.score;
       r.epssPercentile = epss.percentile;
@@ -6558,51 +6591,74 @@ async function queryOSV(components,allFileContents){
     }
   }
 
-  for(const[vid,affectedComps]of Object.entries(vulnAffects)){
-    let vuln=_osvCacheGet('vuln:'+vid);
-    if(!vuln){
-      try{
-        const resp=await fetch(`https://api.osv.dev/v1/vulns/${vid}`);
-        const d=await resp.json();
-        const fixedVersions=new Set();
-        const osvVulnFunctions=[];
-        for(const aff of(d.affected||[])){
-          for(const rng of(aff.ranges||[]))for(const ev of(rng.events||[]))if(ev.fixed)fixedVersions.add(ev.fixed);
-          const es=aff.ecosystem_specific||aff.database_specific||{};
-          if(Array.isArray(es.vulnerable_functions))osvVulnFunctions.push(...es.vulnerable_functions);
-          if(Array.isArray(es.imports))for(const imp of es.imports)if(Array.isArray(imp.symbols))osvVulnFunctions.push(...imp.symbols);
-        }
-        let severity='medium';
-        const db=d.database_specific||{};
-        if(db.severity)severity=db.severity.toLowerCase()==='moderate'?'medium':db.severity.toLowerCase();
-        let cvssVector=null;
-        for(const s of(d.severity||[]))if(s.type==='CVSS_V3'||s.type==='CVSS_V4'){cvssVector=s.score;break;}
-        // External-identifier exception (TOS compliance note):
-        // The domain fragments below are third-party PoC tracker domain names
-        // (exploit-db.com, packetstormsecurity.org). They are inputs we match
-        // against reference URLs returned by OSV — not output text we generate.
-        // Renaming them loses SCA detection of PoC-published CVEs.
-        const _KNOWN_PUBLIC_POC_DOMAINS = ['exploit-db','packetstorm','/poc','/0day'];
-        const hasKnownAttackRef=(d.references||[]).some(r=>_KNOWN_PUBLIC_POC_DOMAINS.some(x=>(r.url||'').toLowerCase().includes(x)));
-        vuln={id:vid,description:(d.summary||d.details||'No description.').slice(0,300),
-          fixedVersions:[...fixedVersions].sort(),
-          aliases:(d.aliases||[]).filter(a=>a.startsWith('CVE-')),
-          osvVulnFunctions:[...new Set(osvVulnFunctions)],
-          severity,cvssVector,hasKnownAttackRef};
-        _osvCacheSet('vuln:'+vid,vuln);
-      }catch(_){continue;}
-    }
-    for(const comp of affectedComps){
-      const cveStr=vuln.aliases.length?` (${vuln.aliases[0]})`:'';
-      const fixStr=vuln.fixedVersions.length?vuln.fixedVersions[0]:null;
-      results.push({type:'vulnerable_dep',name:comp.name,version:comp.version,ecosystem:comp.ecosystem,
-        purl:comp.purl,osvId:vid,cveAliases:vuln.aliases,description:vuln.description,
-        fixedVersions:vuln.fixedVersions,severity:vuln.severity,cvssVector:vuln.cvssVector,
-        hasKnownAttackRef:vuln.hasKnownAttackRef,osvVulnFunctions:vuln.osvVulnFunctions||[],reachable:comp.reachable,scope:comp.scope,
-        file:comp.filePath,
+  // External-identifier exception (TOS compliance note):
+  // The domain fragments below are third-party PoC tracker domain names.
+  // They are inputs we match against reference URLs returned by OSV — not
+  // output text we generate. Renaming them loses SCA detection of
+  // PoC-published CVEs.
+  const _KNOWN_PUBLIC_POC_DOMAINS = ['exploit-db','packetstorm','/poc','/0day'];
+  // Fetch missing vuln details in parallel with a concurrency cap so we don't
+  // open hundreds of sockets on a large dep tree. OSV has no batch endpoint
+  // for /v1/vulns/{id}, so this is the best we can do without API changes.
+  const _VULN_CONCURRENCY = 20;
+  const vulnEntries = Object.entries(vulnAffects);
+  const vulnDetails = new Map(); // vid → vuln object (from cache or fresh)
+  // First, drain cache hits with no network involvement.
+  const fetchQueue = [];
+  for (const [vid, _comps] of vulnEntries) {
+    const cached = _osvCacheGet('vuln:' + vid);
+    if (cached) vulnDetails.set(vid, cached);
+    else fetchQueue.push(vid);
+  }
+  // Then fetch uncached vulns with bounded concurrency.
+  async function _fetchOneVuln(vid){
+    try {
+      const resp = await fetch(`https://api.osv.dev/v1/vulns/${vid}`);
+      const d = await resp.json();
+      const fixedVersions = new Set();
+      const osvVulnFunctions = [];
+      for (const aff of (d.affected || [])) {
+        for (const rng of (aff.ranges || [])) for (const ev of (rng.events || [])) if (ev.fixed) fixedVersions.add(ev.fixed);
+        const es = aff.ecosystem_specific || aff.database_specific || {};
+        if (Array.isArray(es.vulnerable_functions)) osvVulnFunctions.push(...es.vulnerable_functions);
+        if (Array.isArray(es.imports)) for (const imp of es.imports) if (Array.isArray(imp.symbols)) osvVulnFunctions.push(...imp.symbols);
+      }
+      let severity = 'medium';
+      const db = d.database_specific || {};
+      if (db.severity) severity = db.severity.toLowerCase() === 'moderate' ? 'medium' : db.severity.toLowerCase();
+      let cvssVector = null;
+      for (const s of (d.severity || [])) if (s.type === 'CVSS_V3' || s.type === 'CVSS_V4') { cvssVector = s.score; break; }
+      const hasKnownAttackRef = (d.references || []).some(r => _KNOWN_PUBLIC_POC_DOMAINS.some(x => (r.url || '').toLowerCase().includes(x)));
+      const vuln = { id: vid,
+        description: (d.summary || d.details || 'No description.').slice(0, 300),
+        fixedVersions: [...fixedVersions].sort(),
+        aliases: (d.aliases || []).filter(a => a.startsWith('CVE-')),
+        osvVulnFunctions: [...new Set(osvVulnFunctions)],
+        severity, cvssVector, hasKnownAttackRef };
+      _osvCacheSet('vuln:' + vid, vuln);
+      return [vid, vuln];
+    } catch (_) { return null; }
+  }
+  for (let i = 0; i < fetchQueue.length; i += _VULN_CONCURRENCY) {
+    const batch = fetchQueue.slice(i, i + _VULN_CONCURRENCY);
+    const settled = await Promise.all(batch.map(_fetchOneVuln));
+    for (const r of settled) if (r) vulnDetails.set(r[0], r[1]);
+  }
+  // Materialize results in the original vulnAffects iteration order.
+  for (const [vid, affectedComps] of vulnEntries) {
+    const vuln = vulnDetails.get(vid);
+    if (!vuln) continue;
+    for (const comp of affectedComps) {
+      const cveStr = vuln.aliases.length ? ` (${vuln.aliases[0]})` : '';
+      const fixStr = vuln.fixedVersions.length ? vuln.fixedVersions[0] : null;
+      results.push({ type: 'vulnerable_dep', name: comp.name, version: comp.version, ecosystem: comp.ecosystem,
+        purl: comp.purl, osvId: vid, cveAliases: vuln.aliases, description: vuln.description,
+        fixedVersions: vuln.fixedVersions, severity: vuln.severity, cvssVector: vuln.cvssVector,
+        hasKnownAttackRef: vuln.hasKnownAttackRef, osvVulnFunctions: vuln.osvVulnFunctions || [], reachable: comp.reachable, scope: comp.scope,
+        file: comp.filePath,
         // kept for generateRecs() compat
-        advisory:`${vid}${cveStr}, ${vuln.description}`,
-        range:fixStr?`< ${fixStr}`:'see advisory'});
+        advisory: `${vid}${cveStr}, ${vuln.description}`,
+        range: fixStr ? `< ${fixStr}` : 'see advisory' });
     }
   }
 
@@ -7998,6 +8054,7 @@ export {
   queryOSV, queryRegistries, computeAttackPathComponents,
   markUsedVulnFunctions, dedupeFindingsWithEvidence, scoreTriage,
   _enrichWithScorecard, scoreToxicity, _enrichWithKEV, _loadKEVCatalog,
+  _enrichWithEPSS, _fetchEPSSBatch,
   classifyOrphans, classifyField, classifyEndpoint, shouldScan,
   _isFalsePositiveCredential, _detectSafeSinkShape,
   _loadCustomRules, _isCustomSuppressed, _isPathIgnored,
