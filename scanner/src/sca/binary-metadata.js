@@ -8,6 +8,7 @@
 // Does NOT execute binaries — only reads metadata sections.
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -15,16 +16,34 @@ export function isBinaryScaEnabled() {
   return process.env.AGENTIC_SECURITY_BINARY_SCA === '1';
 }
 
+// Create a per-extraction temporary directory. Two reasons we can't use
+// /tmp directly:
+//   1. Permissions — /tmp is shared and a hostile JAR could try to plant a
+//      symlinked META-INF/MANIFEST.MF that escapes the scratch dir.
+//   2. Concurrency — two parallel extractions on the same jarPath would
+//      race on /tmp/META-INF/MANIFEST.MF.
+// fs.mkdtempSync atomically allocates a unique dir under the OS temp root;
+// the caller is responsible for cleaning it up on every exit path.
+function _allocScratchDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'agentic-security-sca-'));
+}
+function _cleanupScratchDir(dir) {
+  if (!dir) return;
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+}
+
 export function extractJarMetadata(jarPath) {
   if (!jarPath || !jarPath.endsWith('.jar')) return null;
+  let scratchDir = null;
   try {
     const out = execFileSync('jar', ['tf', jarPath], { encoding: 'utf8', timeout: 5000 });
     const hasManifest = out.includes('META-INF/MANIFEST.MF');
     if (!hasManifest) return null;
-    const manifest = execFileSync('jar', ['xf', jarPath, 'META-INF/MANIFEST.MF', '-C', '/tmp'], {
-      encoding: 'utf8', timeout: 5000, cwd: '/tmp',
+    scratchDir = _allocScratchDir();
+    execFileSync('jar', ['xf', jarPath, 'META-INF/MANIFEST.MF'], {
+      encoding: 'utf8', timeout: 5000, cwd: scratchDir,
     });
-    const manifestPath = '/tmp/META-INF/MANIFEST.MF';
+    const manifestPath = path.join(scratchDir, 'META-INF', 'MANIFEST.MF');
     if (!fs.existsSync(manifestPath)) return null;
     const content = fs.readFileSync(manifestPath, 'utf8');
     const attrs = {};
@@ -38,20 +57,22 @@ export function extractJarMetadata(jarPath) {
     let version = attrs['implementation-version'] || attrs['bundle-version'] || 'unknown';
     if (hasPom) {
       try {
-        execFileSync('jar', ['xf', jarPath, '--', ...out.split('\n').filter(l => l.includes('pom.properties'))], {
-          timeout: 5000, cwd: '/tmp',
-        });
         const pomFiles = out.split('\n').filter(l => l.includes('pom.properties'));
-        for (const pf of pomFiles) {
-          const pfPath = path.join('/tmp', pf);
-          if (!fs.existsSync(pfPath)) continue;
-          const props = fs.readFileSync(pfPath, 'utf8');
-          for (const line of props.split('\n')) {
-            if (line.startsWith('groupId=')) groupId = line.split('=')[1].trim();
-            if (line.startsWith('artifactId=')) artifactId = line.split('=')[1].trim();
-            if (line.startsWith('version=')) version = line.split('=')[1].trim();
+        if (pomFiles.length) {
+          execFileSync('jar', ['xf', jarPath, ...pomFiles], {
+            timeout: 5000, cwd: scratchDir,
+          });
+          for (const pf of pomFiles) {
+            const pfPath = path.join(scratchDir, pf);
+            if (!fs.existsSync(pfPath)) continue;
+            const props = fs.readFileSync(pfPath, 'utf8');
+            for (const line of props.split('\n')) {
+              if (line.startsWith('groupId=')) groupId = line.split('=')[1].trim();
+              if (line.startsWith('artifactId=')) artifactId = line.split('=')[1].trim();
+              if (line.startsWith('version=')) version = line.split('=')[1].trim();
+            }
+            break;
           }
-          break;
         }
       } catch { /* pom extraction optional */ }
     }
@@ -67,6 +88,7 @@ export function extractJarMetadata(jarPath) {
       _source: 'jar-manifest',
     };
   } catch { return null; }
+  finally { _cleanupScratchDir(scratchDir); }
 }
 
 export function extractGoBuildInfo(binPath) {
