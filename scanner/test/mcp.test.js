@@ -58,11 +58,13 @@ test('tools/list exposes the PRD-named tools', async () => {
   const names = r.result.tools.map(t => t.name).sort();
   // Phase-2: verify_fix + synthesize_fix. C.6: find_rule_module.
   // Harness-anatomy #4: append/read_scratchpad. #2: AGENTS.md. #8: lookup_cve.
+  // SCA-plan Phase 3 / Item 5: apply_sca_upgrade + synthesize_sca_upgrade.
   assert.deepEqual(names, [
     'append_agents_memory', 'append_scratchpad', 'apply_fix',
+    'apply_sca_upgrade',
     'explain_finding', 'find_rule_module', 'lookup_cve',
     'query_taint', 'read_agents_memory', 'read_scratchpad', 'scan_diff',
-    'synthesize_fix', 'verify_fix',
+    'synthesize_fix', 'synthesize_sca_upgrade', 'verify_fix',
   ]);
   for (const t of r.result.tools) {
     assert.equal(t.inputSchema.type, 'object');

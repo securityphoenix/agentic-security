@@ -238,6 +238,8 @@ function _findById(scan, id) {
   if (!scan) return null;
   return (scan.findings || []).find(f => f.id === id)
       || (scan.secrets || []).find(f => f.id === id)
+      || (scan.supplyChain || []).find(f => f.id === id)
+      || (scan.logicVulns || []).find(f => f.id === id)
       || null;
 }
 
@@ -965,4 +967,78 @@ export const lookup_cve = {
   },
 };
 
-export const ALL_TOOLS = [scan_diff, query_taint, explain_finding, apply_fix, verify_fix, synthesize_fix, find_rule_module, append_scratchpad, read_scratchpad, append_agents_memory, read_agents_memory, lookup_cve];
+// ─── synthesize_sca_upgrade ───────────────────────────────────────────────
+// Phase 3 / Item 5 of the SCA improvement plan. Read-only counterpart to
+// apply_sca_upgrade — produces a structured upgrade plan via the
+// ecosystem's native --dry-run command. Safe to call any number of times.
+let _scaUpgrade;
+async function _getScaUpgrade() {
+  if (!_scaUpgrade) _scaUpgrade = await import('../posture/sca-upgrade.js');
+  return _scaUpgrade;
+}
+export const synthesize_sca_upgrade = {
+  name: 'synthesize_sca_upgrade',
+  description: 'Generate an upgrade plan for a single SCA finding. Runs the ecosystem dry-run (npm install --dry-run, pip install --dry-run, cargo update --dry-run). Returns { ecosystem, package, currentVersion, targetVersion, isBreaking, command, manifestFiles, dryRun, testCommand }. No writes.',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      finding_id: { type: 'string', minLength: 1, maxLength: 256 },
+    },
+    required: ['finding_id'],
+  },
+  async handler({ finding_id }, ctx) {
+    const { scan, status } = _readLastScanVerified(ctx.sessionRoot, { allowUnsigned: true });
+    if (!scan) throw new Error(`No usable scan state (${status}).`);
+    const f = _findById(scan, finding_id);
+    if (!f) throw new Error(`Finding not found: ${finding_id}`);
+    if (f.type !== 'vulnerable_dep') {
+      return { _meta: META, ok: false, reason: 'finding is not an SCA vulnerable_dep — use synthesize_fix for SAST findings' };
+    }
+    const { planScaUpgrade } = await _getScaUpgrade();
+    const plan = await planScaUpgrade({ scanRoot: ctx.sessionRoot, finding: f });
+    return { _meta: META, ...plan };
+  },
+};
+
+// ─── apply_sca_upgrade ────────────────────────────────────────────────────
+// Phase 3 / Item 5 of the SCA improvement plan. The MCP `apply_fix` path
+// refuses every package-manager manifest by design. This tool bypasses
+// that ONLY for the install pathway — it shells out to the ecosystem's
+// native package manager (npm / pip / cargo / go) which is the right
+// surface for safely modifying manifests + lockfiles. Backs up affected
+// manifests before the install; runs the project's test command (if
+// detected); rolls back manifests if tests fail.
+export const apply_sca_upgrade = {
+  name: 'apply_sca_upgrade',
+  description: 'Apply a vulnerable_dep upgrade. Backs up manifests, runs the package manager, runs the project test command, restores manifests on test failure. Requires confirm:true. Set run_tests:false to skip the test gate (NOT recommended).',
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      finding_id: { type: 'string', minLength: 1, maxLength: 256 },
+      confirm: { type: 'boolean' },
+      run_tests: { type: 'boolean' },
+    },
+    required: ['finding_id', 'confirm'],
+  },
+  async handler({ finding_id, confirm, run_tests = true }, ctx) {
+    if (confirm !== true) {
+      return { _meta: META, applied: false, reason: 'apply_sca_upgrade requires confirm: true.' };
+    }
+    const { scan, status } = _readLastScanVerified(ctx.sessionRoot, { allowUnsigned: false });
+    if (!scan) {
+      return { _meta: META, applied: false, reason: `last-scan.json failed integrity check: ${status}. Run a fresh scan.` };
+    }
+    const f = _findById(scan, finding_id);
+    if (!f) return { _meta: META, applied: false, reason: `Finding not found: ${finding_id}` };
+    if (f.type !== 'vulnerable_dep') {
+      return { _meta: META, applied: false, reason: 'finding is not an SCA vulnerable_dep — use apply_fix for SAST findings' };
+    }
+    const { applyScaUpgrade } = await _getScaUpgrade();
+    const result = await applyScaUpgrade({ scanRoot: ctx.sessionRoot, finding: f, runTests: run_tests });
+    return { _meta: META, ...result };
+  },
+};
+
+export const ALL_TOOLS = [scan_diff, query_taint, explain_finding, apply_fix, verify_fix, synthesize_fix, find_rule_module, append_scratchpad, read_scratchpad, append_agents_memory, read_agents_memory, lookup_cve, synthesize_sca_upgrade, apply_sca_upgrade];
