@@ -14,11 +14,18 @@ const FIX = (name) => path.join(__dirname, 'fixtures', name);
 
 async function withDeepMode(dir) {
   process.env.AGENTIC_SECURITY_DEEP = '1';
+  // Engine auto-disables deep mode under CI (GITHUB_ACTIONS / CI env) unless
+  // this opt-in flag is also set. Tests need deep mode regardless of where
+  // they run, so set it here.
+  const _prevInCi = process.env.AGENTIC_SECURITY_DEEP_IN_CI;
+  process.env.AGENTIC_SECURITY_DEEP_IN_CI = '1';
   try {
     const { scan } = await runScan(dir);
     return scan.findings || [];
   } finally {
     delete process.env.AGENTIC_SECURITY_DEEP;
+    if (_prevInCi === undefined) delete process.env.AGENTIC_SECURITY_DEEP_IN_CI;
+    else process.env.AGENTIC_SECURITY_DEEP_IN_CI = _prevInCi;
   }
 }
 
