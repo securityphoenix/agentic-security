@@ -25,6 +25,11 @@ permissions:
   security-events: write
   actions: read
 
+# Opt JavaScript actions onto Node 24 before GitHub's June 16, 2026 forced
+# migration. Silences the Node 20 deprecation warning.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   analyze:
     name: analyze (${{ matrix.language }})
