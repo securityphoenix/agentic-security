@@ -24,6 +24,10 @@ async function makeSession({ findings = null } = {}) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'as-mcp-'));
   const stateDir = path.join(dir, '.agentic-security');
   await fsp.mkdir(stateDir, { recursive: true });
+  // Project marker — audit.js refuses to write the audit log unless the
+  // session root contains a recognized marker (package.json, .git, etc).
+  // Drop a stub package.json so the audit-chain tests can observe the log.
+  await fsp.writeFile(path.join(dir, 'package.json'), '{"name":"as-mcp-test-session"}');
   if (findings) {
     const body = JSON.stringify({ findings });
     await fsp.writeFile(path.join(stateDir, 'last-scan.json'), body);
@@ -343,8 +347,10 @@ test('stdio: spawned bin handles initialize+tools/list over NDJSON', async () =>
   await new Promise(r => child.on('exit', r));
   const lines = stdout.trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
   assert.equal(lines[0].result.serverInfo.name, SERVER_NAME);
-  // 12 tools: 11 (after #2's AGENTS.md pair) + lookup_cve (harness-anatomy #8).
-  assert.equal(lines[1].result.tools.length, 12);
+  // 14 tools: 12 (after AGENTS.md pair + lookup_cve) + the SCA-upgrade pair
+  // added in the SCA-aware MCP toolchain change (synthesize_sca_upgrade,
+  // apply_sca_upgrade).
+  assert.equal(lines[1].result.tools.length, 14);
   await fsp.rm(tmpRoot, { recursive: true, force: true });
 });
 

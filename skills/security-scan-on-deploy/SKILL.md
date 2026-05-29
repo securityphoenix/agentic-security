@@ -32,8 +32,8 @@ commands (`vercel --prod`, `fly deploy`, `wrangler publish`, `npm publish`,
      generate the badge.
    - **Critical findings present** — refuse to bless the deploy.
      Show the top 3 by exploitability, route to `/fix --all
-     --critical` for batch remediation, or `/predeploy-gate install`
-     if they want this to be automatic next time.
+     --critical` for batch remediation, or recommend wiring the
+     CI bench gate so blocking is automatic next time.
    - **High but no critical** — show count, recommend triage via
      `/show-findings --all` before deploy, mention the deploy is
      still possible but flag the risk.
@@ -61,5 +61,5 @@ commands (`vercel --prod`, `fly deploy`, `wrangler publish`, `npm publish`,
 - `/scan --all` — full sweep
 - `/scan --uncommitted` — only the user's recent edits
 - `/secure` — vibecoder router; figures out the right next action
-- `/launch-check` — pre-deploy 10-item checklist
-- `/predeploy-gate install` — block production deploys on findings
+- `/security-attestation` — generate the badge / deploy-ready attestation
+- `/find-and-fix-everything` — batch remediation pass before deploy

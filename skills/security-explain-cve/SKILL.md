@@ -37,7 +37,7 @@ specific finding. Don't wait for them to type `/explain`.
    - **How an attacker abuses it** — concrete steps, not abstract risk.
    - **Worst case if unfixed** — tie to money / regulatory / customer impact.
    - **How to fix it** — the literal code change. Cite an existing
-     command if there is one (`/rotate-secret`, `/csp-cors`, etc.).
+     command if there is one (e.g. `/rotate-secret`).
 
 4. **Offer the narrative shape if the user is non-technical.** Suggest
    `/explain --narrative` for the four-act attack story when the

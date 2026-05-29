@@ -133,13 +133,13 @@ E: n/a — token only encodes user_id + role; role transitions go
 
 ## Canonical commands
 
-- `/threat-model` — auto-derived STRIDE from the last scan
-- `/personas` — per-attacker-persona prioritization
-- `/spof` — counterfactual: which control, if removed, exposes the most
+- `/threat --view model` — auto-derived STRIDE from the last scan
+- `/threat --view personas` — per-attacker-persona prioritization
+- `/threat --view spof` — counterfactual: which control, if removed, exposes the most
 
 ## Why this is here
 
-The `/threat-model` slash produces a STRIDE table from a completed scan.
+The `/threat --view model` slash produces a STRIDE table from a completed scan.
 This skill produces one **before** the code is written. The two are
 complementary — pre-write TM.md catches design flaws; post-scan STRIDE
 catches what made it through.

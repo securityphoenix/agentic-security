@@ -15,6 +15,9 @@ const BIN = path.resolve(__dirname, '..', 'bin', 'agentic-security-audit.js');
 
 function mkLog(entries) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-cli-'));
+  // audit.js refuses to write the log unless the session root has a project
+  // marker (package.json / .git / etc). Drop a stub so the CLI tests see it.
+  fs.writeFileSync(path.join(root, 'package.json'), '{"name":"audit-cli-test"}');
   for (const e of entries) auditCall({ sessionRoot: root, ...e });
   return root;
 }

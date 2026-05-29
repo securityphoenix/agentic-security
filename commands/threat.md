@@ -1,5 +1,5 @@
 ---
-description: Threat modeling + attacker views — STRIDE model, personas, playbooks, bounty, adversary agent, attack surface, trust boundaries, SPOF.
+description: Threat modeling + attacker views — STRIDE, personas, playbooks, adversary agent, attack surface, trust boundaries, SPOF.
 argument-hint: "[--view model|personas|playbook|bounty|adversary|surface|boundary|spof] [model flags...]"
 ---
 

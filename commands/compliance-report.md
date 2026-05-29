@@ -1,5 +1,5 @@
 ---
-description: Generate an auditor-ready compliance attestation. Built-in frameworks include NIST AI 600-1 (122 controls), OWASP ASVS (144 requirements), OWASP LLM Top 10 (2025), and EU AI Act (72 controls).
+description: Generate auditor-ready compliance attestation. Frameworks NIST AI 600-1, OWASP ASVS, OWASP LLM Top 10, EU AI Act.
 argument-hint: "[nist|asvs|llm|eu-ai-act] [path] [--format md|csv|json] [--output <file>]"
 ---
 

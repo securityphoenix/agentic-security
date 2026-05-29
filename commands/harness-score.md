@@ -1,5 +1,5 @@
 ---
-description: Score this project's AI agent harness against the six-domain rubric defined in docs/HARNESS_ASSESSMENT_SPEC.md (PRD-derived). Emits a domain-level report with overall = MIN(six).
+description: Score this project's AI agent harness against the six-domain rubric. Emits per-domain report.
 argument-hint: "[--format md|json] [--output <file>]"
 ---
 

@@ -89,7 +89,6 @@ const ALLOWLIST = new Set([
   'suppressions.js::saveSoftAccepted',
   'suppressions.js::loadProSuppressions',
   'suppressions.js::validateProSuppression',
-  'triage.js::loadTriage',
   'validator-metrics.js::getLatest',
   'validator-metrics.js::checkFloors',
   // Phase-6 taint: buildProjectIRAsync is the async variant for callers
@@ -104,6 +103,42 @@ const ALLOWLIST = new Set([
   // Called internally by scanDeadCode; kept exported so /trim-dead-code can
   // force a specific tool in --language mode.
   'dead-code.js::runExternalDeadCodeTool',
+  // ── Scaffolded posture/dataflow/ir helpers, kept exported pending direct callers
+  // The runScan engine consumes the high-level entry point of each module
+  // (annotateRuntimeCorrelation, runSbomDiff, runApiContractScan, etc.) but
+  // not the lower-level helpers below. Allowlisted for now; remove if a
+  // production caller wires them, or if the scaffolded module is dropped.
+  'posture/api-contract.js::loadContracts',
+  'posture/api-contract.js::parseGraphQL',
+  'posture/federated-learning.js::federatedCycle',
+  'posture/federated-learning.js::pullAggregatedPrior',
+  'posture/realtime-cve-monitor.js::deliverAlert',
+  'posture/realtime-cve-monitor.js::pollOsv',
+  'posture/runtime-correlation.js::findingObservedInRuntime',
+  'posture/runtime-correlation.js::loadTrace',
+  'posture/sbom-diff.js::loadPreviousSnapshot',
+  'posture/sbom-diff.js::persistSbom',
+  'posture/triage.js::exportTriageMetrics',
+  // Dataflow scaffolded internals (IFDS cache helpers, K2 wrapper, cross-
+  // service annotations) consumed transitively or kept for API symmetry.
+  'dataflow/async-sequencing.js::isAsyncSourceFromSummary',
+  'dataflow/builtin-summaries.js::BUILTIN_SUMMARIES',
+  'dataflow/cross-repo.js::detectIntraProjectServiceEdges',
+  'dataflow/cross-service-taint.js::identifyCurrentService',
+  'dataflow/cross-service-taint.js::incomingEdges',
+  'dataflow/cross-service-taint.js::upstreamTaintContract',
+  'dataflow/formal-verify.js::dischargeMiri',
+  'dataflow/ifds-precise.js::loadPersistedCache',
+  'dataflow/ifds-precise.js::persistCache',
+  'dataflow/ifds-precise.js::shouldSkipReanalysis',
+  'dataflow/k2-summary-cache.js::K2SummaryCache',
+  'dataflow/k2-summary-cache.js::wrapAsK2',
+  // C/C++ preprocessor helpers — exported for the C/C++ IR pipeline and
+  // for /trim-dead-code's preprocessor-mode invocation. Consumed via the
+  // IR builder, not by name.
+  'ir/cpp-preprocessor.js::preprocessFile',
+  'ir/cpp-preprocessor.js::resolveSize',
+  'ir/cpp-preprocessor.js::resolveTypedef',
 ]);
 
 function listJsFiles(dir) {
