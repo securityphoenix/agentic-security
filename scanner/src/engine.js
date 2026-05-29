@@ -158,6 +158,7 @@ import { generateBundles as generateExploitBundles } from './posture/exploit-bun
 import { buildMigrationPlan as buildPqcPlan, persistMigrationPlan as persistPqcPlan } from './posture/pqc-migration-plan.js';
 import { analyzeLicenseGraph, loadLicenseGraphPolicy } from './posture/license-graph.js';
 import { generateAttributions, persistAttributions } from './posture/license-attributions.js';
+import { annotateAttackTaxonomy, summarizeTaxonomy } from './posture/attack-taxonomy.js';
 import { annotateTypeNarrowing } from './posture/type-narrowing.js';
 import { annotateWhyFired } from './posture/why-fired.js';
 import { scanSpecificationDrift } from './posture/specification-mining.js';
@@ -7729,6 +7730,12 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
         }
       });
     }
+    // Attack-taxonomy annotation: stamps each finding with MITRE ATT&CK,
+    // ATLAS, D3FEND, kill-chain stage, and CAPEC IDs so downstream SIEM /
+    // SOAR systems can correlate with existing detection rules.
+    if (process.env.AGENTIC_SECURITY_NO_ATTACK_TAX !== '1') {
+      _runAnnotator("annotateAttackTaxonomy", () => { annotateAttackTaxonomy(finalFindings); });
+    }
   }
   // v3 next-gen: crown-jewel mapping (FR-PROD-5) — score each file/finding by
   // business impact. Must run before persona prioritization (which uses it).
@@ -8126,7 +8133,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   // sbom-history/<sha>.json, exploit-bundles/) under .agentic-security/.
   let _threatModel = null, _apiContractFindings = [], _sbomDiff = null,
       _complianceReport = null, _exploitBundles = null, _pqcPlan = null,
-      _licenseGraph = null, _attributions = null;
+      _licenseGraph = null, _attributions = null, _taxonomySummary = null;
   if (process.env.AGENTIC_SECURITY_NO_INTEGRATION !== '1') {
     // Threat model — STRIDE + entities + attack trees rooted in findings.
     if (process.env.AGENTIC_SECURITY_NO_THREAT_MODEL !== '1') {
@@ -8178,6 +8185,11 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
         if (_attributions && _attributions.componentCount) persistAttributions(scanRoot, _attributions);
       } catch (_) {}
     }
+    // Attack taxonomy summary — aggregates ATT&CK / ATLAS / kill-chain
+    // distribution over all findings for the report layer.
+    if (process.env.AGENTIC_SECURITY_NO_ATTACK_TAX !== '1') {
+      try { _taxonomySummary = summarizeTaxonomy(finalFindings); } catch (_) {}
+    }
     // PQC migration plan — aggregates pqc-migration findings into a
     // structured plan (.agentic-security/pqc-migration-plan.{json,md}).
     if (process.env.AGENTIC_SECURITY_NO_PQC_PLAN !== '1') {
@@ -8203,7 +8215,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   }
 
   const _scanMeta={filesScanned:files.length,filesSkipped:_filesSkipped,filesTimedOut:_filesTimedOut,fileTimings:_fileTimings.sort((a,b)=>b.ms-a.ms).slice(0,20),findingsBySeverity:{critical:finalFindings.filter(f=>f.severity==='critical').length,high:finalFindings.filter(f=>f.severity==='high').length,medium:finalFindings.filter(f=>f.severity==='medium').length,low:finalFindings.filter(f=>f.severity==='low').length,info:finalFindings.filter(f=>f.severity==='info').length}};
-  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions(),_v3,_scanMeta,_engineErrors:{cppDataflowParseErrors:_cppDataflowParseErrors.value},annotatorErrors:_annotatorErrors,threatModel:_threatModel,sbomDiff:_sbomDiff,complianceReport:_complianceReport,exploitBundles:_exploitBundles,pqcPlan:_pqcPlan,licenseGraph:_licenseGraph,attributions:_attributions};}
+  return{routes:dd(aR,r=>`${r.method}:${r.path}:${r.file}:${r.line}`),findings:finalFindings,sources:aSrc,sinks:aSink,sanitizers:aSan,filesScanned:files.length,crossFileCount:cf.length,logicVulns:aLogic,supplyChain,components:annotatedComponents,secrets:aSecrets,ciphers:{atRest:aCiphersRest,inTransit:aCiphersTransit},pfr,fc,suppressions:_getSuppressions(),_v3,_scanMeta,_engineErrors:{cppDataflowParseErrors:_cppDataflowParseErrors.value},annotatorErrors:_annotatorErrors,threatModel:_threatModel,sbomDiff:_sbomDiff,complianceReport:_complianceReport,exploitBundles:_exploitBundles,pqcPlan:_pqcPlan,licenseGraph:_licenseGraph,attributions:_attributions,attackTaxonomy:_taxonomySummary};}
 
 // Post-aggregation classification: every source becomes "unsafe"|"safe"; every sink becomes "confirmed"|"safe".
 // Orphans (no finding linkage) are bucketed by file-local heuristic so the UI shows binary states only.
