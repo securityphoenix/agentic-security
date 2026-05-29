@@ -17,6 +17,19 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as cp from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+// Realworld bench measures core scanner behavior against per-app
+// expected.json. The world-class integration block (LLM-app, mobile, PQC,
+// Web3, IAM, K8s, crypto-protocol, ML-supply-chain, license-graph etc.)
+// fires on real-world JS code and inflates FPs against expected.json
+// (which only describes the canonical SAST findings). Set NO_INTEGRATION=1
+// here so the realworld bench stays an apples-to-apples regression gate.
+// Callers who want the integration block included can override by setting
+// AGENTIC_SECURITY_NO_INTEGRATION=0 before invoking the bench.
+if (process.env.AGENTIC_SECURITY_NO_INTEGRATION == null) {
+  process.env.AGENTIC_SECURITY_NO_INTEGRATION = '1';
+}
+
 import { runScan } from '../../../src/runScan.js';
 import { blankComments } from '../../../src/sast/_comment-strip.js';
 
