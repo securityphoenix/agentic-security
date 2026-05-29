@@ -17,6 +17,17 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+
+// Synthetic bench measures core scanner behavior against the per-fixture
+// expected findings in expected.json. The world-class integration block
+// (LLM-app, mobile, PQC, Web3, IAM, K8s, crypto-protocol, ML-supply-chain
+// etc.) is opt-out via AGENTIC_SECURITY_NO_INTEGRATION=1 specifically to
+// preserve bench/regression baselines. Set it here so the synthetic bench
+// is unaffected by integration-block detectors firing on fixture code.
+if (process.env.AGENTIC_SECURITY_NO_INTEGRATION == null) {
+  process.env.AGENTIC_SECURITY_NO_INTEGRATION = '1';
+}
+
 import { runScan } from '../../src/runScan.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

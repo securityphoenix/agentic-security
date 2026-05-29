@@ -1,10 +1,10 @@
 {
-  "precision": 1,
-  "recall": 1,
-  "f1": 1,
-  "tp": 127,
-  "fp": 0,
-  "fn": 0,
+  "precision": 0.8768115942028986,
+  "recall": 0.952755905511811,
+  "f1": 0.9132075471698112,
+  "tp": 121,
+  "fp": 17,
+  "fn": 6,
   "perFamily": {
     "header-hardening": {
       "tp": 7,
@@ -17,14 +17,14 @@
       "fn": 0
     },
     "sql-injection": {
-      "tp": 7,
-      "fp": 0,
-      "fn": 0
+      "tp": 6,
+      "fp": 1,
+      "fn": 1
     },
     "xss": {
-      "tp": 6,
+      "tp": 3,
       "fp": 0,
-      "fn": 0
+      "fn": 3
     },
     "command-injection": {
       "tp": 10,
@@ -66,9 +66,29 @@
       "fp": 0,
       "fn": 0
     },
+    "weak-password-hashing-createhash-with-we": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "sensitive-route-without-auth-get-users-i": {
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+    },
+    "sensitive-route-without-auth-post-user": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
     "timing-oracle": {
       "tp": 2,
       "fp": 0,
+      "fn": 0
+    },
+    "timing-unsafe-comparison-secret-hmac-com": {
+      "tp": 0,
+      "fp": 2,
       "fn": 0
     },
     "redos": {
@@ -79,6 +99,11 @@
     "middleware-ordering": {
       "tp": 2,
       "fp": 0,
+      "fn": 0
+    },
+    "rate-limiting-after-auth-middleware-brut": {
+      "tp": 0,
+      "fp": 1,
       "fn": 0
     },
     "idor": {
@@ -96,6 +121,26 @@
       "fp": 0,
       "fn": 0
     },
+    "sensitive-route-without-auth-get-users-p": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "sensitive-route-without-auth-delete-user": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "sensitive-route-without-auth-get-users-s": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "sensitive-route-without-auth-get-users-t": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
     "xxe": {
       "tp": 7,
       "fp": 0,
@@ -108,7 +153,7 @@
     },
     "insecure-deserialization": {
       "tp": 7,
-      "fp": 0,
+      "fp": 1,
       "fn": 0
     },
     "jwt-no-exp": {
@@ -117,8 +162,13 @@
       "fn": 0
     },
     "jwt-alg-confusion": {
-      "tp": 3,
+      "tp": 1,
       "fp": 0,
+      "fn": 2
+    },
+    "jwt-no-verify": {
+      "tp": 0,
+      "fp": 1,
       "fn": 0
     },
     "zip-slip": {
@@ -133,7 +183,7 @@
     },
     "open-redirect": {
       "tp": 1,
-      "fp": 0,
+      "fp": 1,
       "fn": 0
     },
     "buffer-overflow": {
@@ -181,6 +231,11 @@
       "fp": 0,
       "fn": 0
     },
+    "withdraw-performs-external-transfer-but-": {
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+    },
     "unsafe-block": {
       "tp": 1,
       "fp": 0,
@@ -197,5 +252,5 @@
       "fn": 0
     }
   },
-  "ts": "2026-05-19T03:29:06.503Z"
+  "ts": "2026-05-29T17:27:18.325Z"
 }
