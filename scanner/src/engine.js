@@ -142,6 +142,7 @@ import { scanDappFrontend } from './sast/dapp-frontend.js';
 import { scanCloudIam } from './sast/cloud-iam.js';
 import { scanK8sAdmission } from './sast/k8s-admission.js';
 import { scanCryptoProtocol } from './sast/crypto-protocol.js';
+import { scanMlSupplyChain } from './sast/ml-supply-chain.js';
 import { runCrossServiceTaint } from './dataflow/cross-service-taint.js';
 import { annotateRuntimeCorrelation } from './posture/runtime-correlation.js';
 import { applyLearnedCalibration } from './posture/triage-learning.js';
@@ -7276,6 +7277,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
         if (process.env.AGENTIC_SECURITY_NO_CLOUD_IAM!== '1') aF.push(...scanCloudIam(p,c));
         if (process.env.AGENTIC_SECURITY_NO_K8S_ADM !== '1') aF.push(...scanK8sAdmission(p,c));
         if (process.env.AGENTIC_SECURITY_NO_CRYPTO_PROTO !== '1') aF.push(...scanCryptoProtocol(p,c));
+        if (process.env.AGENTIC_SECURITY_NO_ML_SUPPLY    !== '1') aF.push(...scanMlSupplyChain(p,c));
       }
       const _ftElapsed=Date.now()-_ft0;
       if(_ftElapsed>_perFileTimeoutMs){aF.push({id:`file-timeout:${p}`,file:p,line:0,vuln:`File analysis exceeded ${_perFileTimeoutMs}ms (${_ftElapsed}ms)`,severity:'info',parser:'ENGINE',confidence:0.5,_timeout:true});_filesTimedOut++;}
