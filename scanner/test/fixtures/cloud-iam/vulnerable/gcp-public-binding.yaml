@@ -1,0 +1,7 @@
+bindings:
+  - role: roles/viewer
+    members:
+      - 'allUsers'
+  - role: roles/owner
+    members:
+      - 'user:ops@example.com'

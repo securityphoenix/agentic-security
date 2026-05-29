@@ -1,0 +1,15 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: image-signing
+webhooks:
+  - name: verify.sigstore.dev
+    failurePolicy: Ignore
+    clientConfig:
+      url: "https://verify.example.com/admit"
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]

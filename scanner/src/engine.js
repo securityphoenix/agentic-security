@@ -139,6 +139,8 @@ import { scanMobile } from './sast/mobile.js';
 import { scanPqc } from './sast/post-quantum-crypto.js';
 import { scanWeb3Advanced } from './sast/web3-advanced.js';
 import { scanDappFrontend } from './sast/dapp-frontend.js';
+import { scanCloudIam } from './sast/cloud-iam.js';
+import { scanK8sAdmission } from './sast/k8s-admission.js';
 import { runCrossServiceTaint } from './dataflow/cross-service-taint.js';
 import { annotateRuntimeCorrelation } from './posture/runtime-correlation.js';
 import { applyLearnedCalibration } from './posture/triage-learning.js';
@@ -7268,6 +7270,8 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
         if (process.env.AGENTIC_SECURITY_NO_PQC     !== '1') aF.push(...scanPqc(p,c));
         if (process.env.AGENTIC_SECURITY_NO_WEB3_ADV!== '1') aF.push(...scanWeb3Advanced(p,c));
         if (process.env.AGENTIC_SECURITY_NO_DAPP    !== '1') aF.push(...scanDappFrontend(p,c));
+        if (process.env.AGENTIC_SECURITY_NO_CLOUD_IAM!== '1') aF.push(...scanCloudIam(p,c));
+        if (process.env.AGENTIC_SECURITY_NO_K8S_ADM !== '1') aF.push(...scanK8sAdmission(p,c));
       }
       const _ftElapsed=Date.now()-_ft0;
       if(_ftElapsed>_perFileTimeoutMs){aF.push({id:`file-timeout:${p}`,file:p,line:0,vuln:`File analysis exceeded ${_perFileTimeoutMs}ms (${_ftElapsed}ms)`,severity:'info',parser:'ENGINE',confidence:0.5,_timeout:true});_filesTimedOut++;}
