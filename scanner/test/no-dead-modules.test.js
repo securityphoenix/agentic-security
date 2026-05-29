@@ -75,6 +75,7 @@ const ALLOWLIST = new Set([
   'material-change.js::parseDiff',
   'material-change.js::classifyHunk',
   'profile.js::PROFILES',
+  'profile.js::DEFAULTS',
   'rule-overrides.js::loadOverrides',
   'rule-overrides.js::runCustomRules',
   'rule-pack-signing.js::BUNDLED_OFFICIAL_KEYS',
