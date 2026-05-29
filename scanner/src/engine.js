@@ -163,6 +163,9 @@ import { suppressByPastDecisions } from './posture/triage-memory.js';
 import { suppressByIntent } from './posture/intent-context.js';
 import { annotateGitHistory } from './posture/git-history.js';
 import { applyThreatModel } from './posture/threat-model-grounding.js';
+import { annotateCrossRepoSignals } from './posture/pattern-propagation.js';
+import { annotateRiskDollars } from './posture/risk-dollars.js';
+import { annotateTimeToFix }   from './posture/time-to-fix.js';
 import { annotateTypeNarrowing } from './posture/type-narrowing.js';
 import { annotateWhyFired } from './posture/why-fired.js';
 import { scanSpecificationDrift } from './posture/specification-mining.js';
@@ -7759,6 +7762,20 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
     // out-of-scope, tag compliance regimes, stamp attacker profile.
     if (process.env.AGENTIC_SECURITY_NO_THREAT_MODEL_GROUNDING !== '1') {
       _runAnnotator("applyThreatModel", () => { applyThreatModel(scanRoot, finalFindings); });
+    }
+    // Cross-repo pattern propagation — surface sibling-repo fixes and
+    // triage decisions for the same family from this developer's history.
+    if (process.env.AGENTIC_SECURITY_NO_CROSS_REPO !== '1') {
+      _runAnnotator("annotateCrossRepoSignals", () => { annotateCrossRepoSignals(scanRoot, finalFindings); });
+    }
+    // Risk-in-dollars — combine EPSS + crown-jewel + reachability into an
+    // expected-value-of-exploitation USD figure per finding.
+    if (process.env.AGENTIC_SECURITY_NO_RISK_DOLLARS !== '1') {
+      _runAnnotator("annotateRiskDollars", () => { annotateRiskDollars(scanRoot, finalFindings); });
+    }
+    // Time-to-fix — estimate engineering hours per finding.
+    if (process.env.AGENTIC_SECURITY_NO_TIME_TO_FIX !== '1') {
+      _runAnnotator("annotateTimeToFix", () => { annotateTimeToFix(scanRoot, finalFindings); });
     }
   }
   // v3 next-gen: crown-jewel mapping (FR-PROD-5) — score each file/finding by

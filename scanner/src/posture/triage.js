@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { statePath, safeWriteState } from './state-dir.js';
 import { appendAcceptRiskFromTriage } from './sca-policy.js';
 import { recordDecision as recordTriageMemory } from './triage-memory.js';
+import { recordTriage as recordCrossRepoTriage } from './cross-repo-memory.js';
 
 export const STATES = ['open', 'in-progress', 'fixed', 'wont-fix', 'false-positive'];
 
@@ -114,6 +115,9 @@ export function transition(scanRoot, id, toState, comment) {
   if (['wont-fix', 'false-positive'].includes(toState)) {
     try { memoryBridge = recordTriageMemory(scanRoot, cur, toState, comment); }
     catch (e) { memoryBridge = { ok: false, reason: String(e && e.message || e) }; }
+    // Also mirror into the cross-repo store so sibling repos benefit.
+    try { recordCrossRepoTriage({ scanRoot, finding: cur, decision: toState, reason: comment }); }
+    catch {}
   }
   return { ok: true, policyBridge, memoryBridge };
 }
