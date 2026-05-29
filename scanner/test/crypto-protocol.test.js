@@ -31,10 +31,8 @@ test('crypto-proto: jwt.verify without algorithms allowlist flagged', () => {
     `expected jwt-key-confusion; got ${out.map(f => f.family).join(',')}`);
 });
 
-test('crypto-proto: Math.random near sessionToken flagged', () => {
-  const out = scanCryptoProtocol('tls-config.js', read(path.join(FIX, 'vulnerable/tls-config.js')));
-  assert.ok(out.some(f => f.family === 'crypto-weak-rng'));
-});
+// Weak RNG detection (Math.random) is handled by sast/weak-randomness.js —
+// not duplicated in crypto-protocol.
 
 test('crypto-proto: Python — md5/sha1, verify=False, DES, ECB, PBKDF2 low iter, PyJWT none', () => {
   const out = scanCryptoProtocol('cipher-py.py', read(path.join(FIX, 'vulnerable/cipher-py.py')));

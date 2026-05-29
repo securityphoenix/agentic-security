@@ -37,12 +37,8 @@ test('ml-supply: system prompt from env / URL flagged', () => {
   assert.ok(fams >= 2, `expected ≥2 prompt-integrity findings, got ${fams}`);
 });
 
-test('ml-supply: agent tool exposing os.system flagged critical', () => {
-  const out = scanMlSupplyChain('mlflow_pipeline.py', read(path.join(FIX, 'vulnerable/mlflow_pipeline.py')));
-  const f = out.find(x => x.family === 'agent-tool-exec');
-  assert.ok(f);
-  assert.equal(f.severity, 'critical');
-});
+// Agent tool exposing os.system / subprocess is detected by
+// sast/llm-app.js detectToolExec — not duplicated in ml-supply-chain.
 
 test('ml-supply: gradio share=True without auth flagged high', () => {
   const out = scanMlSupplyChain('mlflow_pipeline.py', read(path.join(FIX, 'vulnerable/mlflow_pipeline.py')));

@@ -25,13 +25,8 @@ test('cloud-iam: AWS Principal:* on s3 flagged as public-bucket', () => {
     `expected aws-public-s3; got ${out.map(f => f.family).join(',')}`);
 });
 
-test('cloud-iam: AWS PassRole with Resource:* flagged critical', () => {
-  const src = read(path.join(IAM, 'vulnerable/aws-public-bucket.json'));
-  const out = scanCloudIam('aws-public-bucket.json', src);
-  const pr = out.find(f => f.family === 'aws-passrole-wildcard');
-  assert.ok(pr);
-  assert.equal(pr.severity, 'critical');
-});
+// iam:PassRole + Resource:* is detected by posture/iam-policy.js — not
+// duplicated in cloud-iam.
 
 test('cloud-iam: GCP allUsers + roles/owner flagged', () => {
   const src = read(path.join(IAM, 'vulnerable/gcp-public-binding.yaml'));

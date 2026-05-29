@@ -346,28 +346,8 @@ function detectJwtNoAlgAllowlist(file, raw, code, out, seen) {
   }
 }
 
-// ── Random ─────────────────────────────────────────────────────────────────
-
-function detectWeakRandomForCrypto(file, raw, code, out, seen) {
-  // Math.random() near token/secret/session/key contexts.
-  // (weak-randomness.js handles general weak-RNG; this focuses on the
-  // crypto-context co-location.)
-  const re = /\bMath\.random\s*\(\s*\)/g;
-  let m;
-  while ((m = re.exec(code))) {
-    const ln = _line(raw, m.index);
-    const surrounding = code.slice(Math.max(0, m.index - 200), m.index + 200);
-    if (!/\b(?:token|secret|password|session|key|nonce|salt|iv|csrf|otp|api[_-]?key)\b/i.test(surrounding)) continue;
-    const id = `crypto-weak-random:${file}:${ln}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(_shape(file, ln, 'crypto-weak-random',
-      'Math.random() used near crypto identifier (token / secret / key / nonce)',
-      'crypto-weak-rng', 'high', 'CWE-338',
-      'Replace with crypto.randomBytes / crypto.getRandomValues / secrets.token_bytes / crypto/rand.Read. Math.random is fast but not cryptographic — an attacker can predict the entire output stream from a few observed values.',
-      'V8\'s Math.random uses XorShift128+; it is well-defined and reproducible from internal state. Several CTFs have demonstrated predicting Math.random output from prior outputs.'));
-  }
-}
+// (Weak RNG detection lives in scanner/src/sast/weak-randomness.js — not
+// duplicated here.)
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
@@ -396,7 +376,6 @@ export function scanCryptoProtocol(fp, raw) {
   try { detectBcryptLowCost(fp, raw, code, out, seen); } catch {}
   try { detectJwtNoneAlg(fp, raw, code, out, seen); } catch {}
   try { detectJwtNoAlgAllowlist(fp, raw, code, out, seen); } catch {}
-  try { detectWeakRandomForCrypto(fp, raw, code, out, seen); } catch {}
   for (const f of out) f.file = fp;
   return out;
 }
@@ -405,5 +384,5 @@ export const _internals = {
   _isCryptoRelevant,
   detectTlsMinVersion, detectTlsNoVerify, detectWeakCiphers, detectEcbMode,
   detectStaticIv, detectWeakHash, detectPbkdf2LowIter, detectBcryptLowCost,
-  detectJwtNoneAlg, detectJwtNoAlgAllowlist, detectWeakRandomForCrypto,
+  detectJwtNoneAlg, detectJwtNoAlgAllowlist,
 };

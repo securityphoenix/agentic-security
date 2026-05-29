@@ -160,26 +160,8 @@ function detectPromptFromEnvOrUrl(file, raw, code, out, seen) {
   }
 }
 
-function detectAgentToolExposesExec(file, raw, code, out, seen) {
-  // LangChain Tool / OpenAI function-calling tool whose impl wraps
-  // os.system / subprocess / eval / exec / open(... 'w').
-  // Detect tool definitions:
-  //   Tool(name=..., func=lambda x: os.system(x))
-  //   @tool def shell_exec(cmd): subprocess.run(cmd, shell=True)
-  const re = /(?:Tool\s*\([^)]{0,400}|@tool[\s\S]{0,400}|tools\s*=\s*\[[\s\S]{0,400})(?:os\.system|subprocess\.(?:run|Popen|call|check_output)|eval\s*\(|exec\s*\(|open\s*\([^)]+['"][wa]\b)/g;
-  let m;
-  while ((m = re.exec(code))) {
-    const ln = _line(raw, m.index);
-    const id = `agent-tool-exposes-exec:${file}:${ln}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(_shape(file, ln, 'agent-tool-exposes-exec',
-      'Agent tool definition exposes os.system / subprocess / eval / exec / file-write to the LLM',
-      'agent-tool-exec', 'critical', 'CWE-77',
-      'Replace the broad primitive with a narrow tool that takes structured args (e.g. `lookup_user(user_id: str)`). LLMs given shell-equivalent tools will run shell-equivalent commands — usually within hours of deployment.',
-      'OWASP LLM Top 10 Excessive Agency: when the LLM has tools that map to OS primitives, prompt injection becomes RCE. The 2024 GitHub Copilot Workspace + ChatGPT shell-tool incidents are recent examples.'));
-  }
-}
+// (Agent tools exposing exec/shell/subprocess to the LLM are detected by
+// sast/llm-app.js detectToolExec — not duplicated here.)
 
 function detectUnsafeModelFileFormat(file, raw, code, out, seen) {
   // Loading .pt / .pth / .bin — recommend .safetensors.
@@ -261,7 +243,6 @@ export function scanMlSupplyChain(fp, raw) {
   try { detectHfDatasetsTrustRemoteCode(fp, raw, code, out, seen); } catch {}
   try { detectStreamingDatasetUrl(fp, raw, code, out, seen); } catch {}
   try { detectPromptFromEnvOrUrl(fp, raw, code, out, seen); } catch {}
-  try { detectAgentToolExposesExec(fp, raw, code, out, seen); } catch {}
   try { detectUnsafeModelFileFormat(fp, raw, code, out, seen); } catch {}
   try { detectGradioAuthDisabled(fp, raw, code, out, seen); } catch {}
   try { detectCustomHfHubUrl(fp, raw, code, out, seen); } catch {}
@@ -273,6 +254,6 @@ export const _internals = {
   _RELEVANCE,
   detectMlflowUntrustedUri, detectOnnxNoProviderAllowlist,
   detectHfDatasetsTrustRemoteCode, detectStreamingDatasetUrl,
-  detectPromptFromEnvOrUrl, detectAgentToolExposesExec,
+  detectPromptFromEnvOrUrl,
   detectUnsafeModelFileFormat, detectGradioAuthDisabled, detectCustomHfHubUrl,
 };

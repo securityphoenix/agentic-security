@@ -8,8 +8,8 @@
 //     - aws-public-s3-policy        Principal:* on s3:* (object exfil)
 //     - aws-public-trust-policy     sts:AssumeRole with Principal:* / AWS:*
 //     - aws-no-mfa-condition        High-risk action without aws:MultiFactorAuthPresent
-//     - aws-passrole-wildcard       iam:PassRole on Resource:*
 //     - aws-overbroad-managed-policy AdministratorAccess attached to non-root principal
+//     (PassRole-wildcard is detected by posture/iam-policy.js — not duplicated here.)
 //
 //   GCP:
 //     - gcp-public-iam-binding      member 'allUsers' / 'allAuthenticatedUsers'
@@ -151,23 +151,8 @@ function detectAws(file, raw, out, seen) {
       }
     }
 
-    // aws-passrole-wildcard
-    if (actions.includes('iam:PassRole')) {
-      const resources = _actionList(s.Resource);
-      if (resources.some(r => r === '*' || /:\*$/.test(r))) {
-        const ln = _line(raw, 'PassRole');
-        const id = `aws-passrole-wildcard:${file}:${ln}`;
-        if (!seen.has(id)) {
-          seen.add(id);
-          out.push(_shape(file, ln, 'aws-passrole-wildcard',
-            'iam:PassRole with Resource:* — caller can pass any role to any service',
-            'aws-passrole-wildcard', 'critical', 'CWE-269',
-            'Scope iam:PassRole Resource to the exact role ARNs that may be passed. Combine with `iam:PassedToService` condition to restrict which AWS services may receive the passed role.',
-            'PassRole is the #1 AWS privilege-escalation primitive. With PassRole on *, an attacker creates a Lambda or EC2 instance and attaches roles/AdministratorAccess — instant root.',
-            'aws'));
-        }
-      }
-    }
+    // (iam:PassRole with Resource:* is detected by posture/iam-policy.js —
+    // not duplicated here.)
   }
 
   // aws-overbroad-managed-policy
