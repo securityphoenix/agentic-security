@@ -35,7 +35,7 @@ fixes, and bodyguards that prevent foot-guns BEFORE they hit production.
     /supply-chain-check        One-screen "is npm install safe?" verdict
     /find-and-fix-everything   Scan + fix every severity in one shot
     /report-card               A–F letter grade + one concrete next action
-    /risk-in-dollars           Each finding's $ exposure (best/likely/worst)
+    /risk-dollars              Each finding's $ exposure (EV by EPSS + reachability)
 
   Understand it
     /explain                   Plain-English explanation of one finding

@@ -151,7 +151,7 @@ That's the core loop. Here's what's available when you're ready:
   /daily-checkin         Daily security digest to Slack/Discord
   /disaster-playbook     Generates your incident-response runbook
   /story-explain         Get this style of explanation for any finding
-  /risk-in-dollars       See your findings as $ exposure instead of CVSS
+  /risk-dollars          See your findings as $ exposure instead of CVSS
 
 You don't need to do them all. The ones I'd start with:
 

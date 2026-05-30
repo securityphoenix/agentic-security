@@ -91,7 +91,7 @@ Also works with Codex, Cursor, and Gemini CLI — [harness setup](docs/HARNESS_C
 
 **`/agentic-security:compliance-fix`** — Routes every Not-Compliant control from your compliance report to the command that closes it, deduped and ordered. Flags controls that require manual or process work so you know what to automate and what to delegate.
 
-38 commands total — [full catalog](commands/help.md).
+51 commands total — [full catalog](commands/help.md).
 
 ---
 
@@ -122,7 +122,7 @@ Deep engine details — [architecture](docs/ARCHITECTURE.md).
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.84.1-blue)]()
+[![Version](https://img.shields.io/badge/version-0.84.2-blue)]()
 [![agentic-security](https://img.shields.io/badge/agentic--security-passing-brightgreen)]()
 
 ## License

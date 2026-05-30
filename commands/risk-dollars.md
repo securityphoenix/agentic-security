@@ -51,9 +51,20 @@ impactUSD:
   default: 75000
 ```
 
+## Regulatory triggers
+
+Each finding family carries a hint about which regulatory frameworks the EV might invoke:
+
+- **PII / customer data** → GDPR (EU 2016/679), CCPA (Cal. Civ. §1798.150)
+- **PHI / health data** → HIPAA Security Rule (45 CFR §164.312)
+- **PCI / cardholder data** → PCI-DSS (Council); fines per-incident
+- **Financial data** → GLBA Safeguards Rule (16 CFR Part 314), state breach-notification laws
+
+A common real-world anchor for cost: Capital One's 2019 SSRF → metadata-credential theft → 100M records → $190M settlement. SSRF-to-metadata findings carry that scenario in their `riskDollars.scenario` field when both the source (untrusted input) and the sink (169.254.169.254 / metadata.google.internal) are detected together.
+
 ## Disclaimer
 
-This is an **order-of-magnitude estimate for prioritization**. It is NOT an actuarial / insurance assessment. The defaults are rough averages from public breach-cost reports; use them as anchors, not authoritative figures.
+This is an **order-of-magnitude estimate for prioritization**. It is NOT an actuarial / insurance assessment / legal advice. The defaults are rough averages from public breach-cost reports; use them as anchors, not authoritative figures. Real-world cost depends on data class, customer base, jurisdiction, insurance coverage, and how the breach gets handled.
 
 ## Implementation
 

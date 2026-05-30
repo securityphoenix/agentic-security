@@ -102,3 +102,16 @@ const ask = q => new Promise(res => rl.question(q, ans => res(ans.trim())));
 ```
 
 Tell the user how many verdicts were recorded and remind them the suppressions take effect on the next `/scan`.
+
+## Tournament mode
+
+Pass `--tournament` to walk findings ranked by `compositeRisk` (descending) instead of by exploitability + confidence. Each finding is presented one at a time with the past-decision lookup (`query_triage_memory` MCP tool) — surfaces "we already decided on something like this" before you re-decide.
+
+```bash
+/triage --tournament                         # all findings
+/triage --tournament --severity critical     # criticals only
+/triage --tournament --family sqli           # only SQLi
+/triage --tournament --limit 10              # cap at 10
+```
+
+Tournament mode produces the same final state (`triage-feedback.json` + cross-repo memory bridge writes), but the ordering + one-keystroke-decision UI is the cleaner workflow for a focused triage pass.
