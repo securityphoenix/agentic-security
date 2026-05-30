@@ -16,6 +16,17 @@ Compliance + auditor flows dispatcher.
 | `--attestation` | Render buyer-facing security posture artifact. `--format badge|onepager|page` |
 | `--audit <target>` | Stack-specific security audits. Targets: `db`, `auth`, `rate-limit`, `webhook`, `env`, `csp-cors`, `deploy`, `launch`, `llm-cost`, `prompt` |
 | `--pr` | Generate PR-description block (security delta vs base + ATT&CK + reviewers + artifacts) |
+| `--gap` | Show only the **Not-Compliant** controls, each with the exact command that closes it |
+
+Bare `/compliance` (no flag) prints this mode menu. `--report` and `--gap` accept `--format cli|json|oscal`.
+
+## `--gap` (close the deltas)
+
+`--gap` runs the attestation for `<framework>` but filters to controls scored **Not-Compliant** / **Partial**, and for each one prints the single command that closes it — e.g. a missing-rate-limit control maps to `/compliance --audit rate-limit`, a secrets control to `/fix --rotate-secret`, a coverage gap to `/fix --compliance`. The output is an actionable worklist, not a full report. `/fix --compliance` consumes the same mapping to batch-close them.
+
+## `--format oscal` (machine-readable export)
+
+`--report <fw> --format oscal` emits the attestation as an **OSCAL-aligned** JSON document (NIST's machine-readable assessment format): an `assessment-results`-shaped object with one `finding`/`observation` per control, each carrying the control id, status (`satisfied` / `not-satisfied`), and the evidence paths the scanner matched. `--format json` emits the same data in the plugin's native finding schema. Both are what GRC tooling and auditors ingest; `--format cli` (default) stays human-readable.
 
 ## Examples
 

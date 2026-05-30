@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.87.0 — Sharpen the 12
+
+Ergonomics + power features for the 12-command surface left after the
+v0.86.0 consolidation.
+
+### Cross-cutting
+- **Legacy-alias redirect hook** (`UserPromptSubmit`, `hooks/legacy-alias-redirect.js`):
+  typing a removed alias (`/status`, `/show-findings`, `/harden`, …) now
+  injects context that maps it to the new dispatcher mode, so the request
+  still runs. Covers all 44 removed aliases.
+- **Trend-aware `/secure` router**: compares the last two scans and shows a
+  `↑ / → / ↓` arrow with what changed (never invents a trend from one scan).
+- **Bare-invocation mode menus** and uniform `--json` documented across the
+  dispatchers.
+- **Task-oriented `/secure --help`** + an old→new alias map.
+
+### Per-command
+- `/scan --pick` — interactive mode menu.
+- `/fix --checkpoint` — run a batch fix on a throwaway git branch (atomic revert).
+- `/compliance --gap` — Not-Compliant worklist with the exact closing command per control; `--format oscal|json` machine-readable export.
+- `/supply` — offer to bundle safe patch/minor upgrades into one PR after `--check`.
+- `/posture` (bare) — combined dashboard (status + grade + trend).
+- `/find-and-fix-everything` — auto checkpoint branch + PR-ready summary.
+- `/triage` — order findings likely-FP-first from triage history.
+- `/three-agent-review` — echo the call/wall-time budget before running.
+- `/ci` — validate generated workflow YAML + offer a PR.
+- `/labs` — graduation-status table for experimental modes.
+- `/setup --all` — install hooks + CI + bodyguard + destructive-guard in one pass.
+
 ## 0.76.0 — Command consolidation: 80 → 38 slash commands
 
 Simplified the command surface from 80 individual slash commands down to

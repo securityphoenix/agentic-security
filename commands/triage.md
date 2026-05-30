@@ -129,3 +129,9 @@ Tournament mode produces the same final state (`triage-feedback.json` + cross-re
 | `--exploit` | Build PoC in chosen format. `--format curl|jest|pytest|burp|sqlmap` |
 | `--query` | Write a security check in natural language; emits YAML rule + preview |
 | `--tournament` | Ranked walk-through |
+
+Add `--json` to any mode for machine-readable output.
+
+## FP-first ordering
+
+When presenting findings for triage (default and `--show`), order them **likely-false-positive first** using this project's `triage-memory.json` history: for each finding's `family` + rule, compute the historical FP rate from prior verdicts and sort descending. Rationale — clearing the cheap, obvious FPs first builds momentum and shrinks the list before the user reaches the judgement-heavy true positives. Findings from families with no history fall back to `compositeRisk` ascending. Show the inferred FP-likelihood as a hint column (`likely-fp` / `unknown` / `likely-tp`) so the user knows why the order is what it is.

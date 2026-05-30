@@ -27,7 +27,34 @@ function ageHours(fp) {
   return (Date.now() - fs.statSync(fp).mtimeMs) / 3_600_000;
 }
 
-export function decide({ scanRoot, intent }) {
+// Compare the two most-recent scan-history entries to tell the user whether
+// they're trending safer or more exposed. Returns {} when there isn't enough
+// history to say anything honest. (premortem: never invent a trend from one
+// data point.)
+export function computeScanTrend(scanRoot) {
+  const hist = readJson(path.join(scanRoot, '.agentic-security', 'scan-history.json'));
+  if (!Array.isArray(hist) || hist.length < 2) return {};
+  const cur = hist[hist.length - 1];
+  const prev = hist[hist.length - 2];
+  const sevOf = (e) => (e?.critical || 0) + (e?.high || 0);
+  const delta = sevOf(cur) - sevOf(prev);
+  let trend = 'flat';
+  if (delta < 0) trend = 'improving';
+  else if (delta > 0) trend = 'regressing';
+  const n = Math.abs(delta);
+  const whatChanged =
+    trend === 'improving' ? `${n} fewer critical+high than last scan — keep going.`
+    : trend === 'regressing' ? `${n} more critical+high than last scan — new risk crept in.`
+    : 'No change in critical+high since last scan.';
+  return { trend, whatChanged };
+}
+
+export function decide(opts) {
+  const base = baseDecision(opts);
+  return { ...base, ...computeScanTrend(opts.scanRoot) };
+}
+
+function baseDecision({ scanRoot, intent }) {
   const stateDir = path.join(scanRoot, '.agentic-security');
   const lastScan = readJson(path.join(stateDir, 'last-scan.json'));
   const scanAge = ageHours(path.join(stateDir, 'last-scan.json'));
@@ -102,8 +129,11 @@ export function explain(decision) {
     ``,
     `  Action:  ${decision.action}`,
     `  Why:     ${decision.reason}`,
-    `  Run:     ${decision.command}`,
-    ``,
   ];
+  if (decision.trend) {
+    const arrow = decision.trend === 'improving' ? '↓' : decision.trend === 'regressing' ? '↑' : '→';
+    lines.push(`  Trend:   ${arrow} ${decision.whatChanged}`);
+  }
+  lines.push(`  Run:     ${decision.command}`, ``);
   return lines.join('\n');
 }

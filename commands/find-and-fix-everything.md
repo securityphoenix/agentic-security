@@ -43,11 +43,11 @@ After the scan completes:
 
 1. Read `.agentic-security/last-scan.json` to get the full finding list.
 2. If the scan produced zero findings, print a ✅ and stop — nothing to fix.
-3. Warn if the git working tree is dirty: uncommitted changes make it harder to roll back. Suggest `git stash` or `git commit` before continuing. Ask whether to proceed.
+3. **Checkpoint branch.** If the working tree is clean and the repo is a git repo, create and switch to `agentic-security/fix-<timestamp>` so the entire batch is atomically revertible. If the tree is dirty, suggest `git stash` / `git commit` first and ask whether to proceed (or skip the branch). Tell the user the branch name.
 4. Dispatch the `security-fixer` subagent on every finding, ordered: critical → high → medium → low, with `toxicityScore` DESC within each tier.
 5. After each fix, re-scan the affected file to verify the finding is resolved and no regression was introduced.
 6. If tests fail on any fix, **stop and report** — do not auto-revert. Print which finding caused the failure and let the user decide (`git checkout <file>` to revert that file).
-7. Print a final summary:
+7. Print a final summary, then offer the PR-ready next step: a one-paragraph summary of what changed (findings closed, files touched, tests run) suitable for a PR body, plus the commands to merge the checkpoint branch forward or drop it wholesale.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -57,7 +57,10 @@ After the scan completes:
   Found:     <C> critical · <H> high · <M> medium · <L> low
   Fixed:     <N> findings
   Skipped:   <N> (tests failed — see above)
-  Run /scan --all to confirm final state.
+  Branch:    agentic-security/fix-<timestamp>  (checkpoint)
+  Confirm:   /scan --all
+  Keep:      git checkout <base> && git merge --no-ff agentic-security/fix-<timestamp>
+  Drop:      git checkout <base> && git branch -D agentic-security/fix-<timestamp>
 ```
 
 🛡  agentic-security · created by ClearCapabilities.Com

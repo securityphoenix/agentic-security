@@ -38,6 +38,17 @@ fi
 
 mkdir -p .agentic-security/three-agent-transcripts
 
+# Budget disclosure — this is the most expensive command in the plugin.
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  three-agent-review · budget for this run"
+echo "    Finding:        ${FINDING}"
+echo "    Max LLM calls:  ${MAX_CALLS}  (red + blue + auditor, combined)"
+echo "    Max wall time:  $((MAX_WALL_MS / 1000))s"
+echo "    Target:         ${TARGET:-(none — red team runs dry/static)}"
+echo "  Each phase short-circuits to static analysis without an LLM endpoint."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
 node -e "
 const fs = require('fs');
 const path = require('path');

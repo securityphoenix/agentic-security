@@ -1,6 +1,6 @@
 ---
 description: Run the scanner. --all gives a one-screen verdict. Focused modes per surface; --show-X for supplementary blocks.
-argument-hint: "[path] [--all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff|--uncommitted] [--show-personas|--show-bounty|--show-playbook]"
+argument-hint: "[path] [--pick|--all|--sca|--secrets|--authz|--mcp|--pipeline|--logic|--diff|--uncommitted] [--show-personas|--show-bounty|--show-playbook]"
 ---
 
 ## Step 0 — (Optional, user-initiated) Plugin update
@@ -201,6 +201,25 @@ Add any of these to extend the report with extra blocks (the verdict and exit co
 | `--show-drift` | Calibration-drift alarms — when self-reported confidence diverges from triage accuracy |
 
 For deep dives on any v3 capability there is a dedicated slash command (now consolidated under `/posture`, `/triage`, etc).
+
+## `--pick` (interactive mode menu)
+
+The scan surface is wide. If the user runs `/scan --pick` (or asks "which scan should I run?"), don't guess — present the menu and let them choose, then run that mode:
+
+```
+Which scan?
+  1. --all          everything, one-screen verdict   (default)
+  2. --uncommitted  only what you just changed        (fastest)
+  3. --diff         architectural risk of the git diff
+  4. --sca          dependencies (OSV + KEV + EPSS)
+  5. --secrets      hardcoded credentials
+  6. --authz        auth / access-control
+  7. --mcp          MCP / agent-tool audit
+  8. --logic        business-logic review (subagent)
+  Reply 1–8.
+```
+
+Map the choice to the corresponding flag and run it. This keeps the full surface discoverable without anyone memorizing nine flags.
 
 ## Consolidated modes
 

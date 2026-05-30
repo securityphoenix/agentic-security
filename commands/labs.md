@@ -19,6 +19,21 @@ Experimental + AI-driven analyses dispatcher. Modes that don't fit cleanly under
 | `--time-to-fix` | Estimate engineering hours per finding from family base + patch shape + reachability |
 | `--llm` | LLM-specific risk surface: prompt injection, model loading, MCP audit, AI-BOM |
 
+Bare `/labs` (no flag) prints this mode menu.
+
+## Graduation status
+
+Labs modes are experimental by intent. Maturity today:
+
+| Mode | Status |
+|---|---|
+| `--llm` | **Stable** — candidate to promote to a first-class `/scan --llm` surface. |
+| `--risk-dollars`, `--time-to-fix` | **Stable** — candidates to surface under `/posture`. |
+| `--claude-audit`, `--cross-repo` | **Beta** — output shape may change. |
+| `--model-rescan`, `--synthesize-rule` | **Experimental** — gated on env vars; not yet load-bearing. |
+
+"Stable" modes keep working from `/labs` even after they're promoted; promotion adds a primary path, it doesn't remove the labs one.
+
 ## Examples
 
 ```bash

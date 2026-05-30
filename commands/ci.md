@@ -267,3 +267,10 @@ esac
 | `/ci --hooks` | Pre-commit + pre-push git hooks |
 
 Pass `--apply` to write files. Default is dry-run.
+
+## After generating: validate + offer a PR
+
+Before declaring done, validate the generated workflow so a broken file never lands:
+
+1. **Lint the YAML** — parse it (the generator emits valid YAML; if a parser is available, confirm it loads, and sanity-check that the security-gate job and `fail-on` threshold are present).
+2. **Offer a PR** — when `--apply` wrote files and the repo has a remote, offer to open a PR (`agentic-security/ci-gate` branch) with the workflow + a one-paragraph body explaining the gate and its threshold, rather than committing straight to the working branch.

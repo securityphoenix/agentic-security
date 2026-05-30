@@ -175,5 +175,19 @@ SAST fixes write source code via the `apply_fix` MCP tool. That tool refuses eve
 | `--trim` | Trim unused code or unused packages. `--what code|deps|both` |
 | `--generate <type>` | Generate security artifacts: privacy policy, disaster playbook, regression tests, social posts |
 | `--all` | All findings in one batch (see also `/find-and-fix-everything` — first-class command for the vibecoder path) |
+| `--checkpoint` | Modifier for any batch fix: do the whole batch on a throwaway git branch so it's atomically revertible |
+
+Add `--json` to emit the fix plan / result as machine-readable output.
+
+## `--checkpoint` (atomic, revertible batches)
+
+`--checkpoint` wraps a batch fix (`--all`, `--sca`, `--harden`) in a git safety net so an unwanted run is one command to undo:
+
+1. Refuse if the working tree is dirty (or require `--checkpoint-allow-dirty`) — checkpointing only makes sense from a clean base.
+2. Create and switch to `agentic-security/fix-<timestamp>`.
+3. Apply the batch with per-finding verification as usual.
+4. Print the branch name and the exact undo (`git checkout - && git branch -D agentic-security/fix-<timestamp>`) plus the merge-forward (`git checkout <base> && git merge --no-ff …`).
+
+This replaces the all-or-nothing tension in `/find-and-fix-everything`: the whole batch lives on one branch, so the user reviews the diff and keeps or drops it wholesale.
 
 🛡  agentic-security · created by ClearCapabilities.Com

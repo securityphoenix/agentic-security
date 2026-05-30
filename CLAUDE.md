@@ -2,7 +2,7 @@
 
 Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + function-level reachability), secrets, IaC, prompt-injection, MCP/agent-tool audit, auth/authZ deep analysis, attack chains, PoC generation, SBOM/PBOM/AI-BOM, SARIF ingest, and compliance attestation (NIST AI 600-1, OWASP ASVS, OWASP LLM Top 10, EU AI Act).
 
-**Version:** 0.86.0  
+**Version:** 0.87.0  
 **License:** PolyForm Internal Use 1.0.0  
 **Author:** Ross Young <ross@clearcapabilities.com> / Clear Capabilities Inc.
 
@@ -88,7 +88,7 @@ The skill `skills/add-scan-rule.md` packages the same workflow for on-demand inv
 - **Settings:** `.claude/settings.json` (committed) defines the team's read-deny list — generated bundles, cached benches, scan-state JSON. Override locally via `.claude/settings.local.json` (gitignored).
 - **Commands:** markdown files in `commands/` — one per slash command. Index via `/secure --help` (`commands/secure.md`).
 - **Agents:** markdown system prompts in `agents/`. Edit-capable agents (`security-fixer`, `refactor-cleaner`) inherit the path-confinement contract in `agents/_CONFINEMENT.md` — same reserved-write list as the MCP server.
-- **Hooks:** `hooks/hooks.json` wires SessionStart / PreToolUse / PostToolUse / Stop. The Stop hook (`hooks/session-stop-drift-check.js`) flags new files in `scanner/src/{sast,posture,dataflow}/` not yet mentioned in the relevant subdir CLAUDE.md.
+- **Hooks:** `hooks/hooks.json` wires SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / Stop. The UserPromptSubmit hook (`hooks/legacy-alias-redirect.js`) maps a removed v0.86.0 alias (`/status`, `/show-findings`, …) to its new dispatcher mode. The Stop hook (`hooks/session-stop-drift-check.js`) flags new files in `scanner/src/{sast,posture,dataflow}/` not yet mentioned in the relevant subdir CLAUDE.md.
 - **State:** `.agentic-security/last-scan.json` is the canonical scan output consumed by every downstream command.
 - **MCP server:** see `scanner/src/mcp/CLAUDE.md` for tool inventory and hardening posture.
 
