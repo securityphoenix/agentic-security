@@ -150,11 +150,9 @@ test('threat-model: _bumpSeverity is monotone', () => {
 
 // ── red-team command (#6) ─────────────────────────────────────────────────
 
-test('red-team: command file is present + valid frontmatter', () => {
-  const fp = path.resolve(import.meta.dirname, '..', '..', 'commands', 'red-team.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
-  assert.match(body, /^---\n[\s\S]*?description:/m);
-  assert.match(body, /argument-hint:/);
-  assert.match(body, /persona/);
+test('red-team: dispatcher /triage documents red-team mode + alias preserved', () => {
+  const triage = fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', 'commands', 'triage.md'), 'utf8');
+  assert.match(triage, /red-team/i);
+  // Legacy alias still present for back-compat
+  assert.ok(fs.existsSync(path.resolve(import.meta.dirname, '..', '..', 'commands', 'red-team.md')));
 });

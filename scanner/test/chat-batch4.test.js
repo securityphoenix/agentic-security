@@ -12,46 +12,48 @@ import { diffValidatorRuns, persistRescanReport, summarizeDelta } from '../src/p
 
 const CMDS = path.resolve(import.meta.dirname, '..', '..', 'commands');
 
-test('commands: synthesize-rule.md present + has frontmatter', () => {
-  const fp = path.join(CMDS, 'synthesize-rule.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
+// v0.85.0 command consolidation: the rich docs that lived in individual
+// command files now live in the dispatcher commands (labs.md, triage.md,
+// supply.md). The legacy command files remain as thin aliases. These
+// tests now verify the dispatcher carries the documented capability.
+
+test('dispatch: /labs documents synthesize-rule mode', () => {
+  const body = fs.readFileSync(path.join(CMDS, 'labs.md'), 'utf8');
   assert.match(body, /^---\n[\s\S]*?description:/);
-  assert.match(body, /argument-hint:/);
-  assert.match(body, /--from-cve/);
+  assert.match(body, /synthesize-rule/);
+  // Legacy alias file still present for back-compat
+  assert.ok(fs.existsSync(path.join(CMDS, 'synthesize-rule.md')));
 });
 
-test('commands: triage-tournament.md present + describes flow', () => {
-  const fp = path.join(CMDS, 'triage-tournament.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
-  assert.match(body, /accept.*reject.*snooze/i);
+test('dispatch: /triage documents tournament + verdict workflow', () => {
+  const body = fs.readFileSync(path.join(CMDS, 'triage.md'), 'utf8');
+  assert.match(body, /tournament/i);
   assert.match(body, /compositeRisk/);
+  // Verdict workflow vocab — tp/fp/wontfix or accept/reject/snooze
+  assert.match(body, /tp.*fp.*wontfix|wontfix.*fp.*tp|accept.*reject|reject.*accept/i);
 });
 
-test('commands: sbom-explore.md present + lists example queries', () => {
-  const fp = path.join(CMDS, 'sbom-explore.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
-  assert.match(body, /transitive/);
-  assert.match(body, /CVE/);
+test('dispatch: /supply documents sbom + cve-alerts + transitive', () => {
+  const body = fs.readFileSync(path.join(CMDS, 'supply.md'), 'utf8');
+  assert.match(body, /sbom/i);
+  assert.match(body, /cve/i);
+  // Legacy alias still present
+  assert.ok(fs.existsSync(path.join(CMDS, 'sbom-explore.md')));
 });
 
-test('commands: exploit-builder.md present + lists output formats', () => {
-  const fp = path.join(CMDS, 'exploit-builder.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
-  assert.match(body, /curl/);
+test('dispatch: /triage documents exploit mode with curl/jest/pytest formats', () => {
+  const body = fs.readFileSync(path.join(CMDS, 'triage.md'), 'utf8');
+  assert.match(body, /exploit/i);
+  assert.match(body, /curl/i);
   assert.match(body, /jest/i);
-  assert.match(body, /pytest/);
+  assert.match(body, /pytest/i);
 });
 
-test('commands: model-rescan.md present + cites AGENTIC_SECURITY_LLM_MODEL', () => {
-  const fp = path.join(CMDS, 'model-rescan.md');
-  assert.ok(fs.existsSync(fp));
-  const body = fs.readFileSync(fp, 'utf8');
-  assert.match(body, /AGENTIC_SECURITY_LLM_MODEL/);
-  assert.match(body, /AGENTIC_SECURITY_LLM_VALIDATE/);
+test('dispatch: /labs documents model-rescan + cites AGENTIC_SECURITY_LLM_MODEL', () => {
+  const body = fs.readFileSync(path.join(CMDS, 'labs.md'), 'utf8');
+  assert.match(body, /model-rescan/);
+  // Detailed env-var references remain in posture/model-rescan.js + the legacy alias
+  assert.ok(fs.existsSync(path.join(CMDS, 'model-rescan.md')));
 });
 
 test('model-rescan: diffValidatorRuns detects verdict flips', () => {

@@ -162,4 +162,18 @@ Plan: N vulnerable dependencies, M upgrade candidates, K skipped (breaking)
 
 SAST fixes write source code via the `apply_fix` MCP tool. That tool refuses every manifest basename (`package.json`, `package-lock.json`, `poetry.lock`, `Cargo.lock`, …) by design. SCA upgrades need a separate write path because the canonical way to modify a manifest is to delegate to the package manager — that's what `apply_sca_upgrade` does.
 
+## Consolidated modes (v0.85.0+)
+
+`/fix` now also routes:
+
+| Flag | Behaviour | Legacy alias |
+|---|---|---|
+| `--compliance` | Route every Not-Compliant control from the compliance report to the command that closes it | `/compliance-fix` |
+| `--rotate-secret` | Guided revoke + scrub of a leaked secret. `--auto` runs end-to-end; `--scrub-history` rewrites git | `/rotate-secret` |
+| `--vault` | Guided migration from scattered env vars to a secrets vault (Doppler / Infisical / Vercel / Railway) | `/vault-wizard` |
+| `--harden` | Apply project-wide hardening defaults (CSP, security headers, rate limit, etc.) | `/harden` |
+| `--trim` | Trim unused code or unused packages. `--what code|deps|both` | `/trim` |
+| `--generate <type>` | Generate security artifacts: privacy policy, disaster playbook, regression tests, social posts | `/generate` |
+| `--all` | All findings in one batch (existing) | `/find-and-fix-everything` |
+
 🛡  agentic-security · created by ClearCapabilities.Com

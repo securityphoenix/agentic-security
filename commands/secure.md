@@ -28,4 +28,14 @@ node ${CLAUDE_PLUGIN_ROOT}/scanner/dist/agentic-security.mjs secure ${1:-.} ${@:
 - `--json` — emit decision as JSON for piping.
 - `--run` — auto-execute the recommended `agentic-security ...` command.
 
+## Consolidated modes (v0.85.0+)
+
+`/secure` now also routes:
+
+| Flag | Behaviour | Legacy alias |
+|---|---|---|
+| `--tour` | Walk through the plugin's main capabilities with example commands | `/tutorial` |
+| `--help` | List the 9 primary commands + the 45 legacy aliases | `/help` |
+| `--daily` | Post daily security digest to Slack / Discord / webhook | `/daily-checkin` |
+
 🛡  agentic-security · created by ClearCapabilities.Com

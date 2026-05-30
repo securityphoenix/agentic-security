@@ -115,3 +115,17 @@ Pass `--tournament` to walk findings ranked by `compositeRisk` (descending) inst
 ```
 
 Tournament mode produces the same final state (`triage-feedback.json` + cross-repo memory bridge writes), but the ordering + one-keystroke-decision UI is the cleaner workflow for a focused triage pass.
+
+## Consolidated modes (v0.85.0+)
+
+`/triage` now also routes:
+
+| Flag | Behaviour | Legacy alias |
+|---|---|---|
+| `--show` | View findings table / HTML report. `--all|--kev|--chains|--threat-model` | `/show-findings` |
+| `--explain` | Plain-English explanation of a finding. `--narrative|--provenance|--gap` | `/explain` |
+| `--validate` | Verify a finding is exploitable. PoC + adversarial variants + verdict | `/validate-findings` |
+| `--red-team` | Roleplay an attacker: exploit narrative + fuzz inputs + defender evaluation | `/red-team` |
+| `--exploit` | Build PoC in chosen format. `--format curl|jest|pytest|burp|sqlmap` | `/exploit-builder` |
+| `--query` | Write a security check in natural language; emits YAML rule + preview | `/query` |
+| `--tournament` | Ranked walk-through (already shipped in v0.84.2) | `/triage-tournament` |

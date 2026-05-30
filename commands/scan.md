@@ -200,6 +200,19 @@ Add any of these to extend the report with extra blocks (the verdict and exit co
 | `--show-threat-model` | Auto-derived STRIDE threat model summary |
 | `--show-drift` | Calibration-drift alarms — when self-reported confidence diverges from triage accuracy |
 
-For deep dives on any v3 capability there is a dedicated slash command: `/threat-model`, `/playbook`, `/spof`, `/trust-boundary`, `/archaeology`, `/diff-scan`, `/why-fired`, `/adversary`, `/self-test`, `/personas`, `/bounty`.
+For deep dives on any v3 capability there is a dedicated slash command (now consolidated under `/posture`, `/triage`, etc).
+
+## Consolidated modes (v0.85.0+)
+
+`/scan` now also routes the following absorbed commands:
+
+| Flag | Behaviour | Legacy alias |
+|---|---|---|
+| `--watch` | Continuous incremental scan, writes `.agentic-security/watch-status.{md,json}` on every change | `/watch` |
+| `--baseline` | Set / view / refresh the scan baseline | (was `/scanner --baseline`) |
+| `--archaeology` | Historical analysis — when was each line of code authored, by whom, against which prompt | `/archaeology` |
+| `--scanner-meta` | Scanner self-test / version diff / concurrency check / spec-drift check | `/scanner` |
+
+The legacy commands continue to work — they're aliases that forward to the right `--mode`.
 
 🛡  agentic-security · created by ClearCapabilities.Com

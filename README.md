@@ -69,29 +69,29 @@ Also works with Codex, Cursor, and Gemini CLI — [harness setup](docs/HARNESS_C
 
 ---
 
-## Five commands to know
+## Nine commands
 
 ![agentic-security demo](docs/brand/demo.gif)
 
-**`/agentic-security:secure`** — Don't know what to do? It tells you the single best next step.
+**`/agentic-security:secure`** — Router. Picks the single best next action from project state. Also: `--tour`, `--help`, `--daily`.
 
-```
-🛡  agentic-security · next step
+**`/agentic-security:scan`** — Run the scanner. Modes: full / diff / watch / baseline / archaeology / scanner-meta.
 
-  Action:  fix-critical
-  Why:     2 critical finding(s) open. Preview each fix, then --apply.
-  Run:     agentic-security fix --finding <id> --preview
-```
+**`/agentic-security:triage`** — Decide on findings. Modes: id / show / explain / validate / tournament / red-team / exploit / query.
 
-**`/agentic-security:find-and-fix-everything`** — Scan + fix everything in one shot. The security-fixer agent reads your auth library, ORM, and framework before writing each fix, so the patches look like the rest of your code.
+**`/agentic-security:fix`** — Remediation. Modes: id / all / pr / sca / compliance / rotate-secret / vault / harden / trim / generate.
 
-**`/agentic-security:scan --all`** — Full 12-pillar sweep: SAST, SCA, secrets, IaC, LLM safety, auth, MCP, pipeline, containers, deploy, supply chain, and trends.
+**`/agentic-security:posture`** — Posture + reporting. Modes: status / report-card / harness / trend / threat / playbook / mgmt.
 
-**`/agentic-security:compliance-report`** — Auditor-ready compliance attestation against NIST AI 600-1, OWASP ASVS, or OWASP LLM Top 10 (2025). Pass the framework name to scope it: `/compliance-report nist`, `/compliance-report asvs`, or `/compliance-report llm`.
+**`/agentic-security:compliance`** — Compliance + auditor flows. Modes: report / walkthrough / attestation / audit / pr.
 
-**`/agentic-security:compliance-fix`** — Routes every Not-Compliant control from your compliance report to the command that closes it, deduped and ordered. Flags controls that require manual or process work so you know what to automate and what to delegate.
+**`/agentic-security:supply`** — Supply chain. Modes: check / sbom / cve-alerts / license.
 
-51 commands total — [full catalog](commands/help.md).
+**`/agentic-security:setup`** — Workflow installers + guards. Modes: hooks / ci / bodyguard / destructive-guard.
+
+**`/agentic-security:labs`** — Experimental + AI-driven. Modes: claude-audit / model-rescan / synthesize-rule / cross-repo / risk-dollars / time-to-fix / llm.
+
+45 legacy aliases preserved for back-compat — see [full catalog](commands/help.md).
 
 ---
 
@@ -122,7 +122,7 @@ Deep engine details — [architecture](docs/ARCHITECTURE.md).
 
 [![License](https://img.shields.io/badge/license-PolyForm--Internal--Use-blue)](./LICENSE)
 [![Bundle](https://img.shields.io/badge/bundle-2.30MB-orange)]()
-[![Version](https://img.shields.io/badge/version-0.84.2-blue)]()
+[![Version](https://img.shields.io/badge/version-0.85.0-blue)]()
 [![agentic-security](https://img.shields.io/badge/agentic--security-passing-brightgreen)]()
 
 ## License
