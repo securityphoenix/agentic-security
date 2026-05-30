@@ -1,1 +1,121 @@
-[]
+[
+  {
+    "fixture": "vulnerable-js",
+    "file": "app.js",
+    "line": 24,
+    "family": "weak-password-hashing-createhash-with-we",
+    "vuln": "Weak Password Hashing — createHash with weak algorithm for password without salt"
+  },
+  {
+    "fixture": "vulnerable-js",
+    "file": "app.js",
+    "line": 6,
+    "family": "sensitive-route-without-auth-get-users-i",
+    "vuln": "Sensitive Route Without Auth — GET /users/:id"
+  },
+  {
+    "fixture": "vulnerable-js",
+    "file": "app.js",
+    "line": 38,
+    "family": "sensitive-route-without-auth-post-user",
+    "vuln": "Sensitive Route Without Auth — POST /user"
+  },
+  {
+    "fixture": "clean-js",
+    "file": "app.js",
+    "line": 12,
+    "family": "sensitive-route-without-auth-get-users-i",
+    "vuln": "Sensitive Route Without Auth — GET /users/:id"
+  },
+  {
+    "fixture": "timing-oracle",
+    "file": "app.js",
+    "line": 8,
+    "family": "timing-unsafe-comparison-secret-hmac-com",
+    "vuln": "Timing-Unsafe Comparison — secret/HMAC compared with === instead of timingSafeEqual"
+  },
+  {
+    "fixture": "timing-oracle",
+    "file": "app.js",
+    "line": 12,
+    "family": "timing-unsafe-comparison-secret-hmac-com",
+    "vuln": "Timing-Unsafe Comparison — secret/HMAC compared with === instead of timingSafeEqual"
+  },
+  {
+    "fixture": "middleware-ordering",
+    "file": "app.js",
+    "line": 20,
+    "family": "rate-limiting-after-auth-middleware-brut",
+    "vuln": "Rate Limiting After Auth Middleware — brute-force attacks bypass rate limits"
+  },
+  {
+    "fixture": "orm-raw-sql",
+    "file": "app.js",
+    "line": 9,
+    "family": "sensitive-route-without-auth-get-users-p",
+    "vuln": "Sensitive Route Without Auth — GET /users/prisma/:id"
+  },
+  {
+    "fixture": "orm-raw-sql",
+    "file": "app.js",
+    "line": 15,
+    "family": "sensitive-route-without-auth-delete-user",
+    "vuln": "Sensitive Route Without Auth — DELETE /users/prisma/:id"
+  },
+  {
+    "fixture": "orm-raw-sql",
+    "file": "app.js",
+    "line": 20,
+    "family": "sensitive-route-without-auth-get-users-s",
+    "vuln": "Sensitive Route Without Auth — GET /users/seq"
+  },
+  {
+    "fixture": "orm-raw-sql",
+    "file": "app.js",
+    "line": 27,
+    "family": "sensitive-route-without-auth-get-users-t",
+    "vuln": "Sensitive Route Without Auth — GET /users/typeorm"
+  },
+  {
+    "fixture": "jwt-exp",
+    "file": "app.js",
+    "line": 16,
+    "family": "jwt-no-verify",
+    "vuln": "JWT Signed Without expiresIn"
+  },
+  {
+    "fixture": "host-header",
+    "file": "app.js",
+    "line": 14,
+    "family": "open-redirect",
+    "vuln": "Open Redirect (Express/Koa)"
+  },
+  {
+    "fixture": "csharp-sast",
+    "file": "Vuln.cs",
+    "line": 38,
+    "family": "insecure-deserialization",
+    "vuln": "Insecure Deserialization — BinaryFormatter.Deserialize call"
+  },
+  {
+    "fixture": "csharp-sast",
+    "file": "Vuln.cs",
+    "line": 14,
+    "family": "sql-injection",
+    "vuln": "SQL Injection — SqlCommand.ExecuteX with tainted CommandText"
+  },
+  {
+    "fixture": "solidity-sast",
+    "file": "Safe.sol",
+    "line": 12,
+    "family": "withdraw-performs-external-transfer-but-",
+    "vuln": "withdraw() performs external transfer but is not nonReentrant"
+  },
+  {
+    "fixture": "solidity-sast",
+    "file": "Vuln.sol",
+    "line": 11,
+    "family": "withdraw-performs-external-transfer-but-",
+    "vuln": "withdraw() performs external transfer but is not nonReentrant"
+  }
+]

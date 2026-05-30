@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "fixture": "vulnerable-js",
+    "file": "app.js",
+    "line": 14,
+    "family": "xss",
+    "severity": "high",
+    "_note": "res.send(out) where out is exec stdout — taint path"
+  },
+  {
+    "fixture": "vulnerable-js",
+    "file": "app.js",
+    "line": 28,
+    "family": "xss",
+    "severity": "high",
+    "_note": "res.send(eval(req.body.expr)) — xss via eval result"
+  },
+  {
+    "fixture": "orm-raw-sql",
+    "file": "app.js",
+    "line": 16,
+    "family": "sql-injection",
+    "severity": "high"
+  },
+  {
+    "fixture": "jwt-exp",
+    "file": "app.js",
+    "line": 16,
+    "family": "jwt-alg-confusion",
+    "severity": "high",
+    "_note": "existing JWT Sign verify rule fires (legacy FP for safe shape)"
+  },
+  {
+    "fixture": "jwt-exp",
+    "file": "app.js",
+    "line": 26,
+    "family": "jwt-alg-confusion",
+    "severity": "high"
+  },
+  {
+    "fixture": "csharp-sast",
+    "file": "Vuln.cs",
+    "line": 41,
+    "family": "xss",
+    "severity": "high"
+  }
+]
