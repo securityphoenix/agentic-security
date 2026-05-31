@@ -215,7 +215,8 @@ function step(node, stateIn, callContext) {
       const calleeName = node.source && node.source.kind === 'call' && typeof node.source.callee === 'string'
         ? node.source.callee : null;
       if (target && calleeName && callContext._summaryCache && callContext._callGraph) {
-        const resolved = callContext._callGraph.resolve ? callContext._callGraph.resolve(calleeName) : null;
+        const _callerFile = (callContext._currentFnQid || '').split('::')[0] || undefined;
+        const resolved = callContext._callGraph.resolve ? callContext._callGraph.resolve(calleeName, _callerFile) : null;
         const fn  = resolved && resolved.qid ? resolved : null;
         const qid = resolved && (resolved.qid || resolved);
         if (typeof qid === 'string') {
@@ -322,8 +323,9 @@ function step(node, stateIn, callContext) {
       // Object.assign(target, tainted) → target becomes tainted in caller.
       if (callContext._summaryCache && callContext._callGraph
           && typeof node.callee === 'string') {
+        const _callerFile = (callContext._currentFnQid || '').split('::')[0] || undefined;
         const resolved = callContext._callGraph.resolve
-          ? callContext._callGraph.resolve(node.callee) : null;
+          ? callContext._callGraph.resolve(node.callee, _callerFile) : null;
         const fn  = resolved && resolved.qid ? resolved : null;
         const qid = resolved && (resolved.qid || resolved);
         if (typeof qid === 'string' && fn && Array.isArray(fn.params)) {
@@ -709,7 +711,7 @@ export function runTaintEngine(perFileIR, callGraph, opts = {}) {
       if (Date.now() > deadlineMs) break;
       const inv = hoInvocations[hi];
       if (!inv.callee || !inv.taintedParam) continue;
-      const resolved = callGraph.resolve ? callGraph.resolve(inv.callee) : null;
+      const resolved = callGraph.resolve ? callGraph.resolve(inv.callee, fn && fn.file) : null;
       const cbFn = resolved && resolved.qid ? resolved : null;
       if (!cbFn || !cbFn.params || !cbFn.params.length) continue;
       const cbEntry = new Set([cbFn.params[inv.paramIndex || 0]]);

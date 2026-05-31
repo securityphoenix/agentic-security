@@ -67,8 +67,19 @@ export function buildCallGraph(perFileIR, fileContents) {
   // the call graph for the callee's qid at the assign-from-call site.
   // Same precedence as the edge resolution above (same-file ident wins,
   // ClassName.method falls back).
-  function resolve(name) {
+  function resolve(name, callerFile) {
     if (!name || typeof name !== 'string') return null;
+    // Roadmap #3: same-file preference. A bare name (`handler`, `save`,
+    // `query`) defined in several files would otherwise resolve to whichever
+    // file Map is iterated first, mis-targeting interprocedural taint to a
+    // same-named function in an unrelated file. When the caller's own file
+    // defines the name, that is overwhelmingly the intended callee — prefer
+    // it. Backward-compatible: with no callerFile (or no local match) the
+    // original resolution order is unchanged, so no edge is ever dropped.
+    if (callerFile) {
+      const local = byNameInFile.get(callerFile);
+      if (local && local.has(name)) return local.get(name);
+    }
     for (const m of byNameInFile.values()) {
       if (m.has(name)) return m.get(name);
     }

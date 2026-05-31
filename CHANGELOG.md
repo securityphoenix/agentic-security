@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.94.0 — Same-file-preference call resolution (roadmap #3)
+
+The cross-file resolver (`ir/callgraph.js` `resolve()`) was name-based: a bare
+name defined in several files (`handler`, `save`, `query`, …) resolved to
+whichever file Map was iterated first, mis-targeting interprocedural taint to a
+same-named function in an unrelated file (wrong-target FPs and missed-target
+FNs).
+
+- `resolve(name, callerFile)` now **prefers the caller's own file** when it
+  defines the name — overwhelmingly the intended callee. The taint engine
+  threads the caller's file at all three resolution sites (assign-call,
+  plain-call, higher-order callback).
+- **Backward-compatible by construction:** with no `callerFile` or no local
+  match, the original resolution order is unchanged, so no resolution edge is
+  ever dropped (no new false negatives). The full gate — incl. interproc-k2's
+  context test, deep-taint, calibration — stays green.
+- New `test/callgraph-resolve.test.js`.
+
 ## 0.93.0 — CSV/formula injection (CWE-1236) + scoped validation-lib sanitizers (#7)
 
 - **CSV / formula injection** (`sast/csv-injection.js`, CWE-1236): flags user
