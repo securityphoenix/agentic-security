@@ -90,6 +90,7 @@ import { scanJavaStructural } from './sast/java-structural.js';
 import { scanCsharpStructural } from './sast/csharp-structural.js';
 import { scanJsFrameworkStructural } from './sast/js-framework-structural.js';
 import { scanPythonStructural } from './sast/python-structural.js';
+import { scanGoStructural } from './sast/go-structural.js';
 import { scanResponseSplitting } from './sast/response-splitting.js';
 import { scanStoredPromptInjection, scanStoredPromptInjectionCrossFile } from './sast/llm-stored-prompt.js';
 import { scanRAGPoisoning } from './sast/rag-poisoning.js';
@@ -1223,7 +1224,7 @@ function _hasSsrfHostGuard(ctx) { return _SSRF_HOST_GUARD_RE.test(_guardWindow(c
 // A path-traversal containment guard near the file sink: a basename/strip
 // helper that removes directory components, a framework safe-join, or a
 // canonicalize-then-startsWith containment check.
-const _PATH_GUARD_RE = /\b(?:basename|GetFileName|secure_filename|sanitize_filename|send_from_directory|safe_join)\s*\(|\b(?:startsWith|startswith|StartsWith)\s*\(|\bgetCanonicalPath\b|\btoRealPath\b|\bfilepath\s*\.\s*Clean\b/;
+const _PATH_GUARD_RE = /\b(?:basename|GetFileName|secure_filename|sanitize_filename|send_from_directory|safe_join)\s*\(|\b(?:startsWith|startswith|StartsWith|HasPrefix)\s*\(|\bgetCanonicalPath\b|\btoRealPath\b|\bfilepath\s*\.\s*(?:Clean|Base|Abs)\b/;
 function _hasPathGuard(ctx) { return _PATH_GUARD_RE.test(_guardWindow(ctx)); }
 
 // Centralized guard-recognition pass (#1). SSRF (CWE-918) and path-traversal
@@ -7356,6 +7357,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanCsharpStructural(p,c));
       aF.push(...scanJsFrameworkStructural(p,c));
       aF.push(...scanPythonStructural(p,c));
+      aF.push(...scanGoStructural(p,c));
       aF.push(...scanResponseSplitting(p,c));
       aF.push(...scanStoredPromptInjection(p,c));
       aF.push(...scanRAGPoisoning(p,c));

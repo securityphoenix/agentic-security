@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.103.0 — Go recall: structural detectors (PRD Tier 1)
+
+- **`go-structural.js`** (new): SQL injection via a `database/sql` query method
+  built with `fmt.Sprintf` or string concat (CWE-89), and path traversal via
+  `os.Open`/`os.ReadFile`/etc. built with concat or `fmt.Sprintf` (CWE-22).
+  High precision: parameterized queries (`db.Query("… ?", x)`) and
+  canonicalized paths (`filepath.Base` + `strings.HasPrefix`) have no
+  Sprintf/concat in the sink argument, so they don't match.
+- The centralized guard pass (`dropGuardedFindings`) gained Go path-guard
+  tokens (`filepath.Base`/`Abs`, `HasPrefix`).
+- **Measured: 2 FN → TP** (gin-sqli, go-path). **Go F1 0.75 → 1.000;** corpus
+  FN 12 → 10; aggregate **F1 0.916 → 0.929.** No new FPs; full gate green.
+
 ## 0.102.0 — JS/Python framework recall: structural detectors (PRD Tier 1)
 
 JavaScript and Python were the weakest languages (F1 ~0.75) — their remaining
