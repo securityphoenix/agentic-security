@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.92.0 — Front-end hygiene detectors (3 verified-missing, additive)
+
+New `sast/frontend-hygiene.js` — three high-precision client-side detectors,
+each a verified coverage gap (no prior matches in the detector tree). All
+additive: they emit new finding classes and cannot reduce existing detection.
+
+- **Reverse tabnabbing (CWE-1022):** `<a target="_blank">` without
+  `rel="noopener"` — the opened page can rewrite `window.opener`. (low)
+- **Missing Subresource Integrity (CWE-353):** a cross-origin
+  `<script>` / stylesheet `<link>` with no `integrity=` — a compromised CDN
+  runs in your origin. Skips same-origin/relative assets. (medium/low)
+- **Angular sanitizer bypass (CWE-79):** `DomSanitizer.bypassSecurityTrust*`
+  on a non-literal value explicitly disables Angular's XSS protection on
+  attacker-influenced data. Skips constant-string arguments. (high)
+
+Fixtures + 6 tests; full gate green.
+
 ## 0.91.0 — Coverage honesty (#5+#6) + wrong-context encoding (#1 slice)
 
 Additive precision/trust features that cannot reduce existing detection.
