@@ -1,5 +1,6 @@
 // Layer 2 entry point.
 import { runTaintEngine } from './engine.js';
+import { annotateProvenClean } from './proven-clean.js';
 import { CATALOG, matchSource, matchSinkOrSanitizer, _catalogSize } from './catalog.js';
 import { applyPathFeasibility } from './path-feasibility.js';
 import { SummaryCache, entryStateFromCall } from './summaries.js';
@@ -113,6 +114,13 @@ export function runDeepAnalysis(perFileIR, callGraph, opts = {}) {
   // P1.4 — backward slice (opt-in via AGENTIC_SECURITY_BACKWARD_SLICE=1).
   if (process.env.AGENTIC_SECURITY_BACKWARD_SLICE === '1') {
     findings = annotateBackwardSlices(findings, perFileIR, callGraph);
+  }
+  // Roadmap #6 — flow-proof: prove SQL sinks reached only through a
+  // parameterizer (`provenClean`). Runs by default in the deep pass; it only
+  // touches IR-TAINT SQL findings and never drops anything. The proof-gate
+  // annotator (engine.js) consolidates this into the demotion verdict.
+  if (process.env.AGENTIC_SECURITY_NO_PROOF_GATE !== '1') {
+    try { findings = annotateProvenClean(findings, perFileIR); } catch { /* proof failure must not fail the scan */ }
   }
   // v0.70 #6 — probabilistic / soft taint. Walks each finding's trace +
   // chain, multiplies (1 - effectiveness) across sanitizers, demotes

@@ -148,6 +148,7 @@ import { annotateRuntimeCorrelation } from './posture/runtime-correlation.js';
 import { applyLearnedCalibration } from './posture/triage-learning.js';
 import { annotateFormalVerification } from './dataflow/formal-verify.js';
 import { annotatePathFeasibility } from './dataflow/smt-feasibility.js';
+import { annotateProofGate } from './dataflow/proof-gate.js';
 import { annotatePrivacyTaint, emitDpiaArtifact } from './dataflow/privacy-taint.js';
 import { buildThreatModel as buildAutoThreatModel, persistThreatModel as persistAutoThreatModel } from './posture/threat-model-auto.js';
 import { runApiContractScan } from './posture/api-contract.js';
@@ -7670,6 +7671,14 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   _runAnnotator("annotateCalibratedConfidence", () => { annotateCalibratedConfidence(finalFindings, { scanRoot }); });
   const _projectCtx = (() => { try { return detectProjectContext(fc, aR); } catch { return {}; } })();
   _runAnnotator("annotateExploitability", () => { annotateExploitability(finalFindings, _projectCtx); });
+  // Roadmap #6 — proof-gate precision pass. Runs AFTER confidence +
+  // exploitability so it can demote their tiers, and BEFORE mitigation /
+  // composite-risk so the demotion flows into the canonical ranking. Default
+  // on; opt out with AGENTIC_SECURITY_NO_PROOF_GATE=1. Demotes proven-clean /
+  // proven-infeasible flows (confidence + tiers only, never severity).
+  if (process.env.AGENTIC_SECURITY_NO_PROOF_GATE !== '1') {
+    _runAnnotator("annotateProofGate", () => { annotateProofGate(finalFindings); });
+  }
   // v3 next-gen: production-aware context ingest (Pillar 9). Must run BEFORE
   // the mitigation composite, persona prioritization, and final why-fired
   // record so those see the demotion signals.

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.88.0 — Proof-gate precision pass (multi-language SAST roadmap #6)
+
+First flagship of the "perfect multi-language SAST" program: report only
+provably-feasible flows, and demote — never drop — flows we can prove are
+clean or infeasible.
+
+- **New `dataflow/proof-gate.js`** consolidates the engine's two independent
+  flow-proof signals (`provenClean` from `proven-clean.js`, `_provenUnreachable`
+  from `exploit-prover.js`) into one verdict per finding:
+  `finding.proof = { verdict: 'feasible' | 'proven-clean' | 'proven-infeasible' | 'unproven', reasons[] }`.
+- **Wired the previously-dead `proven-clean.js`** into `runDeepAnalysis` — SQL
+  sinks reached only through a parameterizer are now proven clean by default.
+- **Recall-preserving demotion:** proven-clean / proven-infeasible findings get
+  lowered `confidence` + `confidenceTier` + `exploitabilityTier` (and rank below
+  feasible findings), but **`severity` is left untouched** so a heuristic proof
+  can never hide a finding from a severity-based CI gate.
+- Default on; opt out with `AGENTIC_SECURITY_NO_PROOF_GATE=1`. New
+  `test/proof-gate.test.js`; full gate green.
+
+Remaining roadmap items (#1 universal IR, #2 k-CFA, #3 dormant taint paths,
+#4 library summaries, #5 framework catalog parity, #7 dynamic dispatch,
+#8 incremental-by-default, #9 per-language metrics, #10 LLM gate) ship as
+their own benchmarked releases.
+
 ## 0.87.0 — Sharpen the 12
 
 Ergonomics + power features for the 12-command surface left after the

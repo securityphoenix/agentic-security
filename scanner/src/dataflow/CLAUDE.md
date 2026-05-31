@@ -22,6 +22,8 @@ Layer-2 taint engine. Walks the Layer-1 IR (`../ir/`) with field-sensitive forwa
 - `runTaintEngine(perFileIR, callGraph, opts)` — the public entry. Called from `engine.js` when `AGENTIC_SECURITY_DEEP=1` (or auto-enabled outside CI).
 - `applyPathFeasibility` — constant-fold pass that runs before the worklist.
 - `annotateBackwardSlices` — backward-slice annotation for already-emitted findings.
+- `annotateProvenClean(findings, perFileIR)` (`proven-clean.js`) — proves a SQL sink is reached only through a parameterizer; sets `provenClean`. Wired by default in `runDeepAnalysis` (opt out: `AGENTIC_SECURITY_NO_PROOF_GATE=1`).
+- `annotateProofGate(findings)` (`proof-gate.js`) — the precision gate. Consolidates `provenClean` + `_provenUnreachable` into one `finding.proof = { verdict, reasons }` and applies a **recall-preserving demotion** (lowers `confidence` + `confidenceTier` + `exploitabilityTier`, never `severity`). Runs in `engine.js` after confidence/exploitability, before mitigation/composite-risk. Default on.
 
 ## Configuration / opt-in
 
