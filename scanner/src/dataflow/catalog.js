@@ -99,6 +99,15 @@ export const CATALOG = [
   { kind: 'sanitizer', id: 'js-String-coerce',       language: 'js', match: { type: 'call', callee: 'String'              }, effect: 'strip', appliesTo: ['mongo-operator'] },
   { kind: 'sanitizer', id: 'js-validator-escape',    language: 'js', match: { type: 'call', callee: 'escape'              }, effect: 'strip', appliesTo: ['xss'] },
   { kind: 'sanitizer', id: 'js-strip_tags',          language: 'js', match: { type: 'call', callee: 'stripTags'            }, effect: 'strip', appliesTo: ['xss'] },
+  // Schema-validation libraries (#7). Scoped to NoSQL/operator injection ONLY:
+  // validating that input matches a typed shape defeats operator injection
+  // (a `{$gt:''}` object can't satisfy `z.string()`). It does NOT sanitize the
+  // value for XSS/SQL/cmd — a validated string is still a payload — so these
+  // are deliberately NOT tagged for those families (doing so would cause false
+  // negatives). Only distinctive callees, to avoid colliding with JSON.parse.
+  { kind: 'sanitizer', id: 'js-zod-safeParse',     language: 'js', match: { type: 'call', callee: 'safeParse'         }, effect: 'strip', appliesTo: ['mongo-operator'] },
+  { kind: 'sanitizer', id: 'js-zod-parseAsync',    language: 'js', match: { type: 'call', callee: 'parseAsync'        }, effect: 'strip', appliesTo: ['mongo-operator'] },
+  { kind: 'sanitizer', id: 'js-class-validator',   language: 'js', match: { type: 'call', callee: 'validateOrReject'  }, effect: 'strip', appliesTo: ['mongo-operator'] },
 
   // ─── SOURCES (Python — Flask / FastAPI / Django) ──────────────────────────
   { kind: 'source', id: 'py-flask-request-args',   language: 'py', framework: 'flask',   match: { type: 'member', object: 'request', prop: 'args'    }, label: 'request.args' },

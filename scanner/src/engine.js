@@ -83,6 +83,7 @@ import { scanSSTI } from './sast/ssti.js';
 import { scanOpenRedirect } from './sast/open-redirect.js';
 import { scanWrongContextSanitizer } from './sast/wrong-context-sanitizer.js';
 import { scanFrontendHygiene } from './sast/frontend-hygiene.js';
+import { scanCsvInjection } from './sast/csv-injection.js';
 import { scanResponseSplitting } from './sast/response-splitting.js';
 import { scanStoredPromptInjection, scanStoredPromptInjectionCrossFile } from './sast/llm-stored-prompt.js';
 import { scanRAGPoisoning } from './sast/rag-poisoning.js';
@@ -7271,6 +7272,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanOpenRedirect(p,c));
       aF.push(...scanWrongContextSanitizer(p,c));
       aF.push(...scanFrontendHygiene(p,c));
+      aF.push(...scanCsvInjection(p,c));
       aF.push(...scanResponseSplitting(p,c));
       aF.push(...scanStoredPromptInjection(p,c));
       aF.push(...scanRAGPoisoning(p,c));

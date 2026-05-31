@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.93.0 — CSV/formula injection (CWE-1236) + scoped validation-lib sanitizers (#7)
+
+- **CSV / formula injection** (`sast/csv-injection.js`, CWE-1236): flags user
+  data written to a CSV/spreadsheet writer without neutralizing leading formula
+  characters (`= + - @` / tab). High precision — requires a CSV-write API + a
+  user-taint hint on the same statement and no formula-escape helper nearby.
+- **#7 validation-library sanitizers (correct, narrow):** zod `safeParse`/
+  `parseAsync` and class-validator `validateOrReject` are now modeled as
+  sanitizers **scoped to `mongo-operator` (NoSQL/operator injection) ONLY**.
+  Validating a typed shape defeats operator injection, but a validated string
+  is still an XSS/SQL payload — so they are deliberately NOT tagged for those
+  families (a blanket tag would cause false negatives). Distinctive callees
+  only, to avoid colliding with `JSON.parse`.
+
+Fixtures + tests for both; full gate green.
+
 ## 0.92.0 — Front-end hygiene detectors (3 verified-missing, additive)
 
 New `sast/frontend-hygiene.js` — three high-precision client-side detectors,
