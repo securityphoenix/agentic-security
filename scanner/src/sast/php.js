@@ -18,6 +18,13 @@ const RE = {
   extractRequest: /\bextract\s*\(\s*\$(?:_REQUEST|_GET|_POST|HTTP_GET_VARS|HTTP_POST_VARS)\s*[,)]/g,
   passwordHashMd5: /\b(?:md5|sha1)\s*\(\s*\$(?:_(?:REQUEST|GET|POST)|password|passwd|pwd|hash_input)/gi,
   phpinfo: /\bphpinfo\s*\(/g,
+  // Structural (taint-independent): a shell or SQL sink built with string
+  // concat (`'…' .`) or double-quote `$var` interpolation is the injection
+  // shape regardless of the source token — the rules above require the literal
+  // $_REQUEST/$_GET/$_POST on the sink line, which misses framework idioms
+  // (`$f = $r->query->get('x'); shell_exec('gzip ' . $f)`).
+  cmdInjectionStructural: /\b(?:shell_exec|exec|system|passthru|popen|proc_open|pcntl_exec)\s*\(\s*(?:"[^"\n]*\$|'[^'\n]*'\s*\.|"[^"\n]*"\s*\.)/g,
+  sqlInjectionStructural: /\b(?:DB::raw|DB::select|DB::statement|DB::insert|DB::update|DB::delete|whereRaw|orWhereRaw|havingRaw|selectRaw|orderByRaw|mysqli_query|pg_query)\s*\(\s*(?:DB::raw\s*\(\s*)?(?:"[^"\n]*\$|"[^"\n]*"\s*\.|'[^'\n]*'\s*\.)/g,
 };
 
 function lineOf(raw, idx) { return raw.substring(0, idx).split('\n').length; }
@@ -74,6 +81,16 @@ export function scanPhp(fp, raw) {
           vuln: 'phpinfo() exposes environment, headers, paths, and INI settings',
           severity: 'high', cwe: 'CWE-200',
           remediation: 'Delete phpinfo() before deploy. It leaks the PHP version, loaded extensions, environment variables, document root, and request headers — a one-shot recon page for an attacker.',
+        },
+        cmdInjectionStructural: {
+          vuln: 'Command Injection: shell function built with string concat / interpolation',
+          severity: 'critical', cwe: 'CWE-78',
+          remediation: 'Use the array form of proc_open(["gzip", $f], ...) so no shell parses the string, and validate inputs. Never concatenate or interpolate values into shell_exec/exec/system/passthru.',
+        },
+        sqlInjectionStructural: {
+          vuln: 'SQL Injection: raw query built with string concat / interpolation',
+          severity: 'critical', cwe: 'CWE-89',
+          remediation: 'Use parameter bindings: DB::select("SELECT … WHERE name = ?", [$name]) or the query builder with bindings. Never concatenate/interpolate into DB::raw / whereRaw / mysqli_query.',
         },
       }[key];
       push({

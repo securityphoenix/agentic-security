@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.99.0 — Ruby + PHP recall: structural injection detectors (PRD Tier 1)
+
+Continues the recall-led PRD down the corpus FN list. Same root cause as
+Kotlin: the fixtures route request data through a local var
+(`name = params[:name]` / `$f = $r->query->get(...)`) before the sink, so the
+existing rules — which require the literal `params`/`$_GET` token on the sink
+line — miss them.
+
+- **`ruby.js`**: structural ActiveRecord SQLi (`.where("… #{x}")` / concat,
+  CWE-89) and shell cmdi (backtick / `system` / `exec` with `#{}` or concat,
+  CWE-78).
+- **`php.js`**: structural shell cmdi (`shell_exec`/`exec`/`system`/`proc_open`
+  with `'…' .` concat or `"… $var"` interpolation, CWE-78) and raw SQLi
+  (`DB::raw`/`whereRaw`/`mysqli_query` with concat/interp, CWE-89).
+- High precision: parameterized queries (`.where('… ?', x)`,
+  `DB::select('…?', [$x])`), array-form exec (`proc_open(['gzip',$f])`,
+  `Open3.capture2('finger', user)`) do **not** match.
+- **Measured: 4 more FN → TP** (rails-sqli, rails-cmdi, symfony-cmdi,
+  laravel-sqli). **Total corpus FN this session: 35 → 25** (Kotlin 6 + Ruby/PHP
+  4). Purely additive, language-scoped, no regressions. New
+  `ruby-php-structural.test.js` + fixtures; full gate green.
+
+Deferred: symfony-csrf (CSRF is a state-change/token detector, FP-prone as a
+regex — needs framework-aware modeling, not a structural injection rule).
+
 ## 0.98.0 — Kotlin recall: close all 6 corpus false-negatives (roadmap Tier 1)
 
 First execution of the "perfect SAST" PRD, which leads with **recall** (the

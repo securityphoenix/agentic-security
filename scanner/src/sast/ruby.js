@@ -23,6 +23,13 @@ const RE = {
   attributesEq: /\.\s*attributes\s*=\s*params\b(?!\s*\.permit)/g,
   openSsrf: /\b(?:open|URI\.open|URI\.parse\([^)]*\)\.read)\s*\(\s*(?:params|request|@\w+\.params)\b/g,
   fileRead: /\bFile\s*\.\s*(?:read|open|new|readlines)\s*\(\s*params\s*\[/g,
+  // Structural (taint-independent): an ActiveRecord query or shell command
+  // built with string interpolation (#{...}) or concat is the injection shape
+  // regardless of whether the value is `params` or a local variable that came
+  // from params — the existing rules above require the literal `params` token
+  // on the sink line, which misses `name = params[:x]; where("... #{name}")`.
+  sqlInjectionStructural: /\.(?:where|find_by_sql|having|order|group|joins|select|from|pluck|update_all|delete_all|exec_query|execute|select_all|select_value|find_by)\s*\(\s*(?:"[^"\n]*#\{|['"][^'"\n]*['"]\s*\+)/g,
+  cmdInjectionStructural: /(?:`[^`\n]*#\{|\b(?:system|exec)\s*\(\s*"[^"\n]*#\{|\bIO\.popen\s*\(\s*"[^"\n]*#\{|\b(?:system|exec)\s*\(\s*['"][^'"\n]*['"]\s*\+)/g,
 };
 
 function lineOf(raw, idx) { return raw.substring(0, idx).split('\n').length; }
@@ -91,6 +98,16 @@ export function scanRuby(fp, raw) {
           vuln: 'Path Traversal: File.read/open with user-controlled path',
           severity: 'high', cwe: 'CWE-22',
           remediation: 'Canonicalize the path and verify it stays under an allowed base: `path = File.expand_path(File.join(base, name)); raise unless path.start_with?(base)`.',
+        },
+        sqlInjectionStructural: {
+          vuln: 'SQL Injection: ActiveRecord query built with string interpolation / concat',
+          severity: 'critical', cwe: 'CWE-89',
+          remediation: 'Use the parameterized form: `User.where("name = ?", name)` or `where(name: name)`. Never interpolate (`#{...}`) or concatenate values into a SQL fragment.',
+        },
+        cmdInjectionStructural: {
+          vuln: 'Command Injection: shell command built with string interpolation / concat',
+          severity: 'critical', cwe: 'CWE-78',
+          remediation: 'Use `Open3.capture2("cmd", arg1, arg2)` with separate arguments (no shell). Backticks and `system("... #{x}")` run through the shell.',
         },
       }[key];
       push({
