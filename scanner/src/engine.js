@@ -1196,6 +1196,65 @@ function _hasPostLookupOwnershipCheck(lines, sinkLine){
   return false;
 }
 
+// An SSRF host allow/deny guard near the request sink: a hostname checked
+// against an allow/deny-list, an RFC1918 / loopback / link-local / metadata
+// prefix check, or a known SSRF-filter helper. Control-flow (not assignment),
+// so it isn't caught by the sanitizer-on-assignment path. Recall-safe: an
+// unguarded fetch still has no guard in its window.
+const _SSRF_HOST_GUARD_RE = /\b(?:DENY|ALLOW(?:ED)?|allow_?list|deny_?list|block_?list|allowed_?hosts?|blocked_?hosts?|ALLOWED_HOSTS)\b|\.(?:hostname|host|getHost\s*\(\s*\))\b[\s\S]{0,60}?(?:\bin\b|\.has\s*\(|\.includes\s*\(|\.contains\s*\(|[!=]=|\.startsWith\s*\(|\.startswith\s*\()|\b(?:startsWith|startswith)\s*\(\s*['"](?:10\.|192\.168\.|127\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|::1|fc00|fd)|\bipaddress\b|\bis_private\b|\bis_loopback\b|getaddrinfo|gethostbyname|ssrf[-_]?req[-_]?filter|isSafeUrl|isPrivateIp|validateUrl|_is_metadata_or_private|urlparse\s*\([^)]*\)\s*\.\s*(?:hostname|netloc)/i;
+
+// A comment-stripped window around the sink. Comments must not read as guards
+// (e.g. a "no host allow-list / 169.254.169.254" comment describing the vuln).
+function _guardWindow(ctx, before = 25, after = 5) {
+  if (!ctx || !Array.isArray(ctx.lines)) return '';
+  const line = ctx.line || 1;
+  const lo = Math.max(0, line - before);
+  const hi = Math.min(ctx.lines.length, line + after);
+  return ctx.lines.slice(lo, hi).join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/(^|[^\w'"`])#[^\n]*/g, '$1 ');
+}
+
+function _hasSsrfHostGuard(ctx) { return _SSRF_HOST_GUARD_RE.test(_guardWindow(ctx)); }
+
+// A path-traversal containment guard near the file sink: a basename/strip
+// helper that removes directory components, a framework safe-join, or a
+// canonicalize-then-startsWith containment check.
+const _PATH_GUARD_RE = /\b(?:basename|GetFileName|secure_filename|sanitize_filename|send_from_directory|safe_join)\s*\(|\b(?:startsWith|startswith|StartsWith)\s*\(|\bgetCanonicalPath\b|\btoRealPath\b|\bfilepath\s*\.\s*Clean\b/;
+function _hasPathGuard(ctx) { return _PATH_GUARD_RE.test(_guardWindow(ctx)); }
+
+// Centralized guard-recognition pass (#1). SSRF (CWE-918) and path-traversal
+// (CWE-22) are emitted by several independent detectors (regex, structural,
+// per-language flow, PY-SAST, CSHARP, GO) — none of which shared a notion of
+// "the sink is hardened by a host allow/deny check or a path containment
+// guard." This single pass drops such findings uniformly, regardless of which
+// detector produced them, using the same comment-stripped window guards.
+// Recall-safe: a genuinely-unguarded sink has no guard in its window (the
+// cve-replay vulnerable-tier TP count is the invariant that proves this).
+export function dropGuardedFindings(findings, fileContents) {
+  if (!Array.isArray(findings)) return findings;
+  const cache = new Map();
+  const linesOf = (file) => {
+    if (cache.has(file)) return cache.get(file);
+    const c = fileContents && fileContents[file];
+    const arr = typeof c === 'string' ? c.split('\n') : null;
+    cache.set(file, arr);
+    return arr;
+  };
+  return findings.filter((f) => {
+    if (!f || !f.file || typeof f.line !== 'number') return true;
+    const cwe = f.cwe || '';
+    if (cwe !== 'CWE-918' && cwe !== 'CWE-22') return true;
+    const lines = linesOf(f.file);
+    if (!lines) return true;
+    const ctx = { lines, line: f.line };
+    if (cwe === 'CWE-918' && _hasSsrfHostGuard(ctx)) return false;
+    if (cwe === 'CWE-22' && _hasPathGuard(ctx)) return false;
+    return true;
+  });
+}
+
 function _detectSafeSinkShape(vuln, args, ctx){
   // 1.1: Reflected XSS / SSRF / Path Traversal / Open Redirect / Code Injection
   // sinks with empty or whitespace-only args cannot reflect user input — skip
@@ -1230,6 +1289,8 @@ function _detectSafeSinkShape(vuln, args, ctx){
     if (_isSafeExecFileCall(args)) return 'execFile-list';
   }
   if(/SSRF/.test(vuln) && _isStaticUrlFirstArg(args)) return 'static-url';
+  if(/SSRF/.test(vuln) && _hasSsrfHostGuard(ctx)) return 'ssrf-host-guard';
+  if(/Path Traversal/.test(vuln) && _hasPathGuard(ctx)) return 'path-contained';
   if(/Open Redirect/.test(vuln)) {
     // Static redirect targets (env var or string literal) are not user-controlled
     if (/^\s*process\.env\b/.test(args)) return 'static-redirect-target';
@@ -1967,6 +2028,17 @@ function scanStructuralVulns(fp, raw) {
           continue;
         }
         effectiveSeverity = s;
+      }
+      // Guard recognition (precision, #1): a structural SSRF/path finding on
+      // hardened code — an SSRF host allow/deny check, or a path
+      // basename/containment guard near the sink — is a false positive.
+      if (/SSRF/.test(pat.vuln) && _hasSsrfHostGuard({ lines, line })) {
+        _suppressionLog.push({vuln:pat.vuln, file:fp, line, snippet, reason:'ssrf-host-guard'});
+        continue;
+      }
+      if (/Path Traversal/.test(pat.vuln) && _hasPathGuard({ lines, line })) {
+        _suppressionLog.push({vuln:pat.vuln, file:fp, line, snippet, reason:'path-contained'});
+        continue;
       }
       const id = `struct:${fp}:${line}:${pat.vuln.replace(/\s/g, '_')}`;
       if (!findings.find(f => f.id === id)) {
@@ -7571,6 +7643,10 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   // AGENTIC_SECURITY_TREE_SITTER=1; degrades to no-op without the optional dep).
   if(process.env.AGENTIC_SECURITY_TREE_SITTER==='1'){try{aF.push(...await scanTreeSitterSinks(fc));}catch(_){}}
   let finalFindings;try{finalFindings=dedupeFindingsWithEvidence(aF);}catch(_){finalFindings=dd(aF,f=>f.id);}
+  // #1 — centralized SSRF/path guard recognition: drop CWE-918/CWE-22 findings
+  // on code hardened by a host allow/deny check or a path containment guard,
+  // regardless of which detector emitted them. Opt out: AGENTIC_SECURITY_NO_GUARD_RECOGNITION=1.
+  if(process.env.AGENTIC_SECURITY_NO_GUARD_RECOGNITION!=='1'){try{finalFindings=dropGuardedFindings(finalFindings,fc);}catch(_){}}
   // 0.34.6: filter out Java FPs where a sanitizer pattern (argv-form ProcessBuilder,
   // parameterized prepareStatement, constant-folded dead-branch) is present.
   // applyJavaBenchSuppressions is a no-op on non-.java files.

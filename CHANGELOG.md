@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.101.0 — SSRF/path guard recognition: precision (PRD #1)
+
+The recall work (v0.98–v0.100) lifted aggregate F1 ~0.50 → ~0.80 but surfaced a
+precision problem: the scanner flagged **14 *fixed* files as still-vulnerable**
+(precision ~0.83) — mostly SSRF, where the fix adds a host allow/deny check, and
+path traversal, where the fix adds a containment guard. Multiple independent
+detectors decided SSRF/path with no shared notion of "this sink is hardened."
+
+- **`ssrf-cloud-metadata.js`**: rule #1 no longer flags the `169.254.169.254`
+  literal when it sits in a deny-list / host-comparison guard (the remediation,
+  not the vuln).
+- **`engine.js` `dropGuardedFindings(findings, fc)`** — a single, centralized
+  pass after all detectors that drops a CWE-918 finding when the sink window has
+  a host allow/deny check (deny/allow-list, `getHost`/`hostname` comparison,
+  RFC1918/metadata prefix check, `ipaddress`/`getaddrinfo`/`ssrf-req-filter`), or
+  a CWE-22 finding when the window has a path containment guard
+  (`basename`/`GetFileName`/`secure_filename`/`send_from_directory`, or
+  canonicalize + `startsWith`). Uniform across every emitter (regex, structural,
+  per-language flow, PY-SAST, CSHARP, GO). The window is **comment-stripped** so
+  a "no allow-list / 169.254…" vuln comment can't read as a guard. Opt out:
+  `AGENTIC_SECURITY_NO_GUARD_RECOGNITION=1`.
+- **Measured: corpus false-positives 14 → 2** (the 2 remaining are XSS
+  escape-html recognition — a different family, next up). **Precision ≈ 0.97;
+  aggregate F1 0.80 → 0.861 — past the 0.85 target.** Java + C# now 1.000;
+  Python/Go/PHP at 0 FP. **Zero recall loss** (vulnerable-tier TP=68 unchanged) —
+  the invariant that proves the guards don't hide real flows.
+- New `guard-recognition.test.js`; full gate green.
+
 ## 0.100.0 — Java/Spring + C# recall: structural detectors (PRD Tier 1)
 
 Continues the recall-led PRD. The flow-based `csharp.js` and AST/bench Java

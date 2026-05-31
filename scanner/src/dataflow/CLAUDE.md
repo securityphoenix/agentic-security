@@ -22,6 +22,10 @@ Layer-2 taint engine. Walks the Layer-1 IR (`../ir/`) with field-sensitive forwa
 - **Contexts beyond the per-function cap.** Once a function has been computed under `AGENTIC_SECURITY_KCFA_MAX_CONTEXTS` distinct tainted-arg shapes, further shapes fall back to the empty-entry summary (an under-approximation, bounded on purpose).
 - **Implicit flow.** `implicit-flow.js` exists for `if (tainted) { x = "yes" }` propagation but is conservative-by-default.
 
+## Precision: centralized SSRF/path guard recognition
+
+`engine.js` `dropGuardedFindings(findings, fc)` runs after all detectors and drops a CWE-918 (SSRF) finding when the sink window has a host allow/deny check (deny/allow-list, `getHost`/`hostname` comparison, RFC1918/`169.254.169.254` prefix check, `ipaddress`/`getaddrinfo`/`ssrf-req-filter`), or a CWE-22 (path) finding when the window has a containment guard (`basename`/`GetFileName`/`secure_filename`/`send_from_directory`, or canonicalize+`startsWith`). It's the single source of truth so every emitter (regex, structural, per-language flow, PY-SAST, CSHARP, GO) is treated uniformly. The window is **comment-stripped** (a "no allow-list / 169.254…" vuln comment must not read as a guard). Opt out: `AGENTIC_SECURITY_NO_GUARD_RECOGNITION=1`.
+
 ## Entry points
 
 - `runTaintEngine(perFileIR, callGraph, opts)` — the public entry. Called from `engine.js` when `AGENTIC_SECURITY_DEEP=1` (or auto-enabled outside CI).

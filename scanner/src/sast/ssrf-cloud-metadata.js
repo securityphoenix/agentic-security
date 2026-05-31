@@ -21,6 +21,13 @@ const SSRF_CLIENT_RE = /\b(?:fetch|axios\.\w+|requests\.\w+|http\.get|http\.requ
 
 const METADATA_GUARD_RE = /(?:169\.254\.169\.254|169\.254\.|metadata\.google\.internal|metadata\.azure\.com|fd00:ec2|metadata\.aws\.amazon)/i;
 
+// A metadata literal that appears inside an allow/deny-list or a host
+// comparison is a GUARD (the remediation), not an SSRF — e.g.
+// `DENY = Set.of("169.254.169.254", …)`, `if (u.Host == "169.254.169.254")
+// throw`, `host !in setOf("169.254.169.254")`, `["169.254.169.254"].includes`.
+// Flagging it makes the scanner cry wolf on correctly-hardened code.
+const METADATA_GUARD_CONTEXT_RE = /\b(?:deny|denylist|blocklist|blocked?|allow(?:list|ed)?|forbidden|reject(?:ed)?|disallow|banned?)\b|[!=]==?\s*['"]|\.equals\s*\(|\.contains\b|\.includes\b|\.indexOf\b|\bin\s+\w|\bnot\s+in\b|!in\b|Set\s*\.\s*of|setOf|new\s+HashSet|\bthrow\b|SecurityException|\babort\b|getHost\s*\(|\.host\b|\.Host\b/i;
+
 function lineOf(raw, idx) { return raw.substring(0, idx).split('\n').length; }
 
 export function scanSSRFCloudMetadata(fp, raw) {
@@ -37,6 +44,12 @@ export function scanSSRFCloudMetadata(fp, raw) {
     let m;
     while ((m = r.exec(code))) {
       const line = lineOf(raw, m.index);
+      // Guard recognition: if the metadata literal sits in an allow/deny-list
+      // or host-comparison (this line ± 1), it's blocking the endpoint, not
+      // calling it — suppress the false positive on hardened code.
+      const lines = raw.split('\n');
+      const ctx = lines.slice(Math.max(0, line - 2), line + 1).join('\n');
+      if (METADATA_GUARD_CONTEXT_RE.test(ctx)) continue;
       push({
         id: `ssrf-meta-hardcoded:${fp}:${line}`,
         file: fp, line,
