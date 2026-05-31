@@ -1001,6 +1001,23 @@ export function toShipVerdict(scan, options = {}) {
   } else if (advisoryCount > 0) {
     lines.push(c(`  ${advisoryCount} advisory item${advisoryCount === 1 ? '' : 's'} — run /security-scan-all --firehose to see them.`, DIM));
   }
+  // Coverage-honesty line (#5/#6): show the scan's blind spots — which
+  // languages got flow analysis vs pattern-only, what was skipped, and how
+  // many dangerous-looking calls had no finding. One concise line, not bloat.
+  const _covMeta = scan._scanMeta;
+  if (_covMeta && _covMeta.analysisTier) {
+    const t = _covMeta.analysisTier;
+    const pat = Object.keys(t.patternOnly || {});
+    const segs = [`${_covMeta.filesScanned ?? '?'} files`];
+    const ir = Object.keys(t.irTaint || {});
+    if (ir.length) segs.push(`flow=[${ir.join(',')}]`);
+    if (pat.length) segs.push(`pattern-only=[${pat.join(',')}]`);
+    const skipped = (_covMeta.filesSkipped || 0) + (_covMeta.filesDenseSkipped || 0);
+    if (skipped) segs.push(`${skipped} skipped`);
+    if (_covMeta.unmodeledSinkCandidates?.count) segs.push(`${_covMeta.unmodeledSinkCandidates.count} unmodeled-sink candidate${_covMeta.unmodeledSinkCandidates.count === 1 ? '' : 's'}`);
+    lines.push('');
+    lines.push(c('  Coverage: ' + segs.join(' · '), DIM));
+  }
   lines.push('');
   lines.push(c('  🛡  agentic-security · created by ClearCapabilities.Com', DIM));
   return lines.join('\n');

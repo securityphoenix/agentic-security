@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.96.0 — Surface coverage honesty + make the corpus reporter runnable
+
+Completes the measurement threads from 0.91/0.95 — the data existed but wasn't
+usable. No detection changes.
+
+- **Coverage line in the scan report.** `toCLI` now renders a one-line
+  blind-spot summary from `_scanMeta`: files scanned, which languages got flow
+  analysis (`flow=[…]`) vs pattern-only, how many files were skipped, and the
+  unmodeled-sink-candidate count. The #5/#6 data is finally visible to users
+  instead of sitting unread in the JSON.
+- **`bench/cve-replay/corpus-status.mjs`** — a runnable report for #10:
+  `node bench/cve-replay/corpus-status.mjs [--gaps|--json]` prints progress
+  toward the 500-entry target and the empty CWE×language cells. On the current
+  corpus: 88/500 entries, 64/160 cells covered, 96 gaps (thinnest: ruby/go/php).
+
+### Deliberately NOT done this round
+- **#8 long-tail languages onto the IR** — needs a tree-sitter dependency
+  (can't be installed/bundle-validated in this environment) or five hand-written
+  parsers. A dependency decision, not a safe single-pass change.
+- **#1 full** — context-tagged taint lattice (core-engine rewrite).
+
 ## 0.95.0 — Stored taint (#2, opt-in) + corpus coverage reporter (#10)
 
 - **#2 — Second-order / stored taint** (`sast/stored-taint.js`, **opt-in** via
