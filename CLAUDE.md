@@ -2,7 +2,7 @@
 
 Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + function-level reachability), secrets, IaC, prompt-injection, MCP/agent-tool audit, auth/authZ deep analysis, attack chains, PoC generation, SBOM/PBOM/AI-BOM, SARIF ingest, and compliance attestation (NIST AI 600-1, OWASP ASVS, OWASP LLM Top 10, EU AI Act).
 
-**Version:** 0.105.0  
+**Version:** 0.108.0  
 **License:** PolyForm Internal Use 1.0.0  
 **Author:** Ross Young <ross@clearcapabilities.com> / Clear Capabilities Inc.
 
@@ -23,7 +23,7 @@ Full ASPM + LLMSecOps Claude Code plugin. Delivers SAST, SCA (OSV + CISA KEV + f
 | `scanner/src/lsp/` | LSP server wrapping `runScan`. Ships with the JetBrains + Neovim plugins. |  |
 | `scanner/src/llm-validator/` | Layer-3 LLM validator (opt-in via `AGENTIC_SECURITY_LLM_VALIDATE=1`). |  |
 | `scanner/test/` | Node test runner suite. Scoped via `npm run test:{smoke,sast,posture,dataflow,mcp,report,lifecycle}` — see `scanner/CLAUDE.md`. |  |
-| `bench/cve-replay/` | Real-CVE replay corpus + runner. Six entries today; target 500 (`bench/cve-replay/CONTRIBUTING.md`). |  |
+| `bench/cve-replay/` | Real-CVE replay corpus + runner. 117 entries (3 regression + 114 capability), all `pre:TP post:TN`; target 500. Baseline-gated via `npm run bench:cve-replay:check` (`bench/cve-replay/CONTRIBUTING.md`). |  |
 | `bench/owasp-benchmark-v1.2/`, `bench/sard-juliet-java/`, `bench/polyglot/` | External benches (gitignored, regenerated). |  |
 | `commands/` | Slash-command markdown files. Primary dispatchers (`secure`, `find-and-fix-everything`, `scan`, `triage`, `fix`, `posture`, `compliance`, `supply`, `setup`, `labs`) plus standalone `ci` and `three-agent-review`. Every capability is a mode of a dispatcher; the legacy single-purpose aliases have been removed. |  |
 | `agents/` | Sub-agent system prompts. Edit-capable agents follow `agents/_CONFINEMENT.md`. |  |
@@ -56,6 +56,21 @@ npm run smoke          # bundle smoke: CLI vs vulnerable-js fixture
 All scoped scripts are defined in `scanner/package.json`. Pick the one closest to what you touched; `scanner/CLAUDE.md` documents which test files are in which scope.
 
 After any change to `scanner/src/` or `scanner/bin/`, run `npm run build` before relying on the bundle. Unit tests run against `src/` directly and do not require a rebuild.
+
+---
+
+## Verification discipline (read before you claim anything works)
+
+Several releases (v0.106.0–v0.107.1) shipped broken or false because work was **reported as done without confirming the artifact actually changed**. The pattern was always the same: an edit silently failed, or a status file was stale, and the next step trusted the *intent* instead of the *result*. These rules exist to make that impossible. They override any urge to move fast.
+
+- **Confirm every mutation landed — don't assume.** An `Edit` whose `old_string` doesn't match returns "String not found" and changes nothing; a `node -e` that rewrites JSON can drop sibling keys. After any edit to a file you're about to rely on, re-read the specific region or `grep` for the exact thing you added. "I edited it" is not "it changed."
+- **Read the actual command output, never a cached or `/tmp` summary.** Benchmarks, test runs, and gates must be judged from the run you just executed in this turn. A `/tmp/*.txt` from three steps ago is stale the moment anything changed. When output is long or the terminal is noisy, write it to a file and `Read` that file — but only one you wrote *this turn*.
+- **A claim about a number requires the run that produced it.** Never state a corpus F1, test pass count, or coverage figure unless it came from a command in the current turn. If you didn't just run it, say "not re-verified," don't quote the last number you remember.
+- **Capture exit codes for anything that gates.** A gate that "looks like it ran" is worthless. Run it, capture `$?`, and prove BOTH directions: it exits 0 on the good input AND non-zero on a deliberately bad one. An unknown CLI flag or a missing npm script exits without enforcing — verify the script/flag exists by running it, not by reading the file that *should* define it.
+- **Pre-flight before commit/push.** Before `git commit`: `git status`/`git diff --cached --name-only` must match exactly what you intended (no missing new files, no stray `.agentic-security/` state, version bumped in all files). Before `git push`: re-run the full gate (`npm test`) and the corpus gate (`npm run bench:cve-replay:check`) and read both results. A green local gate is the price of pushing — there is no "probably fine."
+- **The corpus is gated; respect it.** `bench/cve-replay/corpus-baseline.json` records the expected verdict for every entry. Adding or changing entries means `npm run bench:cve-replay:check` (fails on any drift) then `npm run bench:cve-replay:update-baseline` and committing the regenerated baseline. Never add a corpus entry without confirming it scores `pre:TP post:TN` — an undetectable fixture is the exact mistake the gate now catches.
+- **Wipe scan state before benchmarking.** `.agentic-security/` dirs accumulate inside scanned `pre/`/`post/` trees and can mask results. `find bench/cve-replay -type d -name .agentic-security -prune -exec rm -rf {} +` before generating or checking a baseline so it reflects a clean tree.
+- **Report failures as failures.** If a step errored, was skipped, or you couldn't verify it, say so plainly with the evidence — don't paper over it with a confident summary. A correct "this is broken" is worth more than a false "this is done," and the latter has cost this project real rework.
 
 ---
 

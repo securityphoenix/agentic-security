@@ -1,0 +1,43 @@
+# agentic-security — repository CI gate.
+# Runs the scanner test suite and the CVE-replay corpus baseline check on every
+# push / PR. The corpus check fails the build on ANY drift from the committed
+# baseline — a regressed entry, a removed entry, or a NEW entry that does not
+# pass (the v0.106.0 class of error: a bad fixture added without verification).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install
+      - name: Unit + integration test gate
+        run: npm test
+      - name: Build bundle
+        run: npm run build
+      - name: Verify committed bundle matches source
+        run: git diff --exit-code dist/agentic-security.mjs dist/agentic-security.mjs.sha256
+
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install
+        working-directory: scanner
+      - name: CVE-replay corpus baseline check (fails on any drift)
+        run: npm run bench:cve-replay:check
+        working-directory: scanner

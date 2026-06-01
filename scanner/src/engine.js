@@ -92,6 +92,7 @@ import { scanJsFrameworkStructural } from './sast/js-framework-structural.js';
 import { scanPythonStructural } from './sast/python-structural.js';
 import { scanGoStructural } from './sast/go-structural.js';
 import { scanSecretConcat } from './sast/secret-concat.js';
+import { scanXssReflectedMultilang } from './sast/xss-reflected-multilang.js';
 import { scanResponseSplitting } from './sast/response-splitting.js';
 import { scanStoredPromptInjection, scanStoredPromptInjectionCrossFile } from './sast/llm-stored-prompt.js';
 import { scanRAGPoisoning } from './sast/rag-poisoning.js';
@@ -7415,6 +7416,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
       aF.push(...scanPythonStructural(p,c));
       aF.push(...scanGoStructural(p,c));
       aF.push(...scanSecretConcat(p,c));
+      aF.push(...scanXssReflectedMultilang(p,c));
       aF.push(...scanResponseSplitting(p,c));
       aF.push(...scanStoredPromptInjection(p,c));
       aF.push(...scanRAGPoisoning(p,c));
