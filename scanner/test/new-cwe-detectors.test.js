@@ -80,6 +80,38 @@ function key(name) { return "(uid=" + name + ")"; }
   assert.equal(out.length, 0, 'context-less concat should not be flagged');
 });
 
+// ─── LDAP (cross-language: PHP / Go / C# / Ruby / Kotlin) ───────────────────
+
+const ldapFires = (fp, code) => scanLDAPInjection(fp, code).some((f) => f.cwe === 'CWE-90');
+const ldapClean = (fp, code) => scanLDAPInjection(fp, code).every((f) => f.cwe !== 'CWE-90');
+
+test('LDAP — PHP ldap_search concat fires; ldap_escape clean', () => {
+  assert.ok(ldapFires('dir.php', '<?php $u=$_GET["u"]; ldap_search($ds, $base, "(uid=" . $u . ")");'));
+  assert.ok(ldapClean('dir.php', '<?php $u=ldap_escape($_GET["u"], "", LDAP_ESCAPE_FILTER); ldap_search($ds, $base, "(uid=" . $u . ")");'));
+  assert.ok(ldapClean('dir.php', '<?php ldap_search($ds, $base, "(objectClass=person)");'));
+});
+
+test('LDAP — Go go-ldap concat fires; EscapeFilter clean', () => {
+  assert.ok(ldapFires('dir.go', 'package main\nimport "github.com/go-ldap/ldap/v3"\nfunc s(u string){ ldap.NewSearchRequest("b",0,0,0,0,false,"(uid="+u+")",nil,nil) }'));
+  assert.ok(ldapClean('dir.go', 'package main\nimport "github.com/go-ldap/ldap/v3"\nfunc s(u string){ ldap.NewSearchRequest("b",0,0,0,0,false,"(uid="+ldap.EscapeFilter(u)+")",nil,nil) }'));
+});
+
+test('LDAP — C# DirectorySearcher concat and interpolation fire; literal clean', () => {
+  assert.ok(ldapFires('Dir.cs', 'using System.DirectoryServices;\nclass D { void s(string u){ var d = new DirectorySearcher(); d.Filter = "(uid=" + u + ")"; } }'));
+  assert.ok(ldapFires('Dir.cs', 'using System.DirectoryServices;\nclass D { void s(string u){ var d = new DirectorySearcher(); d.Filter = $"(uid={u})"; } }'));
+  assert.ok(ldapClean('Dir.cs', 'using System.DirectoryServices;\nclass D { void s(){ var d = new DirectorySearcher(); d.Filter = "(objectClass=person)"; } }'));
+});
+
+test('LDAP — Ruby net-ldap interpolation fires; literal clean', () => {
+  assert.ok(ldapFires('dir.rb', 'require "net/ldap"\ndef s(u)\n  conn.search(filter: "(uid=#{u})")\nend\n'));
+  assert.ok(ldapClean('dir.rb', 'require "net/ldap"\ndef s\n  conn.search(filter: "(objectClass=person)")\nend\n'));
+});
+
+test('LDAP — Kotlin JNDI concat/interpolation fires', () => {
+  assert.ok(ldapFires('Dir.kt', 'import javax.naming.directory.*\nclass D { fun s(u: String, ctx: DirContext) { ctx.search("ou=users", "(uid=" + u + ")", SearchControls()) } }'));
+  assert.ok(ldapFires('Dir.kt', 'import javax.naming.directory.*\nclass D { fun s(u: String, ctx: DirContext) { val f = "(uid=${u})"; ctx.search("ou=users", f, SearchControls()) } }'));
+});
+
 // ─── Open redirect ─────────────────────────────────────────────────────────
 
 test('open-redirect — Express res.redirect with req.query fires', () => {
