@@ -34,15 +34,32 @@ export function scanJsFrameworkStructural(fp, raw) {
     });
   };
 
+  // True when `idx` falls inside a string literal on its own line — i.e. an odd
+  // number of unescaped quotes of some kind precede it. Used to skip a `.query(`
+  // that is itself the CONTENT of a string (e.g. a rule-definition's
+  // `example: "db.query(\`…\`)"`), which is data, not a call.
+  const _insideStringLiteral = (idx) => {
+    const lineStart = code.lastIndexOf('\n', idx - 1) + 1;
+    const prefix = code.slice(lineStart, idx);
+    for (const q of ['"', "'"]) {
+      const n = (prefix.match(new RegExp(`(?<!\\\\)${q}`, 'g')) || []).length;
+      if (n % 2 === 1) return true;
+    }
+    return false;
+  };
+
   // SQL Injection: db.query/.execute/.raw with template-literal ${} or concat.
   // (TypeORM Connection.query, mysql connection.query, etc.)
   const SQL_RE = /\.(?:query|execute|raw|prepare)\s*\(\s*(?:`[^`\n]*\$\{|"[^"\n]*"\s*\+|'[^'\n]*'\s*\+|"[^"\n]*\$\{)/g;
   let m;
-  while ((m = SQL_RE.exec(code))) emit('sqli', lineOf(code, m.index), {
-    vuln: 'SQL Injection — query built with template literal / concat (JS/TS)',
-    severity: 'critical', cwe: 'CWE-89', family: 'sql-injection', confidence: 0.75,
-    remediation: 'Use parameterized queries — pass `?`/`$1` placeholders and a values array (e.g. `conn.query("… WHERE name = ?", [name])`). Never interpolate or concatenate values into SQL.',
-  });
+  while ((m = SQL_RE.exec(code))) {
+    if (_insideStringLiteral(m.index)) continue;
+    emit('sqli', lineOf(code, m.index), {
+      vuln: 'SQL Injection — query built with template literal / concat (JS/TS)',
+      severity: 'critical', cwe: 'CWE-89', family: 'sql-injection', confidence: 0.75,
+      remediation: 'Use parameterized queries — pass `?`/`$1` placeholders and a values array (e.g. `conn.query("… WHERE name = ?", [name])`). Never interpolate or concatenate values into SQL.',
+    });
+  }
 
   // NestJS / axios HttpService SSRF: http(.|Service|Client).get(<non-literal>).
   const SSRF_RE = /\b(?:http|httpService|httpClient|axios)\s*\.\s*(?:get|post|put|patch|delete|request)\s*\(\s*[A-Za-z_$][\w$.]*\s*[),]/g;

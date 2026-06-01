@@ -7346,7 +7346,7 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   const _perFileTimeoutMs = parseInt(process.env.AGENTIC_SECURITY_PER_FILE_TIMEOUT_MS || '10000', 10);
   const _fileTimings = [];
   let _filesSkipped = 0, _filesTimedOut = 0, _filesDenseSkipped = 0;
-  const files=Object.keys(fileContents).filter(f=>shouldScan(f) && !_isPathIgnored(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;const _ft0=Date.now();setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000){_filesSkipped++;continue;}const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000){_filesDenseSkipped++;continue;}fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aF.push(...scanAliasedSinks(p,c));aF.push(...scanJavaSAST(p,c));aF.push(...scanJavaBenchExtras(p,c));aLogic.push(...scanMiddlewareOrdering(p,c));{const _rd=scanReDoS(p,c);aLogic.push(..._rd);try{const _seenRd=new Set(_rd.map(f=>f.line));aLogic.push(...scanRegexReDoS(p,c).filter(f=>!_seenRd.has(f.line)));}catch(_){}}aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));
+  const files=Object.keys(fileContents).filter(f=>shouldScan(f) && !_isPathIgnored(f));const fc={},pfr={};const aR=[],aF=[],aSrc=[],aSink=[],aSan=[],aLogic=[],aSupply=[],aSecrets=[],aCiphersRest=[],aCiphersTransit=[];let i=0;for(const p of files){i++;const _ft0=Date.now();setProgress({current:i,total:files.length,file:p.split("/").pop(),phase:"Scanning"});try{const c=fileContents[p];if(!c||c.length>500000){_filesSkipped++;continue;}const _avgLine=c.length/Math.max(c.split('\n').length,1);if(_avgLine>400&&c.length>10000){_filesDenseSkipped++;continue;}fc[p]=c;aR.push(...scanRoutes(p,c));const ta=performAnalysis(p,c);pfr[p]=ta;aF.push(...ta.findings);aSrc.push(...ta.sources);aSink.push(...ta.sinks);aSan.push(...ta.sanitizers);aLogic.push(...scanLogicVulns(p,c));aSecrets.push(...scanCredentials(p,c));aF.push(...scanStructuralVulns(p,c));aF.push(...scanExtraStructural(p,c));aF.push(...scanAliasedSinks(p,c));aF.push(...scanJavaSAST(p,c));aF.push(...scanJavaBenchExtras(p,c));aLogic.push(...scanMiddlewareOrdering(p,c));aLogic.push(...scanReDoS(p,c));if(/\.(?:java|cs|kt|py|php|phtml)$/i.test(p)){try{aLogic.push(...scanRegexReDoS(p,c));}catch(_){}}aLogic.push(...scanTodosNearSecurity(p,c));aSecrets.push(...scanEntropySecrets(p,c));const cp=scanCiphers(p,c);aCiphersRest.push(...cp.atRest);aCiphersTransit.push(...cp.inTransit);if(/\.(graphql|gql)$/i.test(p))aF.push(...scanGraphQL(p,c));aF.push(...scanIaC(p,c));
       aF.push(...scanLLM(p,c));
       aF.push(...scanLLMOwasp(p,c));
       aLogic.push(...scanBusinessLogic(p,c));
@@ -8320,6 +8320,25 @@ async function runFullScan({fileContents={}, depFileContents={}, scanRoot=null},
   finalFindings = finalFindings.filter(_shouldKeep);
   _filterInPlace(aLogic);
   _filterInPlace(aSecrets);
+  // Drop a generic High-Entropy Credential Candidate when a named/structural
+  // secret detector (e.g. secret-concat, hardcoded-secret) already flagged the
+  // SAME file:line — otherwise one split/hardcoded key is reported twice (the
+  // named finding lives in `findings`, the entropy candidate in `secrets`).
+  {
+    const _namedSecretLines = new Set();
+    for (const f of finalFindings) {
+      const ln = f.line ?? f.source?.line;
+      if (typeof ln === 'number' && (f.cwe === 'CWE-798' || /hardcoded|credential|secret/i.test(f.vuln || ''))) {
+        _namedSecretLines.add(`${f.file}:${ln}`);
+      }
+    }
+    const _kept = aSecrets.filter((s) => {
+      if (!/High-Entropy|entropy/i.test(s.vuln || '')) return true;
+      return !_namedSecretLines.has(`${s.file}:${s.line}`);
+    });
+    aSecrets.length = 0;
+    aSecrets.push(..._kept);
+  }
   _filterInPlace(supplyChain);
   classifyOrphans(aSrc,aSink,finalFindings,fc);
   // v3 next-gen: capture scan-level reports (counterfactual, threat model,
