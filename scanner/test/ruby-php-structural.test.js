@@ -69,6 +69,29 @@ test('Symfony CSRF — POST-body controller with no token check; guarded clean',
   assert.ok(scanCSRF('T.php', api).every((f) => f.cwe !== 'CWE-352'));
 });
 
+test('CSRF — Go router POST fires; gorilla/csrf + bearer clean', () => {
+  const has = (c) => scanCSRF('main.go', c).some((f) => f.cwe === 'CWE-352');
+  assert.ok(has('package main\nimport "github.com/gin-gonic/gin"\nfunc main(){ r := gin.Default(); r.POST("/transfer", transfer); r.Run() }'));
+  assert.ok(!has('package main\nimport "github.com/gorilla/csrf"\nfunc main(){ r := gin.Default(); r.POST("/transfer", transfer); http.ListenAndServe(":8080", csrf.Protect(key)(r)) }'));
+  assert.ok(!has('package main\nfunc main(){ r := gin.Default(); r.GET("/list", list); r.Run() }'));
+});
+
+test('CSRF — Rails route POST/resources fires; protect_from_forgery clean', () => {
+  const has = (fn, c) => scanCSRF(fn, c).some((f) => f.cwe === 'CWE-352');
+  assert.ok(has('routes.rb', 'Rails.application.routes.draw do\n  post "/transfer", to: "transfers#create"\nend\n'));
+  assert.ok(has('routes.rb', 'Rails.application.routes.draw do\n  resources :transfers\nend\n'));
+  assert.ok(!has('c.rb', 'class T < ApplicationController\n  protect_from_forgery with: :exception\n  def create; post "/x"; end\nend\n'));
+  assert.ok(!has('routes.rb', 'Rails.application.routes.draw do\n  get "/list", to: "list#index"\nend\n'));
+});
+
+test('CSRF — C# [HttpPost] fires; [ValidateAntiForgeryToken] / Bearer / [ApiController] clean', () => {
+  const has = (c) => scanCSRF('C.cs', c).some((f) => f.cwe === 'CWE-352');
+  assert.ok(has('public class T : Controller { [HttpPost] public IActionResult Transfer(decimal amt){ return Ok(); } }'));
+  assert.ok(!has('public class T : Controller { [HttpPost] [ValidateAntiForgeryToken] public IActionResult Transfer(decimal amt){ return Ok(); } }'));
+  assert.ok(!has('[ApiController]\npublic class T : ControllerBase { [HttpPost] public IActionResult Transfer(decimal amt){ return Ok(); } }'));
+  assert.ok(!has('public class T : Controller { [HttpGet] public IActionResult List(){ return Ok(); } }'));
+});
+
 test('no false positives on clean Ruby / PHP', () => {
   assert.deepEqual(scanRuby('ok.rb', 'def add(a,b); a + b; end'), []);
   assert.deepEqual(scanPhp('ok.php', '<?php function add($a,$b){ return $a + $b; }'), []);

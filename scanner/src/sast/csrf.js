@@ -24,11 +24,25 @@ const STATE_CHANGE_RE = {
   // Symfony: reading the POST body bag (`$request->request->get(...)`) is the
   // state-change signal, plus the Route annotation method list.
   symfony: /\$\w+\s*->\s*(?:request|getPayload\s*\(\s*\))\s*->\s*(?:get|getInt|getBoolean|getAlnum|getDigits|all|has)\s*\(|[#@]\[?\s*Route\s*\([^)]*methods\s*[:=]\s*[[{][^\]}]*['"](?:POST|PUT|PATCH|DELETE)['"]/gi,
+  // Go (gin/echo/fiber/chi/mux): a router POST/PUT/PATCH/DELETE registration,
+  // or net/http mux `.Methods("POST")`.
+  go: /\b\w+\s*\.\s*(?:POST|PUT|PATCH|DELETE)\s*\(\s*["'`]|\.\s*Methods\s*\(\s*["'](?:POST|PUT|PATCH|DELETE)["']/g,
+  // Ruby on Rails: a route declaration `post '/x'` / `patch` / `put` / `delete`
+  // (in routes.rb) or `resources :x` (full CRUD incl. state-changing verbs).
+  ruby: /^\s*(?:post|put|patch|delete)\s+['":]|\bresources\s+:/gim,
+  // C# ASP.NET MVC/Web API: a [HttpPost]/[HttpPut]/[HttpPatch]/[HttpDelete]
+  // action attribute.
+  csharp: /\[\s*Http(?:Post|Put|Patch|Delete)\b/g,
 };
 
-const CSRF_DEFENCE_RE = /\b(?:csurf|csrfProtection|csrf\(\)|express-csrf-token|lusca\.csrf|fastify-csrf|CSRFProtect|csrf_protect|CsrfViewMiddleware|CsrfFilter|@CsrfProtected|isCsrfTokenValid|IsCsrfTokenValid|csrf_token|CsrfToken|sameSite\s*[:=]\s*['"](?:Strict|Lax)['"]|origin\s*===|referer\s*===|Origin\s*===|Referer\s*===)/i;
+const CSRF_DEFENCE_RE = /\b(?:csurf|csrfProtection|csrf\(\)|express-csrf-token|lusca\.csrf|fastify-csrf|CSRFProtect|csrf_protect|CsrfViewMiddleware|CsrfFilter|@CsrfProtected|isCsrfTokenValid|IsCsrfTokenValid|csrf_token|CsrfToken|ValidateAntiForgeryToken|AutoValidateAntiforgeryToken|IAntiforgery|protect_from_forgery|verify_authenticity_token|form_authenticity_token|gorilla\/csrf|csrf\.Protect|nosurf|sameSite\s*[:=]\s*['"](?:Strict|Lax)['"]|origin\s*===|referer\s*===|Origin\s*===|Referer\s*===)/i;
 
-const TOKEN_AUTH_RE = /\b(?:Authorization\s*:\s*Bearer|\.startsWith\s*\(\s*['"`]Bearer|req\.headers\.authorization|request\.headers\.get\(\s*['"`]authorization|bearer\s+token|x-api-key|verifyJWT|jwt\.verify|jsonwebtoken|lexik_jwt|JWTTokenAuthenticator|headers\s*->\s*get\s*\(\s*['"]Authorization)/i;
+// Token-auth signals — these auth schemes are CSRF-safe by construction (the
+// credential rides in a header the browser never auto-attaches). NOTE: bare
+// `[Authorize]` is intentionally NOT here — ASP.NET cookie auth is the default
+// and stays CSRF-vulnerable; only an explicit Bearer scheme or [ApiController]
+// (which disables antiforgery + implies token auth) exempts.
+const TOKEN_AUTH_RE = /\b(?:Authorization\s*:\s*Bearer|\.startsWith\s*\(\s*['"`]Bearer|req\.headers\.authorization|request\.headers\.get\(\s*['"`]authorization|bearer\s+token|x-api-key|verifyJWT|jwt\.verify|jsonwebtoken|lexik_jwt|JWTTokenAuthenticator|headers\s*->\s*get\s*\(\s*['"]Authorization|c\.GetHeader\s*\(\s*["']Authorization|request\.headers\[["']Authorization)|\[\s*ApiController\b|AuthenticationSchemes\s*=\s*["']?Bearer/i;
 
 const TEST_FILE_RE = /(?:^|\/)(?:tests?|__tests__|specs?|test|fixtures)\//i;
 
@@ -43,9 +57,12 @@ export function scanCSRF(fp, raw) {
   else if (ext === 'py') langSel = ['flask', 'django', 'fastapi'];
   else if (ext === 'java' || ext === 'kt') langSel = ['spring'];
   else if (ext === 'php' || ext === 'phtml') langSel = ['symfony'];
+  else if (ext === 'go') langSel = ['go'];
+  else if (ext === 'rb') langSel = ['ruby'];
+  else if (ext === 'cs') langSel = ['csharp'];
   if (!langSel) return [];
 
-  const code = blankComments(raw, ext === 'py' ? 'py' : undefined);
+  const code = blankComments(raw, (ext === 'py' || ext === 'rb') ? 'py' : undefined);
   // Project-wide-ish: if the file shows CSRF defence anywhere or only handles
   // token-authenticated routes, we suppress.
   const csrfInScope = CSRF_DEFENCE_RE.test(code);
