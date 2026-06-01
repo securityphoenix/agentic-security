@@ -148,6 +148,15 @@ function detectWeakCiphers(file, raw, code, out, seen) {
     { re: /\bciphers\s*:\s*['"`][^'"`]*(?:NULL|RC4|EXPORT|aNULL|eNULL|3DES|DES-CBC)/g },
     // Go cipher.NewTripleDESCipher
     { re: /\bcipher\.New(?:TripleDESCipher|DESCipher)\b/g },
+    // Go crypto/des + crypto/rc4 package constructors
+    { re: /\b(?:des\.New(?:TripleDESCipher|Cipher)|rc4\.NewCipher)\s*\(/g },
+    // PHP openssl_encrypt/openssl_decrypt with a weak algorithm string.
+    { re: /\bopenssl_(?:encrypt|decrypt)\s*\([^;)]*,\s*["'](?:des|des-ede3?|3des|rc4|rc2|bf|blowfish|cast5|seed)\b[^"']*["']/gi },
+    // PHP legacy mcrypt with DES/3DES/RC4/Blowfish.
+    { re: /\bmcrypt_(?:encrypt|decrypt|module_open)\s*\(\s*(?:MCRYPT_(?:DES|3DES|TRIPLEDES|ARCFOUR|RC2|RC4|BLOWFISH|CAST_128)|["'](?:des|tripledes|arcfour|rc2|rc4|blowfish)["'])/gi },
+    // Ruby OpenSSL::Cipher.new("DES-…"/"RC4"/"bf-…") or OpenSSL::Cipher::DES.new
+    { re: /\bOpenSSL::Cipher\.new\s*\(\s*["'](?:des|des-ede3?|3des|rc4|rc2|bf|blowfish|cast5|seed)\b[^"']*["']/gi },
+    { re: /\bOpenSSL::Cipher::(?:DES|RC4|RC2|Blowfish|CAST5)\b/g },
   ];
   for (const p of patterns) {
     let m;

@@ -51,6 +51,23 @@ test('crypto-proto: pyca/cryptography zero IV (iv = b\'\\x00\' * 16) flagged sta
   assert.ok(out.some(f => f.family === 'crypto-static-iv' && f.cwe === 'CWE-329'), 'zero IV flagged');
 });
 
+test('crypto-proto: cross-language weak cipher — Go/PHP/Ruby DES/RC4/BF fire; AES clean', () => {
+  const fires = (fp, code) => scanCryptoProtocol(fp, code).some(f => f.cwe === 'CWE-327' && f.family === 'crypto-weak-cipher');
+  const clean = (fp, code) => scanCryptoProtocol(fp, code).every(f => f.family !== 'crypto-weak-cipher');
+  // Go crypto/des + crypto/rc4
+  assert.ok(fires('c.go', 'package main\nimport "crypto/des"\nfunc e(k []byte){ des.NewCipher(k) }'));
+  assert.ok(fires('c.go', 'package main\nimport "crypto/rc4"\nfunc e(k []byte){ rc4.NewCipher(k) }'));
+  assert.ok(clean('c.go', 'package main\nimport "crypto/aes"\nfunc e(k []byte){ aes.NewCipher(k) }'));
+  // PHP openssl_encrypt + mcrypt
+  assert.ok(fires('c.php', '<?php $x = openssl_encrypt($d, "DES-ECB", $k);'));
+  assert.ok(fires('c.php', '<?php $x = mcrypt_encrypt(MCRYPT_DES, $k, $d, MCRYPT_MODE_ECB);'));
+  assert.ok(clean('c.php', '<?php $x = openssl_encrypt($d, "aes-256-gcm", $k);'));
+  // Ruby OpenSSL::Cipher
+  assert.ok(fires('c.rb', 'require "openssl"\ndef e; OpenSSL::Cipher.new("DES-ECB"); end'));
+  assert.ok(fires('c.rb', 'require "openssl"\ndef e; OpenSSL::Cipher.new("bf-cbc"); end'));
+  assert.ok(clean('c.rb', 'require "openssl"\ndef e; OpenSSL::Cipher.new("aes-256-gcm"); end'));
+});
+
 test('crypto-proto: cross-language static-IV — JVM/Go/PHP/Ruby/C# fire; CSPRNG clean', () => {
   const fires = (fp, code) => scanCryptoProtocol(fp, code).some(f => f.cwe === 'CWE-329');
   const clean = (fp, code) => scanCryptoProtocol(fp, code).every(f => f.cwe !== 'CWE-329');
